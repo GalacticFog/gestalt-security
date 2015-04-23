@@ -1,0 +1,16 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+GET        /orgs/current            controllers.SecurityController.getCurrentOrg
+#GET        /orgs/:orgId                  controllers.SecurityController.getOrgById(orgId)
+#GET        /orgs/:orgId/groups           controllers.SecurityController.listOrgGroups(orgId)
+#GET        /orgs/:orgId/directories      controllers.SecurityController.listOrgDirectories(orgId)
+GET        /orgs/:orgId/apps        controllers.SecurityController.listOrgApps(orgId)
+
+GET        /apps/:appId             controllers.SecurityController.getAppById(appId)
+POST       /apps/:appId/login       controllers.SecurityController.appLogin(appId)
+
+
+# Map static resources from the /public folder to the /assets URL path
+GET        /assets/*file            controllers.Assets.at(path="/public", file)
