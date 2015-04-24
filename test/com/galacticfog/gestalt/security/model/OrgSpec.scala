@@ -1,5 +1,6 @@
 package com.galacticfog.gestalt.security.model
 
+import com.galacticfog.gestalt.security.data.model.OrgRepository
 import scalikejdbc.specs2.mutable.AutoRollback
 import org.specs2.mutable._
 import scalikejdbc._

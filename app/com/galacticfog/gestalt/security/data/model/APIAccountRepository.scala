@@ -1,4 +1,4 @@
-package com.galacticfog.gestalt.security.model
+package com.galacticfog.gestalt.security.data.model
 
 import scalikejdbc._
 

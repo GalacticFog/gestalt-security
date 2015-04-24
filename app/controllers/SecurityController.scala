@@ -1,13 +1,17 @@
 package controllers
 
+import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
+import play.api.{Logger => log}
 import org.apache.shiro.SecurityUtils
 import org.apache.shiro.config.IniSecurityManagerFactory
 import play.api._
-import play.api.libs.json.Json
 import play.api.mvc._
 import org.apache.shiro.mgt.SecurityManager
+import scala.concurrent.ExecutionContext.Implicits.global
+import play.api.Play.current
 
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
 
 case class SecurityControllerInitializationError(msg: String) extends RuntimeException(msg)
 
@@ -17,7 +21,9 @@ object Res {
   val caughtException = "caught exception creating Ini SecurityManager: %s"
 }
 
-object SecurityController extends Controller {
+object SecurityController extends Controller with GestaltHeaderAuthentication {
+
+  val db = securityDB
 
   def initShiro() = {
 
@@ -30,7 +36,7 @@ object SecurityController extends Controller {
         } match {
           case Success(sm) => sm
           case Failure(t) => {
-            Logger.error("Caught exception initializing Shiro SecurityManager from IniSecurityManagerFactory", t)
+            log.error("Caught exception initializing Shiro SecurityManager from IniSecurityManagerFactory", t)
             throw new SecurityControllerInitializationError(Res.caughtException.format(t.getMessage))
           }
         }
@@ -44,30 +50,54 @@ object SecurityController extends Controller {
     //    val sampleRealm = new PlayRealm()
     //    val securityManager = new PlaySecurityManager()
     //    securityManager.setRealm(sampleRealm)
-
+    //
     // Turn off session storage for better "stateless" management.
     // https://shiro.apache.org/session-management.html#SessionManagement-StatelessApplications%2528Sessionless%2529
     //    val subjectDAO = securityManager.getSubjectDAO.asInstanceOf[DefaultSubjectDAO]
     //    val sessionStorageEvaluator = subjectDAO.getSessionStorageEvaluator.asInstanceOf[DefaultSessionStorageEvaluator]
-
+    //
     //    sessionStorageEvaluator.setSessionStorageEnabled(false)
-
+    //
     //    org.apache.shiro.SecurityUtils.setSecurityManager(securityManager)
 
   }
 
-
-  def getCurrentOrg() = play.mvc.Results.TODO
-
-//  def getCurrentOrg() = Action.async {
-//    val subject = SecurityUtils.getSubject
-//    if (subject.isAuthenticated) Ok("Subject is authenticated")
-//    else Unauthorized("Subject is not authenticated")
-//  }
+  def getCurrentOrg() = requireAuthentication { apiAccount => implicit request =>
+    Ok("Authorized as " + apiAccount.apiKey)
+  }
 
   def listOrgApps(orgId: String) = play.mvc.Results.TODO
 
   def getAppById(appId: String) = play.mvc.Results.TODO
 
   def appLogin(appId: String) = play.mvc.Results.TODO
+
+  private def securityDB = {
+    val connection = current.configuration.getObject("database") match {
+      case None =>
+        throw new RuntimeException("FATAL: Database configuration not found.")
+      case Some(config) => {
+        val configMap = config.unwrapped.asScala.toMap
+        displayStartupSettings(configMap)
+        ScalikePostgresDBConnection(
+          host = configMap("host").toString,
+          database = configMap("dbname").toString,
+          port = configMap("port").toString.toInt,
+          user = configMap("user").toString,
+          password = configMap("password").toString,
+          timeoutMs = configMap("timeoutMs").toString.toLong)
+      }
+    }
+    println("CONNECTION : " + connection)
+    connection
+  }
+
+  private def displayStartupSettings(config: Map[String, Object]) {
+    log.debug("DATABASE SETTINGS:")
+    for ((k,v) <- config) {
+      if (k != "password")
+        log.debug("%s = '%s'".format(k, v.toString))
+    }
+  }
+
 }
