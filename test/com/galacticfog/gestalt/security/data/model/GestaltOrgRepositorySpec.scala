@@ -1,56 +1,55 @@
-package com.galacticfog.gestalt.security.model
+package com.galacticfog.gestalt.security.data.model
 
-import com.galacticfog.gestalt.security.data.model.OrgRepository
 import scalikejdbc.specs2.mutable.AutoRollback
 import org.specs2.mutable._
 import scalikejdbc._
 
 
-class OrgSpec extends Specification {
+class GestaltOrgRepositorySpec extends Specification {
 
-  "Org" should {
+  "GestaltOrgRepository" should {
 
-    val o = OrgRepository.syntax("o")
+    val gor = GestaltOrgRepository.syntax("gor")
 
     "find by primary keys" in new AutoRollback {
-      val maybeFound = OrgRepository.find("MyString")
+      val maybeFound = GestaltOrgRepository.find("MyString")
       maybeFound.isDefined should beTrue
     }
     "find by where clauses" in new AutoRollback {
-      val maybeFound = OrgRepository.findBy(sqls.eq(o.orgId, "MyString"))
+      val maybeFound = GestaltOrgRepository.findBy(sqls.eq(gor.orgId, "MyString"))
       maybeFound.isDefined should beTrue
     }
     "find all records" in new AutoRollback {
-      val allResults = OrgRepository.findAll()
+      val allResults = GestaltOrgRepository.findAll()
       allResults.size should be_>(0)
     }
     "count all records" in new AutoRollback {
-      val count = OrgRepository.countAll()
+      val count = GestaltOrgRepository.countAll()
       count should be_>(0L)
     }
     "find all by where clauses" in new AutoRollback {
-      val results = OrgRepository.findAllBy(sqls.eq(o.orgId, "MyString"))
+      val results = GestaltOrgRepository.findAllBy(sqls.eq(gor.orgId, "MyString"))
       results.size should be_>(0)
     }
     "count by where clauses" in new AutoRollback {
-      val count = OrgRepository.countBy(sqls.eq(o.orgId, "MyString"))
+      val count = GestaltOrgRepository.countBy(sqls.eq(gor.orgId, "MyString"))
       count should be_>(0L)
     }
     "create new record" in new AutoRollback {
-      val created = OrgRepository.create(orgId = "MyString")
+      val created = GestaltOrgRepository.create(orgId = "MyString", orgName = "MyString")
       created should not beNull
     }
     "save a record" in new AutoRollback {
-      val entity = OrgRepository.findAll().head
+      val entity = GestaltOrgRepository.findAll().head
       // TODO modify something
       val modified = entity
-      val updated = OrgRepository.save(modified)
+      val updated = GestaltOrgRepository.save(modified)
       updated should not equalTo(entity)
     }
     "destroy a record" in new AutoRollback {
-      val entity = OrgRepository.findAll().head
-      OrgRepository.destroy(entity)
-      val shouldBeNone = OrgRepository.find("MyString")
+      val entity = GestaltOrgRepository.findAll().head
+      GestaltOrgRepository.destroy(entity)
+      val shouldBeNone = GestaltOrgRepository.find("MyString")
       shouldBeNone.isDefined should beFalse
     }
   }

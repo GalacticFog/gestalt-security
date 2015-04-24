@@ -7,8 +7,10 @@
 DROP TABLE IF EXISTS org CASCADE;
 CREATE TABLE org(
   org_id character(24) NOT NULL,
+  org_name character VARYING(255) NOT NULL,
 
-  CONSTRAINT pk_org_id PRIMARY KEY(org_id)
+  CONSTRAINT pk_org_id PRIMARY KEY(org_id),
+  CONSTRAINT unique_org_name UNIQUE (org_name)
 );
 ALTER TABLE org OWNER TO gestaltdev;
 

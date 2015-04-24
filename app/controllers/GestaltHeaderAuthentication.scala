@@ -52,8 +52,9 @@ trait GestaltHeaderAuthentication {
   }
 
   def onUnauthorized(request: RequestHeader) = Results.Unauthorized("").withHeaders(("WWW-Authenticate","Basic"))
-  def requireAuthentication(f: => APIAccountRepository => Request[AnyContent] => Result)(implicit ec: ExecutionContext) = {
+  def requireAPIKeyAuthentication(f: => APIAccountRepository => Request[AnyContent] => Result)(implicit ec: ExecutionContext) = {
     Authenticated(authenticate, onUnauthorized) { user =>
+      Logger.info("authenticated request from " + user.apiKey)
       Action(request => f(user)(request))
     }
   }

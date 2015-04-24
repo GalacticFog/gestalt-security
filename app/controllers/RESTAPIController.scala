@@ -1,6 +1,9 @@
 package controllers
 
+import com.galacticfog.gestalt.security.data.JsonImports._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
+import com.galacticfog.gestalt.security.data.domain.GestaltOrgFactory
+import play.api.libs.json.Json
 import play.api.{Logger => log}
 import org.apache.shiro.SecurityUtils
 import org.apache.shiro.config.IniSecurityManagerFactory
@@ -21,7 +24,7 @@ object Res {
   val caughtException = "caught exception creating Ini SecurityManager: %s"
 }
 
-object SecurityController extends Controller with GestaltHeaderAuthentication {
+object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   val db = securityDB
 
@@ -62,8 +65,11 @@ object SecurityController extends Controller with GestaltHeaderAuthentication {
 
   }
 
-  def getCurrentOrg() = requireAuthentication { apiAccount => implicit request =>
-    Ok("Authorized as " + apiAccount.apiKey)
+  def getCurrentOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    GestaltOrgFactory.findByOrgId(apiAccount.defaultOrg) match {
+      case Some(org) => Ok(Json.toJson(org))
+      case None => BadRequest("could not locate current org")
+    }
   }
 
   def listOrgApps(orgId: String) = play.mvc.Results.TODO

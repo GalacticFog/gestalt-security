@@ -1,4 +1,4 @@
-import controllers.SecurityController
+import controllers.RESTAPIController
 import play.api._
 import play.api.mvc._
 
@@ -11,7 +11,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   override def overrideParameter: String = "_method"
 
   override def onStart(app: Application): Unit = {
-    SecurityController.initShiro()
+    RESTAPIController.initShiro()
     InitialData.insert()
   }
 
