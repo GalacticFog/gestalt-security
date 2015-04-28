@@ -40,6 +40,12 @@ lazy val FlywayRebuild = Command.command("flyway") { state =>
 
 commands += FlywayRebuild
 
+lazy val GenDataModel = Command.command("generateModel") { state => 
+ "scalikejdbcGenForce org GestaltOrgRepository" :: "scalikejdbcGenForce api_account APIAccountRepository" :: "scalikejdbcGenForce app AppRepository" :: "scalikejdbcGenForce user_account UserAccountRepository" :: "scalikejdbcGenForce right_grant RightGrantRepository" :: "scalikejdbcGenForce user_group UserGroupRepository" :: "scalikejdbcGenForce account_x_group GroupMembershipRepository" :: "scalikejdbcGenForce app_user_store AppUserStoreRepository" :: state
+}
+
+commands += GenDataModel
+
 scalikejdbcSettings
 
 
@@ -56,7 +62,7 @@ libraryDependencies += "org.apache.shiro" % "shiro-core" % "1.2.3"
 
 libraryDependencies += "org.scalikejdbc" % "scalikejdbc_2.11" % "2.2.3"
 
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.4"   % "test"
+libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.3"   % "test"
 
 // ----------------------------------------------------------------------------
 // PostgreSQL

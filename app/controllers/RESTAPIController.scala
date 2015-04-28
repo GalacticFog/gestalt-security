@@ -2,8 +2,9 @@ package controllers
 
 import com.galacticfog.gestalt.security.data.JsonImports._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
-import com.galacticfog.gestalt.security.data.domain.GestaltOrgFactory
-import play.api.libs.json.Json
+import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, UserAccountFactory, AppFactory, GestaltOrgFactory}
+import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, APIAccountRepository}
+import play.api.libs.json.{JsValue, Json}
 import play.api.{Logger => log}
 import org.apache.shiro.SecurityUtils
 import org.apache.shiro.config.IniSecurityManagerFactory
@@ -68,15 +69,37 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getCurrentOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
     GestaltOrgFactory.findByOrgId(apiAccount.defaultOrg) match {
       case Some(org) => Ok(Json.toJson(org))
-      case None => BadRequest("could not locate current org")
+      case None => NotFound("could not locate current org")
     }
   }
 
-  def listOrgApps(orgId: String) = play.mvc.Results.TODO
+  def listOrgApps(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    // TODO: check that I have permissions over this org
+    // TODO: add permissions
+    Ok(Json.toJson(AppFactory.listByOrgId(orgId)))
+  }
 
-  def getAppById(appId: String) = play.mvc.Results.TODO
+  def getAppById(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    AppFactory.findByAppId(appId) match {
+      case Some(app) => Ok(Json.toJson(app))
+      case None => NotFound("could not locate current org")
+    }
+  }
 
-  def appLogin(appId: String) = play.mvc.Results.TODO
+  def appAuth(appId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
+    val attempt = for {
+      app <- AppFactory.findByAppId(appId)
+      account <- UserAccountFactory.authenticate(app.appId, request.body)
+      rights = RightGrantFactory.listRights(appId = app.appId, accountId = account.accountId)
+    } yield (account,rights)
+    attempt match {
+      case None => Forbidden("")
+      case Some((acc,rights)) => Ok(Json.obj(
+        "account" -> Json.toJson(acc),
+        "rights" -> Json.toJson(rights)
+      ))
+    }
+  })
 
   private def securityDB = {
     val connection = current.configuration.getObject("database") match {

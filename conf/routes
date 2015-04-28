@@ -9,7 +9,7 @@ GET        /orgs/current            controllers.RESTAPIController.getCurrentOrg
 GET        /orgs/:orgId/apps        controllers.RESTAPIController.listOrgApps(orgId)
 
 GET        /apps/:appId             controllers.RESTAPIController.getAppById(appId)
-POST       /apps/:appId/login       controllers.RESTAPIController.appLogin(appId)
+POST       /apps/:appId/auth        controllers.RESTAPIController.appAuth(appId)
 
 
 # Map static resources from the /public folder to the /assets URL path

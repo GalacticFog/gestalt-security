@@ -58,5 +58,11 @@ trait GestaltHeaderAuthentication {
       Action(request => f(user)(request))
     }
   }
+  def requireAPIKeyAuthentication[T](parser: BodyParser[T], f: => APIAccountRepository => Request[T] => Result)(implicit ec: ExecutionContext) = {
+    Authenticated(authenticate, onUnauthorized) { user =>
+      Logger.info("authenticated request from " + user.apiKey)
+      Action(parser: BodyParser[T])(request => f(user)(request))
+    }
+  }
 
 }
