@@ -3,7 +3,8 @@ package controllers
 import com.galacticfog.gestalt.security.data.JsonImports._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
 import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, UserAccountFactory, AppFactory, GestaltOrgFactory}
-import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, APIAccountRepository}
+import com.galacticfog.gestalt.security.data.model.{AppRepository, RightGrantRepository, APIAccountRepository}
+import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import play.api.libs.json.{JsValue, Json}
 import play.api.{Logger => log}
 import org.apache.shiro.SecurityUtils
@@ -98,6 +99,24 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         "account" -> Json.toJson(acc),
         "rights" -> Json.toJson(rights)
       ))
+    }
+  })
+
+  def createOrgApp(orgId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
+    (request.body \ "appName").asOpt[String] match {
+      case None => BadRequest("must provide app name")
+      case Some(appName) => {
+        AppFactory.findByAppName(orgId,appName) match {
+          case Some(existingApp) => Conflict("app already exists")
+          case None => {
+            try {
+              Created(Json.toJson(AppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
+            } catch {
+              case t: Throwable => InternalServerError(t.getMessage)
+            }
+          }
+        }
+      }
     }
   })
 

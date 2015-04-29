@@ -16,6 +16,7 @@ object JsonImports {
       (__ \ "appName").write[String] and
       (__ \ "orgId").write[String]
     )(unlift(AppRepository.unapply))
+//  implicit val appReads: Reads[AppRepository] = ()
 
   implicit val userWrites: Writes[UserAccountRepository] = new Writes[UserAccountRepository] {
     override def writes(o: UserAccountRepository): JsValue = Json.obj(
