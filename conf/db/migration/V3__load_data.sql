@@ -68,8 +68,8 @@ INSERT INTO app_user_store(app_id,group_id) VALUES
 INSERT INTO right_grant(grant_id,grant_name,grant_value,account_id,group_id,app_id) VALUES
   ('WZIpVpyn6ftFEnM1Z241qS2v', 'launcher:full_access',           NULL, NULL, (SELECT group_id from user_group WHERE group_name = 'gfi'),                     (SELECT app_id from app WHERE app_name = 'Launcher')),
   ('pd6RCTtiyIwtAWgX904Eyl5f', 'callfairy:user_access',          NULL, NULL, (SELECT group_id from user_group WHERE group_name = 'gfi'),                     (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
-  ('MSYCBr2RuANnTNfEjkx5IpQF', 'callfairy:createCall',           NULL, (SELECT account_id from user_account WHERE username = 'notifierDaemon'),        NULL, (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
-  ('Z0evUArEAtwnQiOVEZT40opI', 'callfairy:listCall',             NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'), NULL, (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
+  ('MSYCBr2RuANnTNfEjkx5IpQF', 'callfairy:call:create',          NULL, (SELECT account_id from user_account WHERE username = 'notifierDaemon'),        NULL, (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
+  ('Z0evUArEAtwnQiOVEZT40opI', 'callfairy:call:list',            NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'), NULL, (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
   ('rpGHUdDd0T5b46v1lYGtvbla', 'gestalt-notifier:source:create', NULL, (SELECT account_id from user_account WHERE username = 'launcher'),              NULL, (SELECT app_id from app WHERE app_name = 'CallFairyNotifier')),
-  ('d6GuptkDCaguPIusGBl2x1Gx', 'gestalt-caller:execute',         NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'), NULL, (SELECT app_id from app WHERE app_name = 'CallFairyCaller'));
+  ('d6GuptkDCaguPIusGBl2x1Gx', 'gestalt-caller:call:create',     NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'), NULL, (SELECT app_id from app WHERE app_name = 'CallFairyCaller'));
 
