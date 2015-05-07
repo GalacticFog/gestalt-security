@@ -21,4 +21,9 @@ object SecureIdGenerator {
     id.toString
   }
 
+  def main(args: Array[String]) {
+    val num = if (args.size > 0) args(0).toInt else 10
+    for (i <- 1 to num) println(genId62(24))
+  }
+
 }
