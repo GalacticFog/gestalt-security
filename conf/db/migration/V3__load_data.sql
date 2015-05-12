@@ -38,6 +38,7 @@ INSERT INTO user_account(account_id,username,email,first_name,last_name,secret,s
 INSERT INTO user_group(group_id,group_name) VALUES
   ('a9RCjvdRcQ8sbtV5sjs9wlDo', 'gfi'),
   ('Co7LJUYqKuW4N68RSprJUFAV', 'callfairy_admins'),
+  ('muesVkFiqECisx0kE3SEugMq', 'callfairy_rest_users'),
   ('TxWGrlXz1WXlyNRsrHItnBsz', 'caller_rest_users'),
   ('kqlv2IQBW1tokAfqPa4HcjTg', 'notifier_rest_users');
 
@@ -52,6 +53,8 @@ INSERT INTO account_x_group(group_id,account_id) VALUES
   ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_admins'), (SELECT account_id FROM user_account WHERE username = 'anthony')),
   ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_admins'), (SELECT account_id FROM user_account WHERE username = 'chris')),
   ((SELECT group_id FROM user_group WHERE group_name = 'caller_rest_users'), (SELECT account_id FROM user_account WHERE username = 'scheduleMonitorDaemon')),
+  ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users'), (SELECT account_id FROM user_account WHERE username = 'scheduleMonitorDaemon')),
+  ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users'), (SELECT account_id FROM user_account WHERE username = 'notifierDaemon')),
   ((SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users'), (SELECT account_id FROM user_account WHERE username = 'launcher'));
 
 -- ----------------------------------------------------------------------------
@@ -60,6 +63,7 @@ INSERT INTO account_x_group(group_id,account_id) VALUES
 INSERT INTO app_user_store(app_id,group_id) VALUES
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyCaller'),          (SELECT group_id FROM user_group WHERE group_name = 'caller_rest_users')),
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyNotifier'),        (SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users')),
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),          (SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users')),
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),       (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduleMonitor'), (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
   ((SELECT app_id FROM app WHERE app_name = 'Launcher'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi'));
