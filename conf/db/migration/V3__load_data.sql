@@ -30,7 +30,7 @@ INSERT INTO user_account(account_id,username,email,first_name,last_name,secret,s
   ('D64LHpB7A02UF9GNE8sYrrSc','fred','fred@galacticfog.com','Fred','Dead','letmein','',''),
   ('KlmGJEFJEYamuEzkTtX2eifj','notifierDaemon','','','','letmein','',''),
   ('uRNXpH6wIw1x2WyX53umrPhF','scheduleMonitorDaemon','','','','letmein','',''),
-  ('JQsgwAlyemTFNIVMQlr4X8R4','launcher','','','','letmein','','');
+  ('JQsgwAlyemTFNIVMQlr4X8R4','launcherDaemon','','','','letmein','','');
 
 -- ----------------------------------------------------------------------------
 -- User groups
@@ -55,7 +55,7 @@ INSERT INTO account_x_group(group_id,account_id) VALUES
   ((SELECT group_id FROM user_group WHERE group_name = 'caller_rest_users'), (SELECT account_id FROM user_account WHERE username = 'scheduleMonitorDaemon')),
   ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users'), (SELECT account_id FROM user_account WHERE username = 'scheduleMonitorDaemon')),
   ((SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users'), (SELECT account_id FROM user_account WHERE username = 'notifierDaemon')),
-  ((SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users'), (SELECT account_id FROM user_account WHERE username = 'launcher'));
+  ((SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users'), (SELECT account_id FROM user_account WHERE username = 'launcherDaemon'));
 
 -- ----------------------------------------------------------------------------
 -- App User store
@@ -78,6 +78,6 @@ INSERT INTO right_grant(grant_id,grant_name,grant_value,account_id,group_id,app_
   ('Z0evUArEAtwnQiOVEZT40opI', 'callfairy:call:list',            NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'),              NULL, (SELECT app_id from app WHERE app_name = 'CallFairyScheduler')),
   ('kuv63mABY7ipv4MjEwYcf2vd', 'call-schedule-monitor:start',    NULL, NULL,                     (SELECT group_id from user_group WHERE group_name = 'callfairy_admins'), (SELECT app_id from app WHERE app_name = 'CallFairyScheduleMonitor')),
   ('Fe7aeZqn9X36AJleQwAyvDSp', 'call-schedule-monitor:stop',     NULL, NULL,                     (SELECT group_id from user_group WHERE group_name = 'callfairy_admins'), (SELECT app_id from app WHERE app_name = 'CallFairyScheduleMonitor')),
-  ('rpGHUdDd0T5b46v1lYGtvbla', 'gestalt-notifier:source:create', NULL, (SELECT account_id from user_account WHERE username = 'launcher'),                           NULL, (SELECT app_id from app WHERE app_name = 'CallFairyNotifier')),
+  ('rpGHUdDd0T5b46v1lYGtvbla', 'gestalt-notifier:source:create', NULL, (SELECT account_id from user_account WHERE username = 'launcherDaemon'),                     NULL, (SELECT app_id from app WHERE app_name = 'CallFairyNotifier')),
   ('d6GuptkDCaguPIusGBl2x1Gx', 'gestalt-caller:call:create',     NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'),              NULL, (SELECT app_id from app WHERE app_name = 'CallFairyCaller'));
 
