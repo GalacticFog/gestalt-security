@@ -17,6 +17,8 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-digest" % "1.0.0")
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-mocha" % "1.0.0")
 
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.0.2")
+
 // Driver needed here for scalike mapper.
 
 libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"

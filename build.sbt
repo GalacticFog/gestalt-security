@@ -4,9 +4,19 @@ organization := "com.galacticfog"
 
 version := "0.9-SNAPSHOT"
 
-lazy val root = (project in file(".")).enablePlugins(PlayScala)
+lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
 
 scalaVersion := "2.11.4"
+
+maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+
+dockerUpdateLatest := true
+
+dockerExposedPorts in Docker := Seq(9000)
+
+dockerRepository := Some("galacticfog.artifactoryonline.com")
+
+publishTo := Some("Artifactory Realm" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local")
 
 libraryDependencies ++= Seq(
   jdbc,
@@ -15,15 +25,10 @@ libraryDependencies ++= Seq(
   ws
 )
 
-publishTo := Some("Artifactory Realm" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local/")
-
-credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
-
 resolvers ++= Seq(
   "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
   "snapshots" at "http://scala-tools.org/repo-snapshots",
   "releases"  at "http://scala-tools.org/repo-releases")
-
 
 //
 // Adds project name to prompt like in a Play project
