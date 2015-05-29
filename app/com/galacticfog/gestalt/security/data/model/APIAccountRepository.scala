@@ -5,7 +5,8 @@ import scalikejdbc._
 case class APIAccountRepository(
   apiKey: String, 
   apiSecret: String, 
-  defaultOrg: String) {
+  defaultOrg: String, 
+  accountId: String) {
 
   def save()(implicit session: DBSession = APIAccountRepository.autoSession): APIAccountRepository = APIAccountRepository.save(this)(session)
 
@@ -20,13 +21,14 @@ object APIAccountRepository extends SQLSyntaxSupport[APIAccountRepository] {
 
   override val tableName = "api_account"
 
-  override val columns = Seq("api_key", "api_secret", "default_org")
+  override val columns = Seq("api_key", "api_secret", "default_org", "account_id")
 
   def apply(apiar: SyntaxProvider[APIAccountRepository])(rs: WrappedResultSet): APIAccountRepository = apply(apiar.resultName)(rs)
   def apply(apiar: ResultName[APIAccountRepository])(rs: WrappedResultSet): APIAccountRepository = new APIAccountRepository(
     apiKey = rs.get(apiar.apiKey),
     apiSecret = rs.get(apiar.apiSecret),
-    defaultOrg = rs.get(apiar.defaultOrg)
+    defaultOrg = rs.get(apiar.defaultOrg),
+    accountId = rs.get(apiar.accountId)
   )
       
   val apiar = APIAccountRepository.syntax("apiar")
@@ -68,23 +70,27 @@ object APIAccountRepository extends SQLSyntaxSupport[APIAccountRepository] {
   def create(
     apiKey: String,
     apiSecret: String,
-    defaultOrg: String)(implicit session: DBSession = autoSession): APIAccountRepository = {
+    defaultOrg: String,
+    accountId: String)(implicit session: DBSession = autoSession): APIAccountRepository = {
     withSQL {
       insert.into(APIAccountRepository).columns(
         column.apiKey,
         column.apiSecret,
-        column.defaultOrg
+        column.defaultOrg,
+        column.accountId
       ).values(
         apiKey,
         apiSecret,
-        defaultOrg
+        defaultOrg,
+        accountId
       )
     }.update.apply()
 
     APIAccountRepository(
       apiKey = apiKey,
       apiSecret = apiSecret,
-      defaultOrg = defaultOrg)
+      defaultOrg = defaultOrg,
+      accountId = accountId)
   }
 
   def save(entity: APIAccountRepository)(implicit session: DBSession = autoSession): APIAccountRepository = {
@@ -92,7 +98,8 @@ object APIAccountRepository extends SQLSyntaxSupport[APIAccountRepository] {
       update(APIAccountRepository).set(
         column.apiKey -> entity.apiKey,
         column.apiSecret -> entity.apiSecret,
-        column.defaultOrg -> entity.defaultOrg
+        column.defaultOrg -> entity.defaultOrg,
+        column.accountId -> entity.accountId
       ).where.eq(column.apiKey, entity.apiKey)
     }.update.apply()
     entity

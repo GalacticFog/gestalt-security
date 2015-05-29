@@ -67,10 +67,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   }
 
-  def getCurrentOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
+  def getDefaultOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
     GestaltOrgFactory.findByOrgId(apiAccount.defaultOrg) match {
       case Some(org) => Ok(Json.toJson(org))
-      case None => NotFound("could not locate current org")
+      case None => NotFound("could not locate default org")
+    }
+  }
+
+  def getOrgById(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    GestaltOrgFactory.findByOrgId(orgId) match {
+      case Some(org) => Ok(Json.toJson(org))
+      case None => NotFound("could not locate requested org")
     }
   }
 
@@ -83,7 +90,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAppById(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson(app))
-      case None => NotFound("could not locate current org")
+      case None => NotFound("could not locate requested app")
     }
   }
 

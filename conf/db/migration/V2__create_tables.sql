@@ -16,23 +16,6 @@ ALTER TABLE org OWNER TO gestaltdev;
 
 
 -- ----------------------------------------------------------------------------
--- API_ACCOUNTS
--- ----------------------------------------------------------------------------
-DROP TABLE IF EXISTS api_account CASCADE;
-CREATE TABLE api_account(
-  api_key character(24) NOT NULL,
-  api_secret character(40) NOT NULL,
-  default_org character(24)  NOT NULL,
-
-  CONSTRAINT fk_default_org FOREIGN KEY (default_org)
-    REFERENCES org (org_id) MATCH SIMPLE
-    ON DELETE CASCADE,
-
-  CONSTRAINT pk_api_key PRIMARY KEY(api_key)
-);
-ALTER TABLE api_account OWNER TO gestaltdev;
-
--- ----------------------------------------------------------------------------
 -- APPS
 -- ----------------------------------------------------------------------------
 DROP TABLE IF EXISTS app CASCADE;
@@ -69,6 +52,28 @@ CREATE TABLE user_account(
 --   CONSTRAINT proper_email CHECK (check_email(email))
 );
 ALTER TABLE user_account OWNER TO gestaltdev;
+
+-- ----------------------------------------------------------------------------
+-- API_ACCOUNTS
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS api_account CASCADE;
+CREATE TABLE api_account(
+  api_key character(24) NOT NULL,
+  api_secret character(40) NOT NULL,
+  default_org character(24)  NOT NULL,
+  account_id character(24) NOT NULL,
+
+  CONSTRAINT fk_default_org FOREIGN KEY (default_org)
+    REFERENCES org (org_id) MATCH SIMPLE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_account_id FOREIGN KEY (account_id)
+    REFERENCES user_account(account_id) MATCH SIMPLE
+    ON DELETE CASCADE,
+
+  CONSTRAINT pk_api_key PRIMARY KEY(api_key)
+);
+ALTER TABLE api_account OWNER TO gestaltdev;
 
 -- ----------------------------------------------------------------------------
 -- Groups
@@ -114,7 +119,7 @@ CREATE TABLE app_user_store(
 --   CHECK (group_id IS NOT NULL OR directory_id IS NOT NULL),
 
   CONSTRAINT pk_complicated PRIMARY KEY(app_id,group_id),
-  CONSTRAINT fk_user_id FOREIGN KEY(group_id)
+  CONSTRAINT fk_group_id FOREIGN KEY(group_id)
     REFERENCES user_group(group_id) MATCH SIMPLE
     ON DELETE CASCADE
 );

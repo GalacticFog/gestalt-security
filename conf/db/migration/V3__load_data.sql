@@ -5,11 +5,6 @@
 INSERT INTO org(org_id,org_name) VALUES('DdqZR8D3VztAanAhDESqKNE4','GalacticFog');
 
 -- ----------------------------------------------------------------------------
--- API Accounts
--- ----------------------------------------------------------------------------
-INSERT INTO api_account(api_key,api_secret,default_org) VALUES('eJS5uvu0cCLv73K5BRH2yo65','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri','DdqZR8D3VztAanAhDESqKNE4');
-
--- ----------------------------------------------------------------------------
 -- Apps
 -- ----------------------------------------------------------------------------
 INSERT INTO app(app_id,app_name,org_id) VALUES
@@ -31,6 +26,12 @@ INSERT INTO user_account(account_id,username,email,first_name,last_name,secret,s
   ('KlmGJEFJEYamuEzkTtX2eifj','notifierDaemon','','','','letmein','',''),
   ('uRNXpH6wIw1x2WyX53umrPhF','scheduleMonitorDaemon','','','','letmein','',''),
   ('JQsgwAlyemTFNIVMQlr4X8R4','launcherDaemon','','','','letmein','','');
+
+-- ----------------------------------------------------------------------------
+-- API Accounts
+-- ----------------------------------------------------------------------------
+INSERT INTO api_account(api_key,api_secret,account_id,default_org) 
+    VALUES('eJS5uvu0cCLv73K5BRH2yo65','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri',(SELECT account_id FROM user_account WHERE username = 'chris'),'DdqZR8D3VztAanAhDESqKNE4');
 
 -- ----------------------------------------------------------------------------
 -- User groups

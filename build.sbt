@@ -2,7 +2,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "0.9-SNAPSHOT"
+version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
 
@@ -109,7 +109,7 @@ libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 
 seq(flywaySettings: _*)
 
-flywayUrl := "jdbc:postgresql://***REMOVED***:5432/gestalt-security"
+flywayUrl := "jdbc:postgresql://***REMOVED***:5432/gestalt-security-1.0"
 
 flywayUser := "gestaltdev"
 

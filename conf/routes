@@ -2,8 +2,9 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-GET        /orgs/current            controllers.RESTAPIController.getCurrentOrg
-#GET        /orgs/:orgId                  controllers.SecurityController.getOrgById(orgId)
+GET        /orgs/default            controllers.RESTAPIController.getDefaultOrg
+GET        /orgs/current            controllers.RESTAPIController.getDefaultOrg
+GET        /orgs/:orgId             controllers.RESTAPIController.getOrgById(orgId)
 #GET        /orgs/:orgId/groups           controllers.SecurityController.listOrgGroups(orgId)
 #GET        /orgs/:orgId/directories      controllers.SecurityController.listOrgDirectories(orgId)
 POST       /orgs/:orgId/apps        controllers.RESTAPIController.createOrgApp(orgId)
