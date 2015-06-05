@@ -12,7 +12,10 @@ INSERT INTO app(app_id,app_name,org_id) VALUES
   ('wNrvvpmglfEX1Pj6WaBM7GyL', 'CallFairyScheduleMonitor', 'DdqZR8D3VztAanAhDESqKNE4'),
   ('TF1HJxn9uMtURqxNSgY76aH4', 'CallFairyNotifier',        'DdqZR8D3VztAanAhDESqKNE4'),
   ('3VAv5fXHdNkT4wGTpz9jEZqR', 'CallFairyCaller',          'DdqZR8D3VztAanAhDESqKNE4'),
-  ('6ABRCJb1jebpHo8la3jf0Zhb', 'Launcher',                 'DdqZR8D3VztAanAhDESqKNE4');
+  ('6ABRCJb1jebpHo8la3jf0Zhb', 'Launcher',                 'DdqZR8D3VztAanAhDESqKNE4'),
+  ('2Kse7zskSHvfWkSnZGg8NWKl', 'Gestalt-DNS',              'DdqZR8D3VztAanAhDESqKNE4'),
+  ('xkJgIsKDYgBKri3kywKanX3r', 'Gestalt-Billing',          'DdqZR8D3VztAanAhDESqKNE4');
+
 
 -- ----------------------------------------------------------------------------
 -- User accounts
@@ -30,8 +33,11 @@ INSERT INTO user_account(account_id,username,email,first_name,last_name,secret,s
 -- ----------------------------------------------------------------------------
 -- API Accounts
 -- ----------------------------------------------------------------------------
-INSERT INTO api_account(api_key,api_secret,account_id,default_org) 
-    VALUES('eJS5uvu0cCLv73K5BRH2yo65','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri',(SELECT account_id FROM user_account WHERE username = 'chris'),'DdqZR8D3VztAanAhDESqKNE4');
+INSERT INTO api_account(api_key,api_secret,account_id,default_org)  VALUES
+  ('eJS5uvu0cCLv73K5BRH2yo65','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri',(SELECT account_id FROM user_account WHERE username = 'chris'),'DdqZR8D3VztAanAhDESqKNE4'),
+  ('QnvL1wBvTdvkmyFnPURUdheA','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri',(SELECT account_id FROM user_account WHERE username = 'brad'),'DdqZR8D3VztAanAhDESqKNE4'),
+  ('oJdbcHEqdowysuPrL4fg6WzY','7n67dfimpD72m52d7lNHdwohqi=/=X2/9O74CZri',(SELECT account_id FROM user_account WHERE username = 'brad'),'DdqZR8D3VztAanAhDESqKNE4');
+
 
 -- ----------------------------------------------------------------------------
 -- User groups
@@ -67,7 +73,9 @@ INSERT INTO app_user_store(app_id,group_id) VALUES
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),          (SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users')),
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),       (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
   ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduleMonitor'), (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
-  ((SELECT app_id FROM app WHERE app_name = 'Launcher'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi'));
+  ((SELECT app_id FROM app WHERE app_name = 'Launcher'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-DNS'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-Billing'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi'));
 
 -- ----------------------------------------------------------------------------
 -- Rights
@@ -80,5 +88,7 @@ INSERT INTO right_grant(grant_id,grant_name,grant_value,account_id,group_id,app_
   ('kuv63mABY7ipv4MjEwYcf2vd', 'call-schedule-monitor:start',    NULL, NULL,                     (SELECT group_id from user_group WHERE group_name = 'callfairy_admins'), (SELECT app_id from app WHERE app_name = 'CallFairyScheduleMonitor')),
   ('Fe7aeZqn9X36AJleQwAyvDSp', 'call-schedule-monitor:stop',     NULL, NULL,                     (SELECT group_id from user_group WHERE group_name = 'callfairy_admins'), (SELECT app_id from app WHERE app_name = 'CallFairyScheduleMonitor')),
   ('rpGHUdDd0T5b46v1lYGtvbla', 'gestalt-notifier:source:create', NULL, (SELECT account_id from user_account WHERE username = 'launcherDaemon'),                     NULL, (SELECT app_id from app WHERE app_name = 'CallFairyNotifier')),
-  ('d6GuptkDCaguPIusGBl2x1Gx', 'gestalt-caller:call:create',     NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'),              NULL, (SELECT app_id from app WHERE app_name = 'CallFairyCaller'));
+  ('d6GuptkDCaguPIusGBl2x1Gx', 'gestalt-caller:call:create',     NULL, (SELECT account_id from user_account WHERE username = 'scheduleMonitorDaemon'),              NULL, (SELECT app_id from app WHERE app_name = 'CallFairyCaller')),
+  ('JfmTZ8Ye7NxxLK1ulV54A3nh', '**',     NULL, (SELECT account_id from user_account WHERE username = 'brad'),              NULL, (SELECT app_id from app WHERE app_name = 'Gestalt-DNS')),
+  ('fvEKbhAa4VO26iTDfx5Z1ve8', '**',     NULL, (SELECT account_id from user_account WHERE username = 'brad'),              NULL, (SELECT app_id from app WHERE app_name = 'Gestalt-Billing'));
 
