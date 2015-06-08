@@ -1,6 +1,6 @@
 package controllers
 
-import com.galacticfog.gestalt.security.data.JsonImports._
+import com.galacticfog.gestalt.security.api.{GestaltRightGrant, GestaltApp, GestaltOrg, GestaltAuthResponse}
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
 import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, UserAccountFactory, AppFactory, GestaltOrgFactory}
 import com.galacticfog.gestalt.security.data.model.{AppRepository, RightGrantRepository, APIAccountRepository}
@@ -14,6 +14,8 @@ import play.api.mvc._
 import org.apache.shiro.mgt.SecurityManager
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
+import com.galacticfog.gestalt.security.data.APIConversions._
+import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 import scala.util.{Failure, Success, Try}
 import scala.collection.JavaConverters._
@@ -69,27 +71,25 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getDefaultOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
     GestaltOrgFactory.findByOrgId(apiAccount.defaultOrg) match {
-      case Some(org) => Ok(Json.toJson(org))
+      case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => NotFound("could not locate default org")
     }
   }
 
   def getOrgById(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
     GestaltOrgFactory.findByOrgId(orgId) match {
-      case Some(org) => Ok(Json.toJson(org))
+      case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => NotFound("could not locate requested org")
     }
   }
 
   def listOrgApps(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    // TODO: check that I have permissions over this org
-    // TODO: add permissions
-    Ok(Json.toJson(AppFactory.listByOrgId(orgId)))
+    Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map {a => a: GestaltApp}))
   }
 
   def getAppById(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
     AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson(app))
+      case Some(app) => Ok(Json.toJson[GestaltApp](app))
       case None => NotFound("could not locate requested app")
     }
   }
@@ -102,10 +102,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     } yield (account,rights)
     attempt match {
       case None => Forbidden("")
-      case Some((acc,rights)) => Ok(Json.obj(
-        "account" -> Json.toJson(acc),
-        "rights" -> Json.toJson(rights)
-      ))
+      case Some((acc,rights)) => Ok(Json.toJson[GestaltAuthResponse](GestaltAuthResponse(acc,rights map {r => r:GestaltRightGrant})))
     }
   })
 
@@ -117,7 +114,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           case Some(existingApp) => Conflict("app already exists")
           case None => {
             try {
-              Created(Json.toJson(AppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
+              Created(Json.toJson[GestaltApp](AppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
             } catch {
               case t: Throwable => InternalServerError(t.getMessage)
             }
