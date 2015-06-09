@@ -2,17 +2,19 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-GET        /orgs/default            controllers.RESTAPIController.getDefaultOrg
-GET        /orgs/current            controllers.RESTAPIController.getDefaultOrg
-GET        /orgs/:orgId             controllers.RESTAPIController.getOrgById(orgId)
+GET         /orgs/default             controllers.RESTAPIController.getDefaultOrg
+GET         /orgs/current             controllers.RESTAPIController.getDefaultOrg
+GET         /orgs/:orgId              controllers.RESTAPIController.getOrgById(orgId)
 #GET        /orgs/:orgId/groups           controllers.SecurityController.listOrgGroups(orgId)
 #GET        /orgs/:orgId/directories      controllers.SecurityController.listOrgDirectories(orgId)
-POST       /orgs/:orgId/apps        controllers.RESTAPIController.createOrgApp(orgId)
-GET        /orgs/:orgId/apps        controllers.RESTAPIController.listOrgApps(orgId)
+POST        /orgs/:orgId/apps         controllers.RESTAPIController.createOrgApp(orgId)
+GET         /orgs/:orgId/apps         controllers.RESTAPIController.listOrgApps(orgId)
 
-GET        /apps/:appId             controllers.RESTAPIController.getAppById(appId)
-POST       /apps/:appId/auth        controllers.RESTAPIController.appAuth(appId)
+GET         /apps/:appId              controllers.RESTAPIController.getAppById(appId)
+POST        /apps/:appId/auth         controllers.RESTAPIController.appAuth(appId)
+POST        /apps/:appId/users        controllers.RESTAPIController.createAppUser(appId)
+GET         /apps/:appId/users        controllers.RESTAPIController.listAppUsers(appId)
 
 
 # Map static resources from the /public folder to the /assets URL path
-GET        /assets/*file            controllers.Assets.at(path="/public", file)
+GET         /assets/*file             controllers.Assets.at(path="/public", file)

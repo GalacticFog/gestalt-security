@@ -1,9 +1,9 @@
 package controllers
 
-import com.galacticfog.gestalt.security.api.{GestaltRightGrant, GestaltApp, GestaltOrg, GestaltAuthResponse}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
 import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, UserAccountFactory, AppFactory, GestaltOrgFactory}
-import com.galacticfog.gestalt.security.data.model.{AppRepository, RightGrantRepository, APIAccountRepository}
+import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, AppRepository, RightGrantRepository, APIAccountRepository}
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import play.api.libs.json.{JsValue, Json}
 import play.api.{Logger => log}
@@ -84,12 +84,19 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def listOrgApps(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map {a => a: GestaltApp}))
+    Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
   def getAppById(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[GestaltApp](app))
+      case None => NotFound("could not locate requested app")
+    }
+  }
+
+  def listAppUsers(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    AppFactory.findByAppId(appId) match {
+      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](UserAccountFactory.listByAppId(app.appId) map { a => a: GestaltAccount }))
       case None => NotFound("could not locate requested app")
     }
   }
@@ -104,6 +111,19 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None => Forbidden("")
       case Some((acc,rights)) => Ok(Json.toJson[GestaltAuthResponse](GestaltAuthResponse(acc,rights map {r => r:GestaltRightGrant})))
     }
+  })
+
+  def createAppUser(appId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
+    val userCreate = request.body.validate[GestaltAccountCreate]
+    userCreate.fold(
+      errors => BadRequest("TODO bad request"),
+      user => {
+       AppFactory.createUserInApp(appId, user) match {
+         case Success(account) =>  Created( Json.toJson[GestaltAccount](account) )
+         case Failure(ex) => BadRequest(ex.getMessage)
+       }
+      }
+    )
   })
 
   def createOrgApp(orgId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>

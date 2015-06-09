@@ -5,7 +5,6 @@ import com.galacticfog.gestalt.security.data.domain.GestaltOrgFactory
 import com.galacticfog.gestalt.security.data.model.{AppRepository, GestaltOrgRepository, RightGrantRepository, UserAccountRepository}
 
 object APIConversions {
-
   implicit def accountModelToApi(uar: UserAccountRepository): GestaltAccount = {
     GestaltAccount(
       username = uar.username,
