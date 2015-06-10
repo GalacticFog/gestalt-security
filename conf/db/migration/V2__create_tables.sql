@@ -109,21 +109,34 @@ CREATE TABLE account_x_group(
 ALTER TABLE account_x_group OWNER TO gestaltdev;
 
 -- ----------------------------------------------------------------------------
--- App user store
+-- App group assignments
 -- ----------------------------------------------------------------------------
-DROP TABLE IF EXISTS app_user_store CASCADE;
-CREATE TABLE app_user_store(
+DROP TABLE IF EXISTS app_x_group CASCADE;
+CREATE TABLE app_x_group(
   app_id CHARACTER(24) NOT NULL,
   group_id CHARACTER(24) NOT NULL,
 
---   CHECK (group_id IS NOT NULL OR directory_id IS NOT NULL),
-
-  CONSTRAINT pk_complicated PRIMARY KEY(app_id,group_id),
+  CONSTRAINT pk_app_x_group PRIMARY KEY(app_id,group_id),
   CONSTRAINT fk_group_id FOREIGN KEY(group_id)
     REFERENCES user_group(group_id) MATCH SIMPLE
     ON DELETE CASCADE
 );
-ALTER TABLE app_user_store OWNER TO gestaltdev;
+ALTER TABLE app_x_group OWNER TO gestaltdev;
+
+-- ----------------------------------------------------------------------------
+-- App user assignments
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS app_x_account CASCADE;
+CREATE TABLE app_x_account(
+  app_id CHARACTER(24) NOT NULL,
+  account_id CHARACTER(24) NOT NULL,
+
+  CONSTRAINT pk_app_x_account PRIMARY KEY(app_id,account_id),
+  CONSTRAINT fk_account_id FOREIGN KEY(account_id)
+    REFERENCES user_account(account_id) MATCH SIMPLE
+    ON DELETE CASCADE
+);
+ALTER TABLE app_x_account OWNER TO gestaltdev;
 
 -- ----------------------------------------------------------------------------
 -- Right grant

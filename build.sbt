@@ -2,7 +2,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "1.0-SNAPSHOT"
+version := "1.1-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
 
@@ -46,13 +46,21 @@ lazy val FlywayRebuild = Command.command("flyway") { state =>
 commands += FlywayRebuild
 
 lazy val GenDataModel = Command.command("generateModel") { state => 
- "scalikejdbcGenForce org GestaltOrgRepository" :: "scalikejdbcGenForce api_account APIAccountRepository" :: "scalikejdbcGenForce app AppRepository" :: "scalikejdbcGenForce user_account UserAccountRepository" :: "scalikejdbcGenForce right_grant RightGrantRepository" :: "scalikejdbcGenForce user_group UserGroupRepository" :: "scalikejdbcGenForce account_x_group GroupMembershipRepository" :: "scalikejdbcGenForce app_user_store AppUserStoreRepository" :: state
+ "scalikejdbcGenForce org GestaltOrgRepository" :: "scalikejdbcGenForce api_account APIAccountRepository" :: "scalikejdbcGenForce app AppRepository" :: "scalikejdbcGenForce user_account UserAccountRepository" :: "scalikejdbcGenForce right_grant RightGrantRepository" :: "scalikejdbcGenForce user_group UserGroupRepository" :: "scalikejdbcGenForce account_x_group GroupMembershipRepository" :: "scalikejdbcGenForce app_x_group AppGroupAssignmentRepository" :: "scalikejdbcGenForce app_x_account AppAccountAssignmentRepository" :: state
 }
 
 commands += GenDataModel
 
 scalikejdbcSettings
 
+
+// ----------------------------------------------------------------------------
+// Gestalt Security SDK
+// ----------------------------------------------------------------------------
+
+libraryDependencies ++= Seq(
+  "com.galacticfog" % "gestalt-security-sdk-scala_2.11" % "0.1.1-SNAPSHOT" withSources()
+)
 
 // ----------------------------------------------------------------------------
 // Apache Shiro
@@ -109,7 +117,7 @@ libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 
 seq(flywaySettings: _*)
 
-flywayUrl := "jdbc:postgresql://***REMOVED***:5432/gestalt-security-1.0"
+flywayUrl := "jdbc:postgresql://***REMOVED***:5432/gestalt-security-1.1"
 
 flywayUser := "gestaltdev"
 

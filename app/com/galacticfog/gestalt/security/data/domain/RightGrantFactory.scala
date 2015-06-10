@@ -5,6 +5,8 @@ import play.api.Logger
 import scalikejdbc._
 
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
+  val RIGHT_ID_LEN: Int = 24
+
   override val autoSession = AutoSession
 
   def listRights(appId: String, accountId: String)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {

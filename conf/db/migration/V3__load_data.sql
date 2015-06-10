@@ -67,15 +67,15 @@ INSERT INTO account_x_group(group_id,account_id) VALUES
 -- ----------------------------------------------------------------------------
 -- App User store
 -- ----------------------------------------------------------------------------
-INSERT INTO app_user_store(app_id,group_id) VALUES
-  ((SELECT app_id FROM app WHERE app_name = 'CallFairyCaller'),          (SELECT group_id FROM user_group WHERE group_name = 'caller_rest_users')),
-  ((SELECT app_id FROM app WHERE app_name = 'CallFairyNotifier'),        (SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users')),
-  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),          (SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users')),
-  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),       (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
-  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduleMonitor'), (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
-  ((SELECT app_id FROM app WHERE app_name = 'Launcher'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
-  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-DNS'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
-  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-Billing'),                 (SELECT group_id FROM user_group WHERE group_name = 'gfi'));
+INSERT INTO app_x_group(app_id,group_id) VALUES
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyCaller'),           (SELECT group_id FROM user_group WHERE group_name = 'caller_rest_users')),
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyNotifier'),         (SELECT group_id FROM user_group WHERE group_name = 'notifier_rest_users')),
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),        (SELECT group_id FROM user_group WHERE group_name = 'callfairy_rest_users')),
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduler'),        (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'CallFairyScheduleMonitor'),  (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'Launcher'),                  (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-DNS'),               (SELECT group_id FROM user_group WHERE group_name = 'gfi')),
+  ((SELECT app_id FROM app WHERE app_name = 'Gestalt-Billing'),           (SELECT group_id FROM user_group WHERE group_name = 'gfi'));
 
 -- ----------------------------------------------------------------------------
 -- Rights
