@@ -2,7 +2,7 @@ package controllers
 
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
-import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, UserAccountFactory, AppFactory, GestaltOrgFactory}
+import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, AppRepository, RightGrantRepository, APIAccountRepository}
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import play.api.libs.json.{JsValue, Json}
@@ -101,6 +101,35 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def listAccountRights(appId: String, username: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    UserAccountFactory.listAppGrants(appId,username) match {
+      case Success(rights) => Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
+      case Failure(e) => handleError(e)
+    }
+  }
+
+  def getAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    UserAccountFactory.getAppGrant(appId,username,grantName) match {
+      case Success(right) => Ok(Json.toJson[GestaltRightGrant](right))
+      case Failure(e) => handleError(e)
+    }
+  }
+
+  def deleteAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+    UserAccountFactory.deleteAppGrant(appId,username,grantName) match {
+      case Success(true) => Ok("grant deleted")
+      case Success(false) => Ok("grant did not exist")
+      case Failure(e) => handleError(e)
+    }
+  }
+
+  def updateAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
+    UserAccountFactory.updateAppGrant(appId,username,grantName,request.body) match {
+      case Success(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+      case Failure(e) => handleError(e)
+    }
+  })
+
   def appAuth(appId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
     val attempt = for {
       app <- AppFactory.findByAppId(appId)
@@ -131,8 +160,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None => BadRequest("must provide app name")
       case Some(appName) => {
         AppFactory.findByAppName(orgId,appName) match {
-          case Some(existingApp) => Conflict("app already exists")
-          case None => {
+          case Success(app) => Conflict("app already exists")
+          case Failure(e) => {
             try {
               Created(Json.toJson[GestaltApp](AppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
             } catch {
@@ -171,5 +200,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         log.debug("%s = '%s'".format(k, v.toString))
     }
   }
+
+  private[this] def handleError(e: Throwable) = {
+    e match {
+      case noAccount: AccountNotFoundException => NotFound(noAccount.getMessage())
+      case noApp: AppNotFoundException => NotFound(noApp.getMessage())
+      case nope: Throwable => NotFound(nope.getMessage)
+    }
+  }
+
 
 }
