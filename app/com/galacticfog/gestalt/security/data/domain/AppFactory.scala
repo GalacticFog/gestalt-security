@@ -1,16 +1,12 @@
 package com.galacticfog.gestalt.security.data.domain
 
-import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountCreate}
+import com.galacticfog.gestalt.security.api.{ResourceNotFoundException, GestaltPasswordCredential, GestaltAccountCreate}
 import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, AppAccountAssignmentRepository, UserAccountRepository, AppRepository}
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import scala.util.{Failure, Success, Try}
-
-case class AppNotFoundException(appId: String) extends Throwable {
-  override def getMessage(): String = {"application not found " + appId}
-}
 
 object AppFactory {
 
@@ -52,7 +48,7 @@ object AppFactory {
   def findByAppName(orgId: String, appName: String): Try[AppRepository] = {
     AppRepository.findBy(sqls"org_id=${orgId} AND app_name=${appName}") match {
       case Some(app) => Success(app)
-      case None => Failure(new AppNotFoundException(appName))
+      case None => Failure(ResourceNotFoundException("app","could not find specified application","Could not find specified application. Ensure that you are providing the application ID and the correct organization ID."))
     }
   }
 

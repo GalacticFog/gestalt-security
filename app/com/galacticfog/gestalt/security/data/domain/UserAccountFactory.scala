@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.security.data.domain
 
-import com.galacticfog.gestalt.security.api.GestaltRightGrant
+import com.galacticfog.gestalt.security.api.{ResourceNotFoundException, GestaltRightGrant}
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
@@ -10,16 +10,6 @@ import scalikejdbc._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 import scala.util.{Success, Failure, Try}
-
-case class AccountNotFoundException(id: String) extends Throwable {
-  override def getMessage(): String = "account not found: " + id
-}
-case class GrantNotFoundException(name: String) extends Throwable {
-  override def getMessage(): String = "grant not found: " + name
-}
-case class InvalidPayload(mesg: String) extends Throwable {
-  override def getMessage(): String = mesg
-}
 
 object UserAccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
@@ -69,14 +59,22 @@ object UserAccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def listAppGrants(appId: String, username: String): Try[Seq[RightGrantRepository]] = {
     findAppUser(appId, username).headOption match {
       case Some(account) => Try{RightGrantFactory.listRights(appId, account.accountId)}
-      case None => Failure(new AccountNotFoundException(username))
+      case None => Failure(ResourceNotFoundException(
+        resource = "account",
+        message = "could not locate application account",
+        developerMessage = "Could not location application account while looking up application grants. Ensure that the specified username corresponds to an account that is assigned to the specified application."
+      ))
     }
   }
 
   def getAppGrant(appId: String, username: String, grantName: String): Try[RightGrantRepository] = {
     listAppGrants(appId, username) flatMap {
       _.filter(_.grantName == grantName) match {
-        case Nil => Failure(new GrantNotFoundException(grantName))
+        case Nil => Failure(ResourceNotFoundException(
+          resource = "rightgrant",
+          message = "right grant not found",
+          developerMessage = "Could not location a right grant with the specified grant name, for the specified account and application."
+        ))
         case list => Success(list.head)
       }
     }
@@ -100,7 +98,7 @@ object UserAccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         getAppGrant(appId,username,grantName) flatMap {
           existing => Try{ existing.copy(grantValue = newGrant.grantValue).save() }
         } recoverWith {
-          case e: GrantNotFoundException => Try { RightGrantRepository.create(
+          case grantNotFound: ResourceNotFoundException if grantNotFound.resource == "rightgrant" => Try { RightGrantRepository.create(
             grantId = SecureIdGenerator.genId62(RightGrantFactory.RIGHT_ID_LEN),
             appId = appId,
             accountId = Some(findAppUser(appId, username).head.accountId),
