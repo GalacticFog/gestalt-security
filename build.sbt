@@ -1,3 +1,5 @@
+import com.typesafe.sbt.packager.docker._
+
 name := """gestalt-security"""
 
 organization := "com.galacticfog"
@@ -10,9 +12,11 @@ scalaVersion := "2.11.4"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
+dockerBaseImage := "galacticfog.artifactoryonline.com/play-with-ssl-utils"
+
 dockerUpdateLatest := true
 
-dockerExposedPorts in Docker := Seq(9000)
+dockerExposedPorts := Seq(9000)
 
 dockerRepository := Some("galacticfog.artifactoryonline.com")
 
@@ -123,3 +127,16 @@ flywayUser := "gestaltdev"
 
 flywayPassword := "***REMOVED***"
 
+// ----------------------------------------------------------------------------
+// Docker customization
+// ----------------------------------------------------------------------------
+dockerCommands := dockerCommands.value.filterNot {
+  case ExecCmd("ENTRYPOINT", args @ _*) => true
+  case cmd                              => false
+}
+
+dockerCommands ++= Seq(
+  ExecCmd("ENTRYPOINT", 
+    s"/opt/bin/ssl_and_launch.sh",
+    s"${(defaultLinuxInstallLocation in Docker).value}/bin/${executableScriptName.value}")
+)
