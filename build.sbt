@@ -130,13 +130,13 @@ flywayPassword := "***REMOVED***"
 // ----------------------------------------------------------------------------
 // Docker customization
 // ----------------------------------------------------------------------------
-dockerCommands := dockerCommands.value.filterNot {
-  case ExecCmd("ENTRYPOINT", args @ _*) => true
-  case cmd                              => false
-}
-
-dockerCommands ++= Seq(
-  ExecCmd("ENTRYPOINT", 
-    s"/opt/bin/ssl_and_launch.sh",
-    s"${(defaultLinuxInstallLocation in Docker).value}/bin/${executableScriptName.value}")
-)
+// dockerCommands := dockerCommands.value.filterNot {
+//   case ExecCmd("ENTRYPOINT", args @ _*) => true
+//   case cmd                              => false
+// }
+// 
+// dockerCommands ++= Seq(
+//   ExecCmd("ENTRYPOINT", 
+//     s"/opt/bin/ssl_and_launch.sh",
+//     s"${(defaultLinuxInstallLocation in Docker).value}/bin/${executableScriptName.value}")
+// )
