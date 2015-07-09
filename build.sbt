@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "1.1-SNAPSHOT"
+version := "1.1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
 
