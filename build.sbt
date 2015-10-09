@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "1.2.0-SNAPSHOT"
+version := "1.1.1-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
 
@@ -30,9 +30,26 @@ libraryDependencies ++= Seq(
 )
 
 resolvers ++= Seq(
-  "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
   "snapshots" at "http://scala-tools.org/repo-snapshots",
   "releases"  at "http://scala-tools.org/repo-releases")
+
+credentials ++= {
+  (for {
+    realm <- sys.env.get("GESTALT_RESOLVER_REALM")
+    username <- sys.env.get("GESTALT_RESOLVER_USERNAME")
+    resolverUrlStr <- sys.env.get("GESTALT_RESOLVER_URL")
+    resolverUrl <- scala.util.Try{url(resolverUrlStr)}.toOption
+    password <- sys.env.get("GESTALT_RESOLVER_PASSWORD")
+  } yield {
+    Seq(Credentials(realm, resolverUrl.getHost, username, password))
+  }) getOrElse(Seq())
+}
+
+resolvers ++= {
+  sys.env.get("GESTALT_RESOLVER_URL") map {
+    url => Seq("gestalt-resolver" at url)
+  } getOrElse(Seq())
+}
 
 //
 // Adds project name to prompt like in a Play project
@@ -63,7 +80,7 @@ scalikejdbcSettings
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" % "gestalt-security-sdk-scala_2.11" % "0.1.1-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.1.2" withSources()
 )
 
 // ----------------------------------------------------------------------------
@@ -77,7 +94,7 @@ libraryDependencies += "org.apache.shiro" % "shiro-core" % "1.2.3"
 // ScalikeJDBC
 // ----------------------------------------------------------------------------
 
-libraryDependencies += "org.scalikejdbc" % "scalikejdbc_2.11" % "2.2.3"
+libraryDependencies += "org.scalikejdbc" %% "scalikejdbc" % "2.2.3"
 
 libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.3"   % "test"
 
@@ -92,7 +109,7 @@ libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 // Play JSON
 // ----------------------------------------------------------------------------
 
-libraryDependencies += "com.typesafe.play" % "play-json_2.11" % "2.4.0-M2"
+libraryDependencies += "com.typesafe.play" %% "play-json" % "2.4.0-M2"
 
 
 // ----------------------------------------------------------------------------
@@ -101,7 +118,7 @@ libraryDependencies += "com.typesafe.play" % "play-json_2.11" % "2.4.0-M2"
 
 libraryDependencies += "junit" % "junit" % "4.12" % "test"
 
-libraryDependencies += "org.specs2" % "specs2-junit_2.11" % "2.4.15" % "test"
+libraryDependencies += "org.specs2" %% "specs2-junit" % "2.4.15" % "test"
 
 libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.15" % "test"
 
@@ -121,22 +138,11 @@ libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 
 seq(flywaySettings: _*)
 
-flywayUrl := "jdbc:postgresql://***REMOVED***:5432/gestalt-security-1.1"
+flywayUser := sys.env.get( "DB_USER" ) getOrElse "dbUser"
 
-flywayUser := "gestaltdev"
+flywayPassword := sys.env.get( "DB_PASSWORD" ) getOrElse "dbS3cr3t"
 
-flywayPassword := "***REMOVED***"
+val hostname = sys.env.get( "DB_HOST" ) getOrElse "localhost"
 
-// ----------------------------------------------------------------------------
-// Docker customization
-// ----------------------------------------------------------------------------
-// dockerCommands := dockerCommands.value.filterNot {
-//   case ExecCmd("ENTRYPOINT", args @ _*) => true
-//   case cmd                              => false
-// }
-// 
-// dockerCommands ++= Seq(
-//   ExecCmd("ENTRYPOINT", 
-//     s"/opt/bin/ssl_and_launch.sh",
-//     s"${(defaultLinuxInstallLocation in Docker).value}/bin/${executableScriptName.value}")
-// )
+flywayUrl := s"jdbc:postgresql://$hostname:5432/gestaltbilling"
+
