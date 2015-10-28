@@ -3,15 +3,17 @@ package com.galacticfog.gestalt.security.data.model
 import scalikejdbc._
 
 case class GestaltOrgRepository(
-  orgId: String, 
-  orgName: String) {
+  id: Any,
+  name: String,
+  fqon: String,
+  parent: Option[Any] = None) {
 
   def save()(implicit session: DBSession = GestaltOrgRepository.autoSession): GestaltOrgRepository = GestaltOrgRepository.save(this)(session)
 
   def destroy()(implicit session: DBSession = GestaltOrgRepository.autoSession): Unit = GestaltOrgRepository.destroy(this)(session)
 
 }
-      
+
 
 object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
 
@@ -19,80 +21,112 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
 
   override val tableName = "org"
 
-  override val columns = Seq("org_id", "org_name")
+  override val columns = Seq("id", "name", "fqon", "parent")
 
   def apply(gor: SyntaxProvider[GestaltOrgRepository])(rs: WrappedResultSet): GestaltOrgRepository = apply(gor.resultName)(rs)
   def apply(gor: ResultName[GestaltOrgRepository])(rs: WrappedResultSet): GestaltOrgRepository = new GestaltOrgRepository(
-    orgId = rs.get(gor.orgId),
-    orgName = rs.get(gor.orgName)
+    id = rs.any(gor.id),
+    name = rs.get(gor.name),
+    fqon = rs.get(gor.fqon),
+    parent = rs.anyOpt(gor.parent)
   )
-      
+
   val gor = GestaltOrgRepository.syntax("gor")
 
   override val autoSession = AutoSession
 
-  def find(orgId: String)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
+  def find(id: Any)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     withSQL {
-      select.from(GestaltOrgRepository as gor).where.eq(gor.orgId, orgId)
+      select.from(GestaltOrgRepository as gor).where.eq(gor.id, id)
     }.map(GestaltOrgRepository(gor.resultName)).single.apply()
   }
-          
+
   def findAll()(implicit session: DBSession = autoSession): List[GestaltOrgRepository] = {
     withSQL(select.from(GestaltOrgRepository as gor)).map(GestaltOrgRepository(gor.resultName)).list.apply()
   }
-          
+
   def countAll()(implicit session: DBSession = autoSession): Long = {
-    withSQL(select(sqls"count(1)").from(GestaltOrgRepository as gor)).map(rs => rs.long(1)).single.apply().get
+    withSQL(select(sqls.count).from(GestaltOrgRepository as gor)).map(rs => rs.long(1)).single.apply().get
   }
-          
+
   def findBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     withSQL {
-      select.from(GestaltOrgRepository as gor).where.append(sqls"${where}")
+      select.from(GestaltOrgRepository as gor).where.append(where)
     }.map(GestaltOrgRepository(gor.resultName)).single.apply()
   }
-      
+
   def findAllBy(where: SQLSyntax)(implicit session: DBSession = autoSession): List[GestaltOrgRepository] = {
     withSQL {
-      select.from(GestaltOrgRepository as gor).where.append(sqls"${where}")
+      select.from(GestaltOrgRepository as gor).where.append(where)
     }.map(GestaltOrgRepository(gor.resultName)).list.apply()
   }
-      
+
   def countBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Long = {
     withSQL {
-      select(sqls"count(1)").from(GestaltOrgRepository as gor).where.append(sqls"${where}")
+      select(sqls.count).from(GestaltOrgRepository as gor).where.append(where)
     }.map(_.long(1)).single.apply().get
   }
-      
+
   def create(
-    orgId: String,
-    orgName: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
+    id: Any,
+    name: String,
+    fqon: String,
+    parent: Option[Any] = None)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     withSQL {
       insert.into(GestaltOrgRepository).columns(
-        column.orgId,
-        column.orgName
+        column.id,
+        column.name,
+        column.fqon,
+        column.parent
       ).values(
-        orgId,
-        orgName
+        id,
+        name,
+        fqon,
+        parent
       )
     }.update.apply()
 
     GestaltOrgRepository(
-      orgId = orgId,
-      orgName = orgName)
+      id = id,
+      name = name,
+      fqon = fqon,
+      parent = parent)
   }
+
+  def batchInsert(entities: Seq[GestaltOrgRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
+    val params: Seq[Seq[(Symbol, Any)]] = entities.map(entity => 
+      Seq(
+        'id -> entity.id,
+        'name -> entity.name,
+        'fqon -> entity.fqon,
+        'parent -> entity.parent))
+        SQL("""insert into org(
+        id,
+        name,
+        fqon,
+        parent
+      ) values (
+        {id},
+        {name},
+        {fqon},
+        {parent}
+      )""").batchByName(params: _*).apply()
+    }
 
   def save(entity: GestaltOrgRepository)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     withSQL {
       update(GestaltOrgRepository).set(
-        column.orgId -> entity.orgId,
-        column.orgName -> entity.orgName
-      ).where.eq(column.orgId, entity.orgId)
+        column.id -> entity.id,
+        column.name -> entity.name,
+        column.fqon -> entity.fqon,
+        column.parent -> entity.parent
+      ).where.eq(column.id, entity.id)
     }.update.apply()
     entity
   }
-        
+
   def destroy(entity: GestaltOrgRepository)(implicit session: DBSession = autoSession): Unit = {
-    withSQL { delete.from(GestaltOrgRepository).where.eq(column.orgId, entity.orgId) }.update.apply()
+    withSQL { delete.from(GestaltOrgRepository).where.eq(column.id, entity.id) }.update.apply()
   }
-        
+
 }

@@ -1,247 +1,376 @@
 package controllers
 
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
+import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, AppRepository, RightGrantRepository, APIAccountRepository}
+import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.{JsError, JsValue, Json}
 import play.api.{Logger => log}
-import org.apache.shiro.SecurityUtils
-import org.apache.shiro.config.IniSecurityManagerFactory
 import play.api._
 import play.api.mvc._
-import org.apache.shiro.mgt.SecurityManager
+import scalikejdbc.DB
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 
-import scala.util.{Failure, Success, Try}
-import scala.collection.JavaConverters._
+import scala.concurrent.Future
+import scala.util.{Try, Failure, Success}
 
 case class SecurityControllerInitializationError(msg: String) extends RuntimeException(msg)
 
-object Res {
-  val missingShiroManagerType = "application config is missing field \"shiro.managerType\""
-  val invalidShiroManagerType = "application config has invalid \"shiro.managerType\": \"%s\""
-  val caughtException = "caught exception creating Ini SecurityManager: %s"
-}
-
 object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
-  val db = securityDB
+  val CREATE_ORG = "createOrg"
+  val DELETE_ORG = "deleteOrg"
+  val CREATE_ACCOUNT = "createAccount"
+  val DELETE_ACCOUNT = "deleteAccount"
 
-  def initShiro() = {
+  val NEW_ORG_OWNER_RIGHTS = Seq(
+    CREATE_ORG,
+    DELETE_ORG,
+    CREATE_ACCOUNT,
+    DELETE_ACCOUNT
+  )
 
-    def securityMgr: SecurityManager = Play.current.configuration.getString("shiro.managerType") match {
-      case Some("INI") => {
-        val mgrIni = Play.current.configuration.getString("shiro.iniFile") getOrElse "file:conf/shiro.ini"
-        Try {
-          val factory = new IniSecurityManagerFactory(mgrIni)
-          factory.getInstance()
-        } match {
-          case Success(sm) => sm
-          case Failure(t) => {
-            log.error("Caught exception initializing Shiro SecurityManager from IniSecurityManagerFactory", t)
-            throw new SecurityControllerInitializationError(Res.caughtException.format(t.getMessage))
-          }
-        }
-      }
-      case Some(invalid) => throw new SecurityControllerInitializationError(Res.missingShiroManagerType.format(invalid))
-      case None => throw new SecurityControllerInitializationError(Res.missingShiroManagerType)
-    }
+  ////////////////////////////////////////////////////////
+  // Org methods
+  ////////////////////////////////////////////////////////
 
-    SecurityUtils.setSecurityManager(securityMgr)
+  def fqonToOrgUUID(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {_.id.asInstanceOf[UUID]}
 
-    //    val sampleRealm = new PlayRealm()
-    //    val securityManager = new PlaySecurityManager()
-    //    securityManager.setRealm(sampleRealm)
-    //
-    // Turn off session storage for better "stateless" management.
-    // https://shiro.apache.org/session-management.html#SessionManagement-StatelessApplications%2528Sessionless%2529
-    //    val subjectDAO = securityManager.getSubjectDAO.asInstanceOf[DefaultSubjectDAO]
-    //    val sessionStorageEvaluator = subjectDAO.getSessionStorageEvaluator.asInstanceOf[DefaultSessionStorageEvaluator]
-    //
-    //    sessionStorageEvaluator.setSessionStorageEnabled(false)
-    //
-    //    org.apache.shiro.SecurityUtils.setSecurityManager(securityManager)
+  def getParentOrg(childOrgId: UUID): Option[UUID] = {OrgFactory.findByOrgId(childOrgId)}.flatMap{_.parent}.map{_.asInstanceOf[UUID]}
 
-  }
-
-  def getDefaultOrg() = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    GestaltOrgFactory.findByOrgId(apiAccount.defaultOrg) match {
+  def getOrgByFQON(fqon: String) = AuthenticatedAction(fqonToOrgUUID(fqon)) { implicit request =>
+    OrgFactory.findByFQON(fqon) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
-      case None => handleError(ResourceNotFoundException(
-        resource = "org",
-        message = "could not locate default org",
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate current org",
         developerMessage = "Could not locate a default organization for the authenticate API user."
-      ))
+      )
     }
   }
 
-  def getOrgById(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    GestaltOrgFactory.findByOrgId(orgId) match {
+  def orgAuthByUUID(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    val accountId = request.user.identity.id.asInstanceOf[UUID]
+    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = accountId)
+    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map {g => g:GestaltGroup}, rights = rights map {r => r:GestaltRightGrant}, orgId = request.user.orgId)
+    Ok(Json.toJson(ar))
+  }
+
+  def orgAuth(fqon: String) = AuthenticatedAction(fqonToOrgUUID(fqon)) { implicit request =>
+    val accountId = request.user.identity.id.asInstanceOf[UUID]
+    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = accountId)
+    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map {g => g:GestaltGroup}, rights = rights map {r => r:GestaltRightGrant}, request.user.orgId)
+    Ok(Json.toJson(ar))
+  }
+
+  def apiAuth() = AuthenticatedAction(None) { implicit request =>
+    val accountId = request.user.identity.id.asInstanceOf[UUID]
+    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = accountId)
+    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map {g => g:GestaltGroup}, rights = rights map {r => r:GestaltRightGrant}, request.user.orgId)
+    Ok(Json.toJson(ar))
+  }
+
+  def getCurrentOrg() = AuthenticatedAction(None) { implicit request =>
+    OrgFactory.findByOrgId(request.user.orgId) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
-      case None => handleError(ResourceNotFoundException(
-        resource = "org",
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate current org",
+        developerMessage = "Could not locate a default organization for the authenticate API user."
+      )
+    }
+  }
+
+  def getOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    OrgFactory.findByOrgId(orgId) match {
+      case Some(org) => Ok(Json.toJson[GestaltOrg](org))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
         message = "could not locate requested org",
         developerMessage = "Could not locate the requested organization. Make sure to use the organization ID and not the organization name."
-      ))
+      )
     }
   }
 
-  def listOrgApps(orgId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
+  def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId)).async(parse.json) { implicit request =>
+    val account = request.user.identity
+    val accountId = account.id.asInstanceOf[UUID]
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    OrgFactory.findByOrgId(parentOrgId) match {
+      case Some(parentOrg) if rights.exists(_.grantName == CREATE_ORG) =>
+        // TODO: this should be wrapped in a transaction
+        Future {
+          val t = for {
+            create <- Try {
+              request.body.as[GestaltOrgCreate]
+            }
+            // create org
+            newOrg <- OrgFactory.create(parentOrgId = parentOrgId, name = create.orgName, fqon = create.orgName + "." + parentOrg.fqon)
+                      .recoverWith{case _ => Failure(CreateConflictException(resource = request.path,message="error creating new sub org",developerMessage = "Error creating new sub org. Most likely a conflict with an existing org of the same name."))}
+            newOrgId = newOrg.id.asInstanceOf[UUID]
+            // create system app
+            newApp <- AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
+            newAppId = newApp.id.asInstanceOf[UUID]
+            // create admins group
+            newGroup <- GroupFactory.create(name = newOrgId + "-users-group", dirId = account.dirId.asInstanceOf[UUID])
+            newGroupId = newGroup.id.asInstanceOf[UUID]
+            // put user in group
+            newGroupAssign <- Try {
+              GroupMembershipRepository.create(accountId = accountId, groupId = newGroupId)
+            }
+            // give admin rights to new account
+            newRights <- RightGrantFactory.addRightsToAccount(appId = newAppId, accountId = accountId, rights = NEW_ORG_OWNER_RIGHTS)
+            // map group to new system app
+            newMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = newGroupId, defaultAccountStore = true)
+          } yield Created(Json.toJson[GestaltOrg](newOrg))
+          t.get
+        }
+      case Some(_) => throw new ForbiddenAPIException(
+        message = "Forbidden",
+        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+      )
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "parent org does not exist",
+        developerMessage = "Could not create sub-org because the parent org does not exist. Make sure to use the organization ID and not the organizatio name."
+      )
+    }
+  }
+
+  def createAccountInOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId)).async(parse.json) { implicit request =>
+    val account = request.user.identity
+    val serviceAppId = request.user.serviceAppId
+    val rights = RightGrantFactory.listRights(appId = serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    OrgFactory.findByOrgId(parentOrgId) match {
+      case Some(parentOrg) if rights.exists(_.grantName == CREATE_ACCOUNT) =>
+        // TODO: this should be wrapped in a transaction
+        Future {
+          val t = for {
+            create <- Try{request.body.as[GestaltAccountCreateWithRights]}
+                      .recoverWith {case _ => Failure(BadRequestException(resource = request.path, message = "invalid payload", developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights"))}
+            newAccount <- AppFactory.createAccountInApp(appId = serviceAppId, create)
+          } yield Created(Json.toJson[GestaltAccount](newAccount))
+          t.get
+        }
+      case Some(_) => throw new ForbiddenAPIException(
+        message = "Forbidden",
+        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+      )
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "parent org does not exist",
+        developerMessage = "Could not create sub-org because the parent org does not exist. Make sure to use the organization ID and not the organizatio name."
+      )
+    }
+  }
+
+  def deleteOrgById(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    OrgFactory.findByOrgId(orgId) match {
+      case Some(org) if rights.exists(_.grantName == DELETE_ORG) && org.parent.isDefined =>
+        Future {
+          GestaltOrgRepository.destroy(org)
+        } map { _ => NoContent }
+      case Some(org) if org.parent.isEmpty =>
+        throw new BadRequestException(
+          resource = request.path,
+          message = "cannot delete root org",
+          developerMessage = "It is not permissable to delete the root organization. Check that you specified the intended org id."
+        )
+      case Some(_) => throw new ForbiddenAPIException(
+        message = "Forbidden",
+        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+      )
+      case None =>  throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "org does not exist",
+        developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it"
+      )
+    }
+  }
+
+  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(None)(parse.json) { implicit request =>
+    ???
+  }
+
+  def listOrgDirectories(orgId: UUID) = AuthenticatedAction(None) { implicit request =>
+    Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
+  }
+
+  def listOrgApps(orgId: UUID) = AuthenticatedAction(None) { implicit request =>
     Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
-  def getAppById(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson[GestaltApp](app))
-      case None => handleError(ResourceNotFoundException(
-        resource = "app",
-        message = "could not locate requested app",
-        developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
-      ))
-    }
-  }
+  ////////////////////////////////////////////////////////
+  // App methods
+  ////////////////////////////////////////////////////////
 
-  def listAppUsers(appId: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](UserAccountFactory.listByAppId(app.appId) map { a => a: GestaltAccount }))
-      case None => handleError(ResourceNotFoundException(
-        resource = "app",
-        message = "could not locate requested app",
-        developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
-      ))
-    }
-  }
-
-  def listAccountRights(appId: String, username: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    UserAccountFactory.listAppGrants(appId,username) match {
-      case Success(rights) => Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
-      case Failure(e) => handleError(e)
-    }
-  }
-
-  def getAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    UserAccountFactory.getAppGrant(appId,username,grantName) match {
-      case Success(right) => Ok(Json.toJson[GestaltRightGrant](right))
-      case Failure(e) => handleError(e)
-    }
-  }
-
-  def deleteAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication { apiAccount => implicit request =>
-    UserAccountFactory.deleteAppGrant(appId,username,grantName) match {
-      case Success(wasDeleted) => Ok(Json.toJson(DeleteResult(wasDeleted)))
-      case Failure(e) => handleError(e)
-    }
-  }
-
-  def updateAccountGrant(appId: String, username: String, grantName: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
-    UserAccountFactory.updateAppGrant(appId,username,grantName,request.body) match {
-      case Success(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
-      case Failure(e) => handleError(e)
-    }
-  })
-
-  def appAuth(appId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
-    val attempt = for {
-      app <- AppFactory.findByAppId(appId)
-      account <- UserAccountFactory.authenticate(app.appId, request.body)
-      rights = RightGrantFactory.listRights(appId = app.appId, accountId = account.accountId)
-    } yield (account,rights)
-    attempt match {
-      case None => handleError(ForbiddenAPIException(
-        message = "failed to authenticate application account",
-        developerMessage = "Specified credentials did not authenticate an account on the specified application. Ensure that the application ID is correct and that the credentials correspond to an assigned account."
-      ))
-      case Some((acc,rights)) => Ok(Json.toJson[GestaltAuthResponse](GestaltAuthResponse(acc,rights map {r => r:GestaltRightGrant})))
-    }
-  })
-
-  def createAppUser(appId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
-    val userCreate = request.body.validate[GestaltAccountCreate]
-    userCreate.fold(
-      errors => handleError(BadRequestException(
-        resource = "user",
-        message = "error parsing JSON",
-        developerMessage = "Error parsing JSON payload. Expected a GestaltAccountCreate object."
-      )),
-      user => {
-       AppFactory.createUserInApp(appId, user) match {
-         case Success(account) =>  Created( Json.toJson[GestaltAccount](account) )
-         case Failure(ex) => handleError(ex)
-       }
-      }
-    )
-  })
-
-  def createOrgApp(orgId: String) = requireAPIKeyAuthentication(parse.json, { apiAccount => implicit request: Request[JsValue] =>
+  def createOrgApp(orgId: UUID) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
     (request.body \ "appName").asOpt[String] match {
-      case None => handleError(BadRequestException(
-        resource = "app",
+      case None => throw new BadRequestException(
+        resource = request.path,
         message = "payload did not include application name",
         developerMessage = "JSON payload did not include application name \"appName\""
-      ))
+      )
       case Some(appName) => {
         AppFactory.findByAppName(orgId,appName) match {
-          case Success(app) => handleError(CreateConflictException(
-            resource = "app",
+          case Success(app) => throw new CreateConflictException(
+            resource = request.path,
             message = "app already exists in org",
             developerMessage = "An application with the specified name already exists in the specified organization. Select a different application name."
-          ))
+          )
           case Failure(e) => {
-            try {
-              Created(Json.toJson[GestaltApp](AppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
-            } catch {
-              case t: Throwable => handleError(t)
-            }
+              ???
+              // Created(Json.toJson[GestaltApp](GestaltAppRepository.create(appId = SecureIdGenerator.genId62(AppFactory.APP_ID_LEN), appName = appName, orgId = orgId)))
           }
         }
       }
     }
-  })
-
-  private def securityDB = {
-    val connection = current.configuration.getObject("database") match {
-      case None =>
-        throw new RuntimeException("FATAL: Database configuration not found.")
-      case Some(config) => {
-        val configMap = config.unwrapped.asScala.toMap
-        displayStartupSettings(configMap)
-        ScalikePostgresDBConnection(
-          host = configMap("host").toString,
-          database = configMap("dbname").toString,
-          port = configMap("port").toString.toInt,
-          user = configMap("user").toString,
-          password = configMap("password").toString,
-          timeoutMs = configMap("timeoutMs").toString.toLong)
-      }
-    }
-    println("CONNECTION : " + connection)
-    connection
   }
 
-  private def displayStartupSettings(config: Map[String, Object]) {
-    log.debug("DATABASE SETTINGS:")
-    for ((k,v) <- config) {
-      if (k != "password")
-        log.debug("%s = '%s'".format(k, v.toString))
+  def getAppById(appId: UUID) = AuthenticatedAction(None) { implicit request =>
+    AppFactory.findByAppId(appId) match {
+      case Some(app) => Ok(Json.toJson[GestaltApp](app))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested app",
+        developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
+      )
     }
   }
 
-  private[this] def handleError(e: Throwable) = {
-    e match {
-      case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound))
-      case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest))
-      case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc))
-      case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
-      case conflict: CreateConflictException => Conflict(Json.toJson(conflict))
-      case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown)) // not sure why this would happen, but if we have that level of info, might as well use it
-      case nope: Throwable => BadRequest(nope.getMessage)
+  def listAppAccounts(appId: UUID) = AuthenticatedAction(None) { implicit request =>
+    AppFactory.findByAppId(appId) match {
+      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested app",
+        developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
+      )
     }
   }
 
+  def listAccountRights(appId: UUID, username: String) = AuthenticatedAction(None) { implicit request =>
+    AccountFactory.listAppGrants(appId,username) match {
+      case Success(rights) => Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
+      case Failure(e) => throw e
+    }
+  }
 
+  def getAccountGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
+    AccountFactory.getAppGrant(appId,username,grantName) match {
+      case Success(right) => Ok(Json.toJson[GestaltRightGrant](right))
+      case Failure(e) => throw e
+    }
+  }
+
+  def deleteRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
+    AccountFactory.deleteAppGrant(appId,username,grantName) match {
+      case Success(wasDeleted) => Ok(Json.toJson(DeleteResult(wasDeleted)))
+      case Failure(e) => throw e
+    }
+  }
+
+  def updateRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
+    AccountFactory.updateAppGrant(appId,username,grantName,request.body) match {
+      case Success(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+      case Failure(e) => throw e
+    }
+  }
+
+  def createAppAccount(appId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def appAuth(appId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request: Request[JsValue] =>
+    val attempt = for {
+      app <- AppFactory.findByAppId(appId)
+      appId = app.id.asInstanceOf[UUID]
+      account <- AccountFactory.authenticate(app.id.asInstanceOf[UUID], request.body)
+      accountId = account.id.asInstanceOf[UUID]
+      rights = RightGrantFactory.listRights(appId = appId, accountId = accountId)
+      groups = Seq[UserGroupRepository]()
+    } yield (account,rights,groups,app)
+    attempt match {
+      case None => throw new ForbiddenAPIException(
+        message = "failed to authenticate application account",
+        developerMessage = "Specified credentials did not authenticate an account on the specified application. Ensure that the application ID is correct and that the credentials correspond to an assigned account."
+      )
+      case Some((acc,rights,groups,app)) => Ok(Json.toJson[GestaltAuthResponse](GestaltAuthResponse(acc, groups map {g => g:GestaltGroup}, rights map {r => r:GestaltRightGrant}, orgId = app.orgId.asInstanceOf[UUID])))
+    }
+  }
+
+  def getAccountStores(appId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  ////////////////////////////////////////////////////////
+  // Directory methods
+  ////////////////////////////////////////////////////////
+
+  def getDirectory(dirId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def createDirAccount(dirId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request: Request[JsValue] =>
+    ???
+//    val userCreate = request.body.validate[GestaltAccountCreate]
+//    userCreate.fold
+//      errors => throw new BadRequestException(
+//        resource = request.path,
+//        message = "error parsing JSON",
+//        developerMessage = "Error parsing JSON payload. Expected a GestaltAccountCreate object."
+//      ),
+//      user => {
+//       AppFactory.createUserInApp(appId, user) match {
+//         case Success(account) =>  Created( Json.toJson[GestaltAccount](account) )
+//         case Failure(ex) => throw new (ex)
+//       }
+//      }
+//    )
+  }
+
+  def listDirAccounts(dirId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request: Request[JsValue] =>
+    ???
+  }
+
+
+  def getDirAccount(dirId: UUID, username: String) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  ////////////////////////////////////////////////////////
+  // Account store mapping methods
+  ////////////////////////////////////////////////////////
+
+  def createAccountStoreMapping() = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+    ???
+  }
+
+  def listOrgAccounts(orgId: UUID) = play.mvc.Results.TODO
+
+  def listOrgGroups(orgId: UUID) = play.mvc.Results.TODO
+
+  def createGroupInOrg(orgId: UUID) = play.mvc.Results.TODO
 }

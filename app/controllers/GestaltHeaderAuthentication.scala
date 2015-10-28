@@ -1,26 +1,69 @@
 package controllers
 
-import java.util.Base64
-import com.galacticfog.gestalt.security.data.domain.APIAccountFactory
-import com.galacticfog.gestalt.security.data.model.APIAccountRepository
-import org.apache.shiro.authc.{AuthenticationToken, UsernamePasswordToken}
+import java.util.{UUID, Base64}
+import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, APICredentialFactory}
+import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import play.api.Logger
 import play.api.mvc._
 import play.api.mvc.Security._
-
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 trait GestaltHeaderAuthentication {
 
+  import GestaltHeaderAuthentication._
+
+  class AuthenticatedActionBuilder(maybeGenFQON: Option[RequestHeader => Option[UUID]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+    override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
+      AuthenticatedBuilder(authenticateAgainstOrg(maybeGenFQON flatMap {
+        _.apply(request)
+      }), onUnauthorized = onUnauthorized).invokeBlock(request, block)
+    }
+  }
+
+  class AuthenticatedActionBuilderAgainstRequest(maybeGenFQON: Option[PartialFunction[Request[_], Option[UUID]]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+    override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
+      AuthenticatedBuilder(authenticateAgainstOrg(maybeGenFQON flatMap {
+        _.applyOrElse(request, {_: Request[B] => None})
+      }), onUnauthorized = onUnauthorized).invokeBlock(request, block)
+    }
+  }
+
+  object AuthenticatedAction extends AuthenticatedActionBuilder {
+    def withRequest(genFQON: PartialFunction[Request[_], Option[UUID]]) = new AuthenticatedActionBuilderAgainstRequest(Some(genFQON))
+    def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
+    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({rh: RequestHeader => genFQON}))
+  }
+
+  def onUnauthorized(request: RequestHeader) = {
+    Logger.info("rejected request from " + extractAuthToken(request).map{_.username})
+    Results.Unauthorized("").withHeaders(("WWW-Authenticate","Basic"))
+  }
+
+}
+
+object GestaltHeaderAuthentication {
+
+  case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID)
+
+  sealed trait AuthenticationToken {
+    def getPrincipal: String
+    def getCredentials: Object
+  }
+  case class UsernamePasswordToken(username: String, password: String) extends AuthenticationToken {
+    def getPrincipal: String = username
+    def getCredentials: String = password
+  }
+
+  val AUTH_SCHEME = """(\S+) (.+)""".r
   val BASIC_SCHEME_HEADER = """Basic (\S+)""".r
   val BASIC_SCHEME_CREDS  = """([^:]+):([^:]*)""".r
 
-  def authToken(request: RequestHeader): Option[AuthenticationToken] = request.headers.get("Authorization") flatMap { auth =>
+  def extractAuthToken(request: RequestHeader): Option[UsernamePasswordToken] = request.headers.get("Authorization") flatMap { auth =>
     auth match {
       case BASIC_SCHEME_HEADER(encodedCredentials) => try {
         val decoded = new String(Base64.getDecoder.decode(encodedCredentials))
         decoded match {
-          case BASIC_SCHEME_CREDS(u, p) => Some(new UsernamePasswordToken(u, p))
+          case BASIC_SCHEME_CREDS(u, p) => Some(UsernamePasswordToken(u, p))
           case _ => None
         }
       } catch {
@@ -29,40 +72,31 @@ trait GestaltHeaderAuthentication {
           None
         }
       }
+      case AUTH_SCHEME(schemeName,data) =>
+        Logger.info("Received unknown authentication scheme: " + schemeName)
+        None
       case _ => None
     }
   }
 
-  def matches(apiKey: APIAccountRepository, token: AuthenticationToken): Boolean = {
-    val t = token.getCredentials match {
-      case bytes: Array[Byte] => new String(bytes)
-      case chars: Array[Char] => new String(chars)
-      case str: String => str
-      case _ => throw new RuntimeException("Unsupported credential type")
-    }
-    apiKey.apiSecret equals t
-  }
-
-  def authenticate(request: RequestHeader): Option[APIAccountRepository] = {
-    for {
-      token <- authToken(request)
-      found <- APIAccountFactory.findByAPIKey(token.getPrincipal.toString)
-      if matches(found, token)
-    } yield found
-  }
-
-  def onUnauthorized(request: RequestHeader) = Results.Unauthorized("").withHeaders(("WWW-Authenticate","Basic"))
-  def requireAPIKeyAuthentication(f: => APIAccountRepository => Request[AnyContent] => Result)(implicit ec: ExecutionContext) = {
-    Authenticated(authenticate, onUnauthorized) { user =>
-      Logger.info("authenticated request from " + user.apiKey)
-      Action(request => f(user)(request))
-    }
-  }
-  def requireAPIKeyAuthentication[T](parser: BodyParser[T], f: => APIAccountRepository => Request[T] => Result)(implicit ec: ExecutionContext) = {
-    Authenticated(authenticate, onUnauthorized) { user =>
-      Logger.info("authenticated request from " + user.apiKey)
-      Action(parser: BodyParser[T])(request => f(user)(request))
-    }
+  def authenticateAgainstOrg(orgId: Option[UUID])(request: RequestHeader): Option[AccountWithOrgContext] = {
+    lazy val maybeTokenAuth = for {
+      token <- extractAuthToken(request)
+      foundKey <- APICredentialFactory.findByAPIKey(token.username)
+      if foundKey.apiSecret == token.password && orgId.exists(_ == foundKey.orgId)
+      orgId = foundKey.orgId.asInstanceOf[UUID]
+      serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+      serviceAppId = serviceApp.id.asInstanceOf[UUID]
+      account <- UserAccountRepository.find(foundKey.accountId)
+    } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
+    lazy val maybeAccountAuth = for {
+      orgId <- orgId
+      serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+      serviceAppId = serviceApp.id.asInstanceOf[UUID]
+      account <- AccountFactory.frameworkAuth(serviceAppId, request)
+    } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
+    // give token auth a chance first, because it doesn't require org context
+    maybeTokenAuth orElse maybeAccountAuth
   }
 
 }

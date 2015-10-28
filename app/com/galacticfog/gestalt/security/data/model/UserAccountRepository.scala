@@ -3,138 +3,200 @@ package com.galacticfog.gestalt.security.data.model
 import scalikejdbc._
 
 case class UserAccountRepository(
-  accountId: String, 
-  username: String, 
-  email: String, 
-  firstName: String, 
-  lastName: String, 
-  secret: String, 
-  salt: String, 
-  hashMethod: String) {
+  id: Any,
+  dirId: Any,
+  username: String,
+  email: String,
+  phoneNumber: Option[String] = None,
+  firstName: String,
+  lastName: String,
+  hashMethod: String,
+  salt: String,
+  secret: String,
+  disabled: Boolean) {
 
   def save()(implicit session: DBSession = UserAccountRepository.autoSession): UserAccountRepository = UserAccountRepository.save(this)(session)
 
   def destroy()(implicit session: DBSession = UserAccountRepository.autoSession): Unit = UserAccountRepository.destroy(this)(session)
 
 }
-      
+
 
 object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val schemaName = Some("public")
 
-  override val tableName = "user_account"
+  override val tableName = "account"
 
-  override val columns = Seq("account_id", "username", "email", "first_name", "last_name", "secret", "salt", "hash_method")
+  override val columns = Seq("id", "dir_id", "username", "email", "phone_number", "first_name", "last_name", "hash_method", "salt", "secret", "disabled")
 
   def apply(uar: SyntaxProvider[UserAccountRepository])(rs: WrappedResultSet): UserAccountRepository = apply(uar.resultName)(rs)
   def apply(uar: ResultName[UserAccountRepository])(rs: WrappedResultSet): UserAccountRepository = new UserAccountRepository(
-    accountId = rs.get(uar.accountId),
+    id = rs.any(uar.id),
+    dirId = rs.any(uar.dirId),
     username = rs.get(uar.username),
     email = rs.get(uar.email),
+    phoneNumber = rs.get(uar.phoneNumber),
     firstName = rs.get(uar.firstName),
     lastName = rs.get(uar.lastName),
-    secret = rs.get(uar.secret),
+    hashMethod = rs.get(uar.hashMethod),
     salt = rs.get(uar.salt),
-    hashMethod = rs.get(uar.hashMethod)
+    secret = rs.get(uar.secret),
+    disabled = rs.get(uar.disabled)
   )
-      
+
   val uar = UserAccountRepository.syntax("uar")
 
   override val autoSession = AutoSession
 
-  def find(accountId: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+  def find(id: Any)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     withSQL {
-      select.from(UserAccountRepository as uar).where.eq(uar.accountId, accountId)
+      select.from(UserAccountRepository as uar).where.eq(uar.id, id)
     }.map(UserAccountRepository(uar.resultName)).single.apply()
   }
-          
+
   def findAll()(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     withSQL(select.from(UserAccountRepository as uar)).map(UserAccountRepository(uar.resultName)).list.apply()
   }
-          
+
   def countAll()(implicit session: DBSession = autoSession): Long = {
-    withSQL(select(sqls"count(1)").from(UserAccountRepository as uar)).map(rs => rs.long(1)).single.apply().get
+    withSQL(select(sqls.count).from(UserAccountRepository as uar)).map(rs => rs.long(1)).single.apply().get
   }
-          
+
   def findBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     withSQL {
-      select.from(UserAccountRepository as uar).where.append(sqls"${where}")
+      select.from(UserAccountRepository as uar).where.append(where)
     }.map(UserAccountRepository(uar.resultName)).single.apply()
   }
-      
+
   def findAllBy(where: SQLSyntax)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     withSQL {
-      select.from(UserAccountRepository as uar).where.append(sqls"${where}")
+      select.from(UserAccountRepository as uar).where.append(where)
     }.map(UserAccountRepository(uar.resultName)).list.apply()
   }
-      
+
   def countBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Long = {
     withSQL {
-      select(sqls"count(1)").from(UserAccountRepository as uar).where.append(sqls"${where}")
+      select(sqls.count).from(UserAccountRepository as uar).where.append(where)
     }.map(_.long(1)).single.apply().get
   }
-      
+
   def create(
-    accountId: String,
+    id: Any,
+    dirId: Any,
     username: String,
     email: String,
+    phoneNumber: Option[String] = None,
     firstName: String,
     lastName: String,
-    secret: String,
+    hashMethod: String,
     salt: String,
-    hashMethod: String)(implicit session: DBSession = autoSession): UserAccountRepository = {
+    secret: String,
+    disabled: Boolean)(implicit session: DBSession = autoSession): UserAccountRepository = {
     withSQL {
       insert.into(UserAccountRepository).columns(
-        column.accountId,
+        column.id,
+        column.dirId,
         column.username,
         column.email,
+        column.phoneNumber,
         column.firstName,
         column.lastName,
-        column.secret,
+        column.hashMethod,
         column.salt,
-        column.hashMethod
+        column.secret,
+        column.disabled
       ).values(
-        accountId,
+        id,
+        dirId,
         username,
         email,
+        phoneNumber,
         firstName,
         lastName,
-        secret,
+        hashMethod,
         salt,
-        hashMethod
+        secret,
+        disabled
       )
     }.update.apply()
 
     UserAccountRepository(
-      accountId = accountId,
+      id = id,
+      dirId = dirId,
       username = username,
       email = email,
+      phoneNumber = phoneNumber,
       firstName = firstName,
       lastName = lastName,
-      secret = secret,
+      hashMethod = hashMethod,
       salt = salt,
-      hashMethod = hashMethod)
+      secret = secret,
+      disabled = disabled)
   }
+
+  def batchInsert(entities: Seq[UserAccountRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
+    val params: Seq[Seq[(Symbol, Any)]] = entities.map(entity => 
+      Seq(
+        'id -> entity.id,
+        'dirId -> entity.dirId,
+        'username -> entity.username,
+        'email -> entity.email,
+        'phoneNumber -> entity.phoneNumber,
+        'firstName -> entity.firstName,
+        'lastName -> entity.lastName,
+        'hashMethod -> entity.hashMethod,
+        'salt -> entity.salt,
+        'secret -> entity.secret,
+        'disabled -> entity.disabled))
+        SQL("""insert into account(
+        id,
+        dir_id,
+        username,
+        email,
+        phone_number,
+        first_name,
+        last_name,
+        hash_method,
+        salt,
+        secret,
+        disabled
+      ) values (
+        {id},
+        {dirId},
+        {username},
+        {email},
+        {phoneNumber},
+        {firstName},
+        {lastName},
+        {hashMethod},
+        {salt},
+        {secret},
+        {disabled}
+      )""").batchByName(params: _*).apply()
+    }
 
   def save(entity: UserAccountRepository)(implicit session: DBSession = autoSession): UserAccountRepository = {
     withSQL {
       update(UserAccountRepository).set(
-        column.accountId -> entity.accountId,
+        column.id -> entity.id,
+        column.dirId -> entity.dirId,
         column.username -> entity.username,
         column.email -> entity.email,
+        column.phoneNumber -> entity.phoneNumber,
         column.firstName -> entity.firstName,
         column.lastName -> entity.lastName,
-        column.secret -> entity.secret,
+        column.hashMethod -> entity.hashMethod,
         column.salt -> entity.salt,
-        column.hashMethod -> entity.hashMethod
-      ).where.eq(column.accountId, entity.accountId)
+        column.secret -> entity.secret,
+        column.disabled -> entity.disabled
+      ).where.eq(column.id, entity.id)
     }.update.apply()
     entity
   }
-        
+
   def destroy(entity: UserAccountRepository)(implicit session: DBSession = autoSession): Unit = {
-    withSQL { delete.from(UserAccountRepository).where.eq(column.accountId, entity.accountId) }.update.apply()
+    withSQL { delete.from(UserAccountRepository).where.eq(column.id, entity.id) }.update.apply()
   }
-        
+
 }
