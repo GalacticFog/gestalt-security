@@ -1,7 +1,7 @@
 package controllers
 
 import java.util.{UUID, Base64}
-import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, APICredentialFactory}
+import com.galacticfog.gestalt.security.data.domain.{OrgFactory, AccountFactory, AppFactory, APICredentialFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import play.api.Logger
 import play.api.mvc._
@@ -83,14 +83,14 @@ object GestaltHeaderAuthentication {
     lazy val maybeTokenAuth = for {
       token <- extractAuthToken(request)
       foundKey <- APICredentialFactory.findByAPIKey(token.username)
-      if foundKey.apiSecret == token.password && orgId.exists(_ == foundKey.orgId)
+      if foundKey.apiSecret == token.password && orgId.exists(_ == foundKey.orgId) && foundKey.disabled == false
       orgId = foundKey.orgId.asInstanceOf[UUID]
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       account <- UserAccountRepository.find(foundKey.accountId)
     } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
     lazy val maybeAccountAuth = for {
-      orgId <- orgId
+      orgId <- orgId orElse OrgFactory.getRootOrg.map{_.id.asInstanceOf[UUID]}
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       account <- AccountFactory.frameworkAuth(serviceAppId, request)

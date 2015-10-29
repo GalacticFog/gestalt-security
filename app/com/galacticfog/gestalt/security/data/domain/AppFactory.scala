@@ -24,6 +24,10 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )}
   }
 
+  def listAccountStoreMappings(appId: UUID): Seq[AccountStoreMappingRepository] = {
+    AccountStoreMappingRepository.findAllBy(sqls"app_id = ${appId}")
+  }
+
   def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean): Try[AccountStoreMappingRepository] = {
     Try {
       AccountStoreMappingRepository.create(
@@ -67,7 +71,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     // if it's a directory, add the account to the directory
     // if it's a group, add the account to the group's directory and then to the group
     // then add the account to any groups specified in the create request
-    val newUser = for {
+    for {
       app <- Try{AppFactory.findByAppId(appId).get}
       cred <- Try{create.credential.asInstanceOf[GestaltPasswordCredential]}
       asm <- Try{getDefaultAccountStore(appId)}
@@ -86,24 +90,23 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         disabled = false
       )}
     } yield {
-        // add grants
-        val newUserId = newUser.id.asInstanceOf[UUID]
-        create.rights foreach {_.foreach { grant =>
-          RightGrantRepository.create(
-            grantId = UUID.randomUUID,
-            appId = appId,
-            groupId = None,
-            accountId = Some(newUser.id),
-            grantName = grant.grantName,
-            grantValue = grant.grantValue)
-        }}
-        // add groups
-        (create.groups.toSeq.flatten ++ asm.right.toSeq.map{_.id.asInstanceOf[UUID]}).distinct.map {
-          groupId => GroupMembershipRepository.create(accountId = newUserId, groupId = groupId)
-        }
-        newUser
+      // add grants
+      val newUserId = newUser.id.asInstanceOf[UUID]
+      create.rights foreach {_.foreach { grant =>
+        RightGrantRepository.create(
+          grantId = UUID.randomUUID,
+          appId = appId,
+          groupId = None,
+          accountId = Some(newUser.id),
+          grantName = grant.grantName,
+          grantValue = grant.grantValue)
+      }}
+      // add groups
+      (create.groups.toSeq.flatten ++ asm.right.toSeq.map{_.id.asInstanceOf[UUID]}).distinct.map {
+        groupId => GroupMembershipRepository.create(accountId = newUserId, groupId = groupId)
       }
-    newUser
+      newUser
+    }
   }
 
   def findByAppName(orgId: UUID, appName: String): Try[GestaltAppRepository] = {

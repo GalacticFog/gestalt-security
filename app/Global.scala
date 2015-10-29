@@ -78,7 +78,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
       case conflict: CreateConflictException => Conflict(Json.toJson(conflict))
       case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown)) // not sure why this would happen, but if we have that level of info, might as well use it
-      case nope: Throwable => BadRequest(nope.getMessage)
+      case nope: Throwable => InternalServerError("")
     }
   }
 

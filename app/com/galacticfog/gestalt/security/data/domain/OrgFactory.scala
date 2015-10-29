@@ -9,6 +9,10 @@ import scala.util.Try
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
+  def getRootOrg(): Option[GestaltOrgRepository] = {
+    GestaltOrgRepository.findBy(sqls"parent is null")
+  }
+
   def create(parentOrgId: UUID, name: String, fqon: String): Try[GestaltOrgRepository] = {
     Try{GestaltOrgRepository.create(
       id = UUID.randomUUID(),

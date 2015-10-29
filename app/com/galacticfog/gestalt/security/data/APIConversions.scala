@@ -78,4 +78,17 @@ object APIConversions {
       orgId = dir.orgId.asInstanceOf[UUID]
     )
   }
+
+  implicit def mappingModelToApi(asm: AccountStoreMappingRepository): GestaltAccountStoreMapping = {
+    GestaltAccountStoreMapping(
+      id = asm.id.asInstanceOf[UUID],
+      name = "",
+      description = "",
+      storeType = if (asm.storeType == GROUP.label) GROUP else DIRECTORY,
+      storeId = asm.accountStoreId.asInstanceOf[UUID],
+      appId = asm.appId.asInstanceOf[UUID],
+      isDefaultAccountStore = asm.defaultAccountStore.exists{_ == asm.appId},
+      isDefaultGroupStore = asm.defaultGroupStore.exists(_ == asm.appId)
+    )
+  }
 }

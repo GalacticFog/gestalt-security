@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.api.GestaltBasicCredsToken
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
@@ -52,13 +53,16 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   override val autoSession = AutoSession
 
   def listByAppId(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
-    val uar = UserAccountRepository.syntax("uar")
-    sql"""select uar.* from account as uar inner join (
+    val a = UserAccountRepository.syntax("a")
+    sql"""select ${a.result.*}
+          from ${UserAccountRepository.as(a)}
+          inner join (
             select axg.account_id,asm.account_store_id from account_x_group as axg
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
-              where asm.app_id = '${appId}'
-          ) as sub on account.id = sub.account_id or account.dir_id = sub.account_store_id
-      """.map{UserAccountRepository(uar.resultName)}.list.apply()
+              where asm.app_id = ${appId}
+          ) as sub on ${a.id} = sub.account_id or ${a.dirId} = sub.account_store_id
+          where ${a.disabled} = false
+      """.map{UserAccountRepository(a)}.list.apply()
   }
 
   def listAppGrants(appId: UUID, username: String): Try[Seq[RightGrantRepository]] = {
