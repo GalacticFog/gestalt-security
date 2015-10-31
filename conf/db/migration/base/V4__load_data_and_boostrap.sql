@@ -5,18 +5,18 @@ INSERT INTO account_store_type(name, description) VALUES
   ('DIRECTORY', 'A directory of accounts and groups'),
   ('GROUP', 'A group of accounts from an existing directory');
 
-INSERT INTO org(name,fqon) VALUES ('${root_orgname}','${root_orgname}');
+INSERT INTO org(name,fqon) VALUES ('root','root');
 
 INSERT INTO directory(name,description,config,org_id) VALUES
   ('gestalt-user-dir','directory for root organization',
    '{
       "directoryType": "native"
     }',
-   (SELECT id from org WHERE name = '${root_orgname}')
+   (SELECT id from org WHERE name = 'root')
   );
 
 INSERT INTO app(name,service_org_id,org_id) VALUES
-  ('root-gestalt-framework',(SELECT id FROM org WHERE name = '${root_orgname}'),(SELECT id FROM org WHERE name = '${root_orgname}'));
+  ('root-gestalt-framework',(SELECT id FROM org WHERE name = 'root'),(SELECT id FROM org WHERE name = 'root'));
 
 INSERT INTO account_store_mapping(app_id,store_type,account_store_id,default_account_store,default_group_store) VALUES (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
@@ -31,7 +31,7 @@ INSERT INTO account_group(name,disabled,dir_id) VALUES (
 );
 
 INSERT INTO account(username,first_name,last_name,email,disabled,secret,hash_method,salt,dir_id) VALUES(
-    '${root_username}','${root_username}','${root_username}','${root_username}@${root_orgname}',FALSE,
+    '${root_username}','${root_username}','${root_username}','${root_username}@root',FALSE,
     crypt('${root_password}',gen_salt('bf',10)),'bcrypt','',
     (SELECT id from directory WHERE name = 'gestalt-user-dir')
 );
@@ -52,11 +52,19 @@ INSERT INTO right_grant(app_id, group_id, grant_name) VALUES (
 ), (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),
-    'createAccount'
+  'createAccount'
 ), (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),
-    'deleteAccount'
+  'deleteAccount'
+), (
+  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
+  (SELECT id FROM account_group WHERE name = 'admins'),
+    'createDirectory'
+), (
+  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
+  (SELECT id FROM account_group WHERE name = 'admins'),
+    'deleteDirectory'
 ), (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),

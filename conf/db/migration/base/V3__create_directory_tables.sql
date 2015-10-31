@@ -2,7 +2,7 @@
 -- User accounts
 -- ----------------------------------------------------------------------------
 CREATE TABLE account(
-  id           UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id           UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   dir_id       UUID NOT NULL REFERENCES directory(id) ON DELETE CASCADE,
   username     CHARACTER VARYING(256) NOT NULL,
   email        CHARACTER VARYING(256) NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE account(
 -- Groups
 -- ----------------------------------------------------------------------------
 CREATE TABLE account_group(
-  id        UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id        UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   dir_id    UUID NOT NULL REFERENCES directory(id) ON DELETE CASCADE,
   name      CHARACTER VARYING(128) NOT NULL,
   disabled  BOOL NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE account_x_group(
 -- Right grant
 -- ----------------------------------------------------------------------------
 CREATE TABLE right_grant(
-  grant_id   UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  grant_id   UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   app_id     UUID NOT NULL REFERENCES app(id)  ON DELETE CASCADE,
   account_id UUID REFERENCES account(id)       ON DELETE CASCADE,
   group_id   UUID REFERENCES account_group(id) ON DELETE CASCADE,

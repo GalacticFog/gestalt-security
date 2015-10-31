@@ -130,7 +130,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       GroupMembershipRepository.syntax("axg"),
       AccountStoreMappingRepository.syntax("asm")
       )
-    sql"""select ${a.result.*}
+    sql"""select distinct ${a.result.*}
           from ${UserAccountRepository.as(a)} inner join (
             select axg.account_id,asm.account_store_id,asm.store_type
             from account_x_group as axg
@@ -138,7 +138,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
           where ${a.email} = ${email} and ${a.disabled} = false
-      """.map(UserAccountRepository(a)).list.apply().distinct
+      """.map(UserAccountRepository(a)).list.apply()
   }
 
   private[this] def findAppUsersByUsername(appId: UUID, username: String)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
@@ -147,7 +147,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       GroupMembershipRepository.syntax("axg"),
       AccountStoreMappingRepository.syntax("asm")
       )
-    sql"""select ${a.result.*}
+    sql"""select distinct ${a.result.*}
           from ${UserAccountRepository.as(a)} inner join (
             select axg.account_id,asm.account_store_id,asm.store_type
             from account_x_group as axg
@@ -155,7 +155,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
           where ${a.username} = ${username} and ${a.disabled} = false
-      """.map(UserAccountRepository(a)).list.apply().distinct
+      """.map(UserAccountRepository(a)).list.apply()
   }
 
 }

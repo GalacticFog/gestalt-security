@@ -2,7 +2,7 @@
 -- ORGS
 -- ----------------------------------------------------------------------------
 CREATE TABLE org(
-  id     UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id     UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   name TEXT NOT NULL,
   fqon TEXT NOT NULL,
   parent UUID REFERENCES org(id) ON DELETE CASCADE,
@@ -15,7 +15,7 @@ CREATE TABLE org(
 -- DIRECTORIES
 -- ----------------------------------------------------------------------------
 CREATE TABLE directory(
-  id UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
   org_id UUID NOT NULL REFERENCES org ON DELETE CASCADE,
@@ -28,7 +28,7 @@ CREATE TABLE directory(
 -- APPS
 -- ----------------------------------------------------------------------------
 CREATE TABLE app(
-  id UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   name TEXT NOT NULL,
   org_id UUID NOT NULL REFERENCES org ON DELETE CASCADE,
   service_org_id UUID REFERENCES org ON DELETE CASCADE,
@@ -44,7 +44,7 @@ CREATE TABLE app(
 -- hence the account_store_id below is non-null, but without REFERENCES
 -- ----------------------------------------------------------------------------
 CREATE TABLE account_store_mapping(
-  id UUID DEFAULT uuid_generate_v1mc() PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   app_id     UUID NOT NULL REFERENCES app(id) ON DELETE CASCADE,
   store_type TEXT NOT NULL REFERENCES account_store_type(name) ON DELETE RESTRICT,
   account_store_id UUID NOT NULL,

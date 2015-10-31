@@ -1,12 +1,13 @@
 -- ----------------------------------------------------------------------------
 -- CURRENCY_TYPE
 -- ----------------------------------------------------------------------------
-INSERT INTO org(name,fqon,parent) VALUES ('engineering',     'engineering.${root_orgname}',(SELECT id from org where name = '${root_orgname}'));
-INSERT INTO org(name,fqon,parent) VALUES ('core',       'core.engineering.${root_orgname}',(SELECT id from org where name = 'engineering'));
+INSERT INTO org(name,fqon,parent) VALUES ('galacticfog', 'galacticfog',                 (SELECT id from org where name = 'root'));
+INSERT INTO org(name,fqon,parent) VALUES ('engineering', 'galacticfog.engineering',     (SELECT id from org where name = 'galacticfog'));
+INSERT INTO org(name,fqon,parent) VALUES ('core',        'galacticfog.engineering.core',(SELECT id from org where name = 'engineering'));
 
 INSERT INTO app(name,service_org_id,org_id) VALUES
-  ('gestalt-framework-eng',(SELECT id FROM org WHERE name = 'engineering'),(SELECT id FROM org WHERE name = 'engineering')),
-  ('gestalt-framework-eng-core',(SELECT id FROM org WHERE name = 'core'),(SELECT id FROM org WHERE name = 'core'));
+  ('eng-system-app',(SELECT id FROM org WHERE name = 'engineering'),(SELECT id FROM org WHERE name = 'engineering')),
+  ('eng-core-system-app',(SELECT id FROM org WHERE name = 'core'),(SELECT id FROM org WHERE name = 'core'));
 
 INSERT INTO right_grant(app_id, group_id, grant_name) VALUES (
   (SELECT id FROM app WHERE name = 'gestalt-framework-eng'),

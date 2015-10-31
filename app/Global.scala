@@ -52,9 +52,8 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       val doShutdown: Boolean = current.configuration.getBoolean("shutdownAfterMigrate") getOrElse false
       val rootUsername = current.configuration.getString("root.username") getOrElse "root"
       val rootPassword = current.configuration.getString("root.password") getOrElse "letmein"
-      val rootOrgName = current.configuration.getString("root.orgName") getOrElse "root"
       log.info("Migrating databases")
-      FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword, rootOrgName = rootOrgName)
+      FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword)
       if (doShutdown) {
         log.info("Shutting because database.shutdownAfterMigrate == true")
         Play.stop()
@@ -87,7 +86,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 object FlywayMigration {
 
   def migrate(info: ScalikePostgresDBConnection, clean: Boolean,
-              rootOrgName: String, rootUsername: String, rootPassword: String) =
+              rootUsername: String, rootPassword: String) =
   {
     def getDataSource(info: ScalikePostgresDBConnection) = {
       val ds = new BasicDataSource();
@@ -105,7 +104,6 @@ object FlywayMigration {
       baseFlyway.setDataSource(baseDS)
       baseFlyway.setLocations("classpath:db/migration/base")
       baseFlyway.setPlaceholders(Map(
-        "root_orgname"  -> rootOrgName,
         "root_username" -> rootUsername,
         "root_password" -> rootPassword
       ).asJava)

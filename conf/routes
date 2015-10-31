@@ -14,6 +14,8 @@ GET           /orgs/:orgId                                              controll
 DELETE        /orgs/:orgId                                              controllers.RESTAPIController.deleteOrgById(orgId: java.util.UUID)
 POST          /orgs/:orgId                                              controllers.RESTAPIController.createOrg(orgId: java.util.UUID)
 #
+GET           /orgs/:orgId/orgs                                         controllers.RESTAPIController.listOrgTree(orgId: java.util.UUID)
+#
 GET           /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
 POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.createOrgDirectory(orgId: java.util.UUID)
 #
@@ -26,7 +28,8 @@ GET           /orgs/:orgId/accounts                                     controll
 GET           /orgs/:orgId/accounts/:accountId                          controllers.RESTAPIController.getOrgAccount(orgId: java.util.UUID, accountId: java.util.UUID)
 POST          /orgs/:orgId/accounts                                     controllers.RESTAPIController.createAccountInOrg(orgId: java.util.UUID)
 #
-GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroups(orgId: java.util.UUID)
+GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroupMappings(orgId: java.util.UUID)
+GET           /orgs/:orgId/groups/:groupId                              controllers.RESTAPIController.getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID)
 POST          /orgs/:orgId/groups                                       controllers.RESTAPIController.createGroupInOrg(orgId: java.util.UUID)
 
 ##########################################
@@ -34,6 +37,7 @@ POST          /orgs/:orgId/groups                                       controll
 ##########################################
 GET           /accounts/:accountId                                      controllers.RESTAPIController.getAccount(accountId: java.util.UUID)
 DELETE        /accounts/:accountId                                      controllers.RESTAPIController.disableAccount(accountId: java.util.UUID)
+GET           /accounts/:accountId/groups                               controllers.RESTAPIController.listAccountGroups(accountId: java.util.UUID)
 
 ##########################################
 # directories
