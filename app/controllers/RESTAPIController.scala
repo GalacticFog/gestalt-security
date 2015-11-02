@@ -240,6 +240,64 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ???
   }
 
+  def rootOrgSync() = AuthenticatedAction(None) { implicit request =>
+    val orgTree = OrgFactory.getOrgTree(request.user.orgId)
+    val orgUsers = orgTree flatMap { org =>
+      DirectoryFactory.listByOrgId(org.id.asInstanceOf[UUID])
+    } flatMap { dir =>
+      AccountFactory.listByDirectoryId(dir.id.asInstanceOf[UUID]) map {
+        uar => GestaltAccount(
+          id = uar.id.asInstanceOf[UUID],
+          username = uar.username,
+          firstName = uar.firstName,
+          lastName = uar.lastName,
+          email = uar.email,
+          phoneNumber = uar.phoneNumber getOrElse "",
+          directory = dir
+        )
+      }
+    }
+    Ok(Json.toJson(
+      GestaltOrgSync(
+        accounts = orgUsers,
+        orgs = orgTree map {o => o: GestaltOrg}
+      )
+    ))
+  }
+
+  def subOrgSync(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    GestaltOrgRepository.find(orgId) match {
+      case Some(org) =>
+        val orgTree = OrgFactory.getOrgTree(org.id.asInstanceOf[UUID])
+        val orgUsers = orgTree flatMap { org =>
+          DirectoryFactory.listByOrgId(org.id.asInstanceOf[UUID])
+        } flatMap { dir =>
+          AccountFactory.listByDirectoryId(dir.id.asInstanceOf[UUID]) map {
+            uar => GestaltAccount(
+              id = uar.id.asInstanceOf[UUID],
+              username = uar.username,
+              firstName = uar.firstName,
+              lastName = uar.lastName,
+              email = uar.email,
+              phoneNumber = uar.phoneNumber getOrElse "",
+              directory = dir
+            )
+          }
+        }
+        Ok(Json.toJson(
+          GestaltOrgSync(
+            accounts = orgUsers,
+            orgs = orgTree map {o => o: GestaltOrg}
+          )
+        ))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested org",
+        developerMessage = "Could not locate the requested org. Make sure to use the org ID."
+      )
+    }
+  }
+
   def listAllOrgs() = AuthenticatedAction(None) { implicit request =>
     Ok(Json.toJson(OrgFactory.getOrgTree(request.user.orgId).map{o => o: GestaltOrg}))
   }

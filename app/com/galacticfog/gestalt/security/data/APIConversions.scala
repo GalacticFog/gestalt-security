@@ -15,7 +15,7 @@ object APIConversions {
       lastName = uar.lastName,
       email = uar.email,
       phoneNumber  = uar.phoneNumber getOrElse "",
-      directoryId = uar.dirId.asInstanceOf[UUID]
+      directory = GestaltDirectoryRepository.find(uar.dirId).get
     )
   }
 

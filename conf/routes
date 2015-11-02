@@ -7,6 +7,7 @@ GET           /health                                                   controll
 ##########################################
 # orgs
 ##########################################
+GET           /sync                                                     controllers.RESTAPIController.rootOrgSync
 GET           /orgs                                                     controllers.RESTAPIController.listAllOrgs
 GET           /orgs/current                                             controllers.RESTAPIController.getCurrentOrg
 #
@@ -15,6 +16,7 @@ DELETE        /orgs/:orgId                                              controll
 POST          /orgs/:orgId                                              controllers.RESTAPIController.createOrg(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/orgs                                         controllers.RESTAPIController.listOrgTree(orgId: java.util.UUID)
+GET           /orgs/:orgId/sync                                         controllers.RESTAPIController.subOrgSync(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
 POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.createOrgDirectory(orgId: java.util.UUID)

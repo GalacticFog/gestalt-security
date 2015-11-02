@@ -11,9 +11,14 @@ import play.api.libs.json.JsValue
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
+import scala.collection.GenTraversableOnce
 import scala.util.{Try}
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
+
+  def listByDirectoryId(dirId: UUID): List[UserAccountRepository] = {
+    UserAccountRepository.findAllBy(sqls"dir_id=${dirId}")
+  }
 
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
