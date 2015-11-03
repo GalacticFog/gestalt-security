@@ -22,6 +22,46 @@ INSERT INTO account_group(name,dir_id,disabled) VALUES
   ('gf-engineers',(SELECT id from directory where name = 'galacticfog-people'),false),
   ('gf-admins',   (SELECT id from directory WHERE name = 'galacticfog-people'),false);
 
+INSERT INTO account_store_mapping(description,app_id,store_type,account_store_id) VALUES (
+  'mapping between galacticfog.engineering and root admins',
+  (SELECT id FROM app WHERE name = 'gf-eng-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'admins')
+),(
+  'mapping between galacticfog.engineering.core and root admins',
+  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'admins')
+),(
+  'mapping between galacticfog and root admins',
+  (SELECT id FROM app WHERE name = 'gf-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'admins')
+);
+
+INSERT INTO account_store_mapping(description,app_id,store_type,account_store_id,default_account_store,default_group_store) VALUES (
+  'mapping between galacticfog.engineering.core and gf-engineers',
+  (SELECT id FROM app WHERE name = 'gf-eng-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'gf-engineers'),
+  (SELECT id FROM app WHERE name = 'gf-eng-system-app'),
+  (SELECT id FROM app WHERE name = 'gf-eng-system-app')
+),(
+  'mapping between galacticfog.engineering and gf-engineers',
+  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'gf-engineers'),
+  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app'),
+  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app')
+),(
+  'mapping between galacticfog and gf-admins',
+  (SELECT id FROM app WHERE name = 'gf-system-app'),
+  'GROUP',
+  (SELECT id FROM account_group WHERE name = 'gf-admins'),
+  (SELECT id FROM app WHERE name = 'gf-system-app'),
+  (SELECT id FROM app WHERE name = 'gf-system-app')
+);
+
 INSERT INTO right_grant(grant_name, group_id, app_id)
   SELECT right_grant.grant_name,(select id from account_group where name = 'gf-admins'),(select id from app where name = 'gf-system-app') from app,account_group,right_grant
   WHERE app.name = 'root-gestalt-framework' and account_group.name = 'admins' and right_grant.group_id = account_group.id and right_grant.app_id = app.id;
@@ -34,27 +74,20 @@ INSERT INTO right_grant(grant_name, group_id, app_id)
   SELECT right_grant.grant_name,(select id from account_group where name = 'gf-engineers'),(select id from app where name = 'gf-eng-core-system-app') from app,account_group,right_grant
   WHERE app.name = 'root-gestalt-framework' and account_group.name = 'admins' and right_grant.group_id = account_group.id and right_grant.app_id = app.id;
 
-INSERT INTO account_store_mapping(app_id,store_type,account_store_id,default_account_store,default_group_store) VALUES (
-  (SELECT id FROM app WHERE name = 'gf-eng-system-app'),
-  'GROUP',
-  (SELECT id FROM account_group WHERE name = 'gf-engineers'),
-  (SELECT id FROM app WHERE name = 'gf-eng-system-app'),
-  (SELECT id FROM app WHERE name = 'gf-eng-system-app')
-),(
-  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app'),
-  'GROUP',
-  (SELECT id FROM account_group WHERE name = 'gf-engineers'),
-  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app'),
-  (SELECT id FROM app WHERE name = 'gf-eng-core-system-app')
-),(
-  (SELECT id FROM app WHERE name = 'gf-system-app'),
-  'GROUP',
-  (SELECT id FROM account_group WHERE name = 'gf-admins'),
-  (SELECT id FROM app WHERE name = 'gf-system-app'),
-  (SELECT id FROM app WHERE name = 'gf-system-app')
-);
+INSERT INTO right_grant(grant_name, group_id, app_id)
+  SELECT right_grant.grant_name,(select id from account_group where name = 'admins'),(select id from app where name = 'gf-system-app') from app,account_group,right_grant
+  WHERE app.name = 'root-gestalt-framework' and account_group.name = 'admins' and right_grant.group_id = account_group.id and right_grant.app_id = app.id;
+
+INSERT INTO right_grant(grant_name, group_id, app_id)
+  SELECT right_grant.grant_name,(select id from account_group where name = 'admins'),(select id from app where name = 'gf-eng-system-app') from app,account_group,right_grant
+  WHERE app.name = 'root-gestalt-framework' and account_group.name = 'admins' and right_grant.group_id = account_group.id and right_grant.app_id = app.id;
+
+INSERT INTO right_grant(grant_name, group_id, app_id)
+  SELECT right_grant.grant_name,(select id from account_group where name = 'admins'),(select id from app where name = 'gf-eng-core-system-app') from app,account_group,right_grant
+  WHERE app.name = 'root-gestalt-framework' and account_group.name = 'admins' and right_grant.group_id = account_group.id and right_grant.app_id = app.id;
 
 INSERT INTO account(username,first_name,last_name,email,disabled,secret,hash_method,salt,dir_id) VALUES
+  ('nobody','No','Body','nobody@galacticfog.com',FALSE, crypt('letmein',gen_salt('bf',10)),'bcrypt','', (SELECT id from directory WHERE name = 'galacticfog-people')),
   ('anthony','Anthony','Skipper','anthony@galacticfog.com',FALSE, crypt('letmein',gen_salt('bf',10)),'bcrypt','', (SELECT id from directory WHERE name = 'galacticfog-people')),
   ('brad','Brad','Futch','brad@galacticfog.com',FALSE, crypt('letmein',gen_salt('bf',10)),'bcrypt','', (SELECT id from directory WHERE name = 'galacticfog-people')),
   ('sy','Sy','Smythe','sy@galacticfog.com',FALSE, crypt('letmein',gen_salt('bf',10)),'bcrypt','', (SELECT id from directory WHERE name = 'galacticfog-people')),

@@ -48,6 +48,8 @@ CREATE TABLE account_store_mapping(
   app_id     UUID NOT NULL REFERENCES app(id) ON DELETE CASCADE,
   store_type TEXT NOT NULL REFERENCES account_store_type(name) ON DELETE RESTRICT,
   account_store_id UUID NOT NULL,
+  name TEXT,
+  description TEXT,
   -- only one account_store_mapping can be the default_account_store for a particular app
   default_account_store UUID REFERENCES app(id) UNIQUE,
   -- only one account_store_mapping can be the default_group_store for a particular app

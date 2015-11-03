@@ -135,7 +135,7 @@ lazy val migration = (project in file("migration")).
     flywayUser := sys.env.get( "DB_USER" ) getOrElse "dbUser",
     flywayPassword := sys.env.get( "DB_PASSWORD" ) getOrElse "dbS3cr3t",
     flywayLocations := Seq("filesystem:conf/db/migration"),
-    // flywayTarget := "3"
+    flywayTarget := "4",
     flywayPlaceholders := Map(
       "root_username" -> sys.env.get( "ROOT_USERNAME" ).getOrElse("admin"),
       "root_password" -> sys.env.get( "ROOT_PASSWORD" ).getOrElse("letmein")

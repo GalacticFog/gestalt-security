@@ -6,45 +6,20 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
-import com.galacticfog.gestalt.security.utils.SecureIdGenerator
-import play.api.libs.json.{JsError, JsValue, Json}
-import play.api.{Logger => log}
+import play.api.libs.json.{JsSuccess, JsError, JsValue, Json}
 import play.api._
 import play.api.mvc._
-import scalikejdbc.DB
 import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 import scala.concurrent.Future
-import scala.util.{Try, Failure, Success}
+import scala.util.{Try, Failure}
 
 case class SecurityControllerInitializationError(msg: String) extends RuntimeException(msg)
 
 object RESTAPIController extends Controller with GestaltHeaderAuthentication {
-
-  val CREATE_ORG = "createOrg"
-  val DELETE_ORG = "deleteOrg"
-  val CREATE_ACCOUNT = "createAccount"
-  val DELETE_ACCOUNT = "deleteAccount"
-  val CREATE_DIRECTORY = "createDirectory"
-  val DELETE_DIRECTORY = "deleteDirectory"
-  val READ_DIRECTORY = "readDirectory"
-  val CREATE_APP = "createApp"
-  val DELETE_APP = "deleteApp"
-
-  val NEW_ORG_OWNER_RIGHTS = Seq(
-    CREATE_ORG,
-    DELETE_ORG,
-    CREATE_ACCOUNT,
-    DELETE_ACCOUNT,
-    CREATE_DIRECTORY,
-    DELETE_DIRECTORY,
-    CREATE_APP,
-    DELETE_APP,
-    READ_DIRECTORY
-  )
 
   ////////////////////////////////////////////////////////////////
   // Methods for extracting orgId for authentication from context
@@ -71,7 +46,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     dir <- GestaltDirectoryRepository.find(dirId)
   } yield dir.orgId.asInstanceOf[UUID]
 
-  def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = ???
+  def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = for {
+    mapping <- AccountStoreMappingRepository.find(mapId)
+    app <- GestaltAppRepository.find(mapping.appId)
+  } yield app.orgId.asInstanceOf[UUID]
 
   ////////////////////////////////////////////////////////
   // Auth methods
@@ -194,7 +172,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
-    requireAuthorization(READ_DIRECTORY)
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
     UserAccountRepository.find(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => throw new ResourceNotFoundException(
@@ -234,8 +212,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getDirAccount(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) {  implicit request =>
-    requireAuthorization(READ_DIRECTORY)
+  def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
     GestaltDirectoryRepository.find(dirId) match {
       case Some(dir) =>
         AccountFactory.directoryLookup(dirId,username) match {
@@ -254,19 +232,50 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  // TODO
-  def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) {  implicit request =>
-    ???
+  def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) =>
+        GroupFactory.directoryLookup(dirId,groupName) match {
+          case Some(group) => Ok(Json.toJson[GestaltGroup](group))
+          case None => throw new ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested group in the directory",
+            developerMessage = "Could not locate the requested group in the directory. Make sure to use the group name."
+          )
+        }
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )
+    }
   }
 
-  // TODO: WRONG: FINISH: this lists all accounts in any dir owned by the org... I only want the ones that are assigned to the org
+  def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
+    AccountStoreMappingRepository.find(mapId) match {
+      case Some(asm) => Ok(Json.toJson[GestaltAccountStoreMapping](asm))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account store mapping",
+        developerMessage = "Could not locate the requested account store mapping."
+      )
+    }
+  }
+
   def rootOrgSync() = AuthenticatedAction(None) { implicit request =>
+    // get the org tree
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
-    val orgUsers = orgTree flatMap { org =>
-      DirectoryFactory.listByOrgId(org.id.asInstanceOf[UUID])
-    } flatMap { dir =>
-      AccountFactory.listByDirectoryId(dir.id.asInstanceOf[UUID]) map {
-        uar => GestaltAccount(
+    val dirCache = GestaltDirectoryRepository.findAll map {
+      dir => (dir.id.asInstanceOf[UUID], dir)
+    } toMap
+    val orgUsers = (orgTree flatMap {
+      org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
+    } flatMap {
+      app => AccountFactory.listAppUsers(app.id.asInstanceOf[UUID])
+    } distinct) flatMap {
+      uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map {dir =>
+        GestaltAccount(
           id = uar.id.asInstanceOf[UUID],
           username = uar.username,
           firstName = uar.firstName,
@@ -285,16 +294,20 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ))
   }
 
-  // TODO: WRONG: FINISH: this lists all accounts in any dir owned by the org... I only want the ones that are assigned to the org
   def subOrgSync(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     GestaltOrgRepository.find(orgId) match {
       case Some(org) =>
         val orgTree = OrgFactory.getOrgTree(org.id.asInstanceOf[UUID])
-        val orgUsers = orgTree flatMap { org =>
-          DirectoryFactory.listByOrgId(org.id.asInstanceOf[UUID])
-        } flatMap { dir =>
-          AccountFactory.listByDirectoryId(dir.id.asInstanceOf[UUID]) map {
-            uar => GestaltAccount(
+        val dirCache = GestaltDirectoryRepository.findAll map {
+          dir => (dir.id.asInstanceOf[UUID], dir)
+        } toMap
+        val orgUsers = (orgTree flatMap {
+          org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
+        } flatMap {
+          app => AccountFactory.listAppUsers(app.id.asInstanceOf[UUID])
+        } distinct) flatMap {
+          uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map {dir =>
+            GestaltAccount(
               id = uar.id.asInstanceOf[UUID],
               username = uar.username,
               firstName = uar.firstName,
@@ -335,8 +348,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  // TODO
-  def listAppAccounts(appId: UUID) = AuthenticatedAction(None) { implicit request =>
+  def listAppAccounts(appId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }))
       case None => throw new ResourceNotFoundException(
@@ -349,10 +361,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   // TODO
   def listAccountRights(appId: UUID, username: String) = AuthenticatedAction(None) { implicit request =>
-    AccountFactory.listAppGrants(appId,username) match {
-      case Success(rights) => Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
-      case Failure(e) => throw e
-    }
+    val rights = AccountFactory.listAppGrants(appId,username)
+    Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
   }
 
   def listOrgDirectories(orgId: UUID) = AuthenticatedAction(None) { implicit request =>
@@ -363,13 +373,31 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
-  def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) {  implicit request =>
-    requireAuthorization(READ_DIRECTORY)
+  def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
     GestaltDirectoryRepository.find(dirId) match {
       case Some(dir) => Ok(
         Json.toJson(
           AccountFactory.listByDirectoryId(dirId) map {
             a => a: GestaltAccount
+          }
+        )
+      )
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )
+    }
+  }
+
+  def listDirGroups(dirId: java.util.UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) => Ok(
+        Json.toJson(
+        GroupFactory.listByDirectoryId(dirId) map {
+            g => g: GestaltGroup
           }
         )
       )
@@ -411,50 +439,13 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
 
   def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ORG)
+    requireAuthorization(OrgFactory.CREATE_ORG)
     val account = request.user.identity
     val accountId = account.id.asInstanceOf[UUID]
     OrgFactory.findByOrgId(parentOrgId) match {
       case Some(parentOrg) =>
-        // TODO: this should be wrapped in a transaction
-        val t = for {
-          create <- Try { request.body.as[GestaltOrgCreate] }
-            .recoverWith {
-              case _ => Failure(BadRequestException(
-                resource = request.path,
-                message = "invalid payload",
-                developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltOrgCreate"))
-            }
-          // create org
-          newOrg <- OrgFactory.create(parentOrg = parentOrg, name = create.orgName)
-            .recoverWith{
-              case _ => Failure(CreateConflictException(
-                resource = request.path,
-                message="error creating new sub org",
-                developerMessage = "Error creating new sub org. Most likely a conflict with an existing org of the same name."))
-            }
-          newOrgId = newOrg.id.asInstanceOf[UUID]
-          // create system app
-          newApp <- AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
-          newAppId = newApp.id.asInstanceOf[UUID]
-          // create admins group
-          adminGroup <- GroupFactory.create(name = newOrg.fqon + "-admins", dirId = account.dirId.asInstanceOf[UUID])
-          adminGroupId = adminGroup.id.asInstanceOf[UUID]
-          // create users group
-          usersGroup <- GroupFactory.create(name = newOrg.fqon + "-users", dirId = account.dirId.asInstanceOf[UUID])
-          usersGroupId = usersGroup.id.asInstanceOf[UUID]
-          // put user in group
-          newGroupAssign <- Try {
-            GroupMembershipRepository.create(accountId = accountId, groupId = adminGroupId)
-            GroupMembershipRepository.create(accountId = accountId, groupId = usersGroupId)
-          }
-          // give admin rights to new account
-          newRights <- RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = NEW_ORG_OWNER_RIGHTS)
-          // map group to new system app
-          adminMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
-          usersMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
-        } yield Created(Json.toJson[GestaltOrg](newOrg))
-        t.get
+        val newOrg = OrgFactory.createSubOrgWithAdmin(parentOrg = parentOrg, request = request)
+        Created(Json.toJson[GestaltOrg](newOrg))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "parent org does not exist",
@@ -463,38 +454,52 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createAccountInOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId)).async(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT)
+  def createAccountInOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.CREATE_ACCOUNT)
     val serviceAppId = request.user.serviceAppId
     OrgFactory.findByOrgId(parentOrgId) match {
       case Some(parentOrg) =>
-        Future {
-          val t = for {
-            create <- Try{request.body.as[GestaltAccountCreateWithRights]}
-              .recoverWith {case _ => Failure(BadRequestException(resource = request.path, message = "invalid payload", developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights"))}
-            newAccount <- AppFactory.createAccountInApp(appId = serviceAppId, create)
-          } yield Created(Json.toJson[GestaltAccount](newAccount))
-          t.get
+        val create = request.body.validate[GestaltAccountCreateWithRights] match {
+          case s: JsSuccess[GestaltAccountCreateWithRights] => s.get
+          case e: JsError => throw new BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights"
+          )
         }
+        val newAccount = AppFactory.createAccountInApp(appId = serviceAppId, create)
+        Created(Json.toJson[GestaltAccount](newAccount))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "parent org does not exist",
-        developerMessage = "Could not create sub-org because the parent org does not exist. Make sure to use the organization ID and not the organization name."
+        developerMessage = "Could not create account in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
       )
     }
   }
 
   def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId)).async(parse.json) { implicit request =>
-    requireAuthorization(CREATE_APP)
+    requireAuthorization(OrgFactory.CREATE_APP)
     OrgFactory.findByOrgId(orgId) match {
       case Some(org) =>
         Future {
-          val t = for {
-            create <- Try{request.body.as[GestaltAppCreate]}
-            newApp <- AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
-              .recoverWith{case _ => Failure(CreateConflictException(resource = request.path,message="error creating new app",developerMessage = "Error creating new app. Most likely a conflict with an existing app of the same name in the org."))}
-          } yield Created(Json.toJson[GestaltApp](newApp))
-          t.get
+          val create = request.body.validate[GestaltAppCreate] match {
+            case s: JsSuccess[GestaltAppCreate] => s.get
+            case e: JsError => throw new BadRequestException(
+              resource = request.path,
+              message = "invalid payload",
+              developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights."
+            )
+          }
+          val newApp = try {
+            AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
+          } catch {
+            case _: Throwable => throw new CreateConflictException(
+              resource = request.path,
+              message = "error creating new app",
+              developerMessage = "Error creating new app. Most likely a conflict with an existing app of the same name in the org."
+            )
+          }
+          Created(Json.toJson[GestaltApp](newApp))
         }
       case None => throw new ResourceNotFoundException(
         resource = request.path,
@@ -504,32 +509,71 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  // TODO
-  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(None)(parse.json) { implicit request =>
-    ???
+  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.CREATE_DIRECTORY)
+    OrgFactory.findByOrgId(orgId) match {
+      case Some(parentOrg) =>
+        val create = request.body.validate[GestaltDirectoryCreate] match {
+          case s: JsSuccess[GestaltDirectoryCreate] => s.get
+          case e: JsError => throw new BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltDirectoryCreate"
+          )
+        }
+        val newDir = DirectoryFactory.createDirectory(orgId = parentOrg.id.asInstanceOf[UUID], create)
+        Created(Json.toJson[GestaltDirectory](newDir))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "parent org does not exist",
+        developerMessage = "Could not create directory in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
+      )
+    }
   }
 
-  // TODO
-  def createAppAccount(appId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
-    ???
+  def createAppAccount(appId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) {  implicit request =>
+    requireAuthorization(OrgFactory.CREATE_ACCOUNT)
+    val serviceAppId = request.user.serviceAppId
+    AppFactory.findByAppId(appId) match {
+      case Some(app) =>
+        val create = request.body.validate[GestaltAccountCreateWithRights] match {
+          case s: JsSuccess[GestaltAccountCreateWithRights] => s.get
+          case e: JsError => throw new BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights"
+          )
+        }
+        val newAccount = AppFactory.createAccountInApp(appId = appId, create)
+        Created(Json.toJson[GestaltAccount](newAccount))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "app does not exist",
+        developerMessage = "Could not create account in app because the app does not exist."
+      )
+    }
   }
 
-  def createDirAccount(dirId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request: Request[JsValue] =>
-    ???
-    //    val userCreate = request.body.validate[GestaltAccountCreate]
-    //    userCreate.fold
-    //      errors => throw new BadRequestException(
-    //        resource = request.path,
-    //        message = "error parsing JSON",
-    //        developerMessage = "Error parsing JSON payload. Expected a GestaltAccountCreate object."
-    //      ),
-    //      user => {
-    //       AppFactory.createUserInApp(appId, user) match {
-    //         case Success(account) =>  Created( Json.toJson[GestaltAccount](account) )
-    //         case Failure(ex) => throw new (ex)
-    //       }
-    //      }
-    //    )
+  def createDirAccount(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.CREATE_ACCOUNT)
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) =>
+        val create = request.body.validate[GestaltAccountCreate] match {
+          case s: JsSuccess[GestaltAccountCreate] => s.get
+          case e: JsError => throw new BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountCreateWithRights"
+          )
+        }
+        val newAccount = DirectoryFactory.createAccountInDir(dirId = dirId, create)
+        Created(Json.toJson[GestaltAccount](newAccount))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "app does not exist",
+        developerMessage = "Could not create account in app because the app does not exist."
+      )
+    }
   }
 
   // TODO
@@ -553,10 +597,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   // TODO
   def updateRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
-    AccountFactory.updateAppGrant(appId,username,grantName,request.body) match {
-      case Success(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
-      case Failure(e) => throw e
-    }
+    val grant = AccountFactory.updateAppGrant(appId,username,grantName,request.body)
+    Ok(Json.toJson[GestaltRightGrant](grant))
   }
 
   ////////////////////////////////////////////////////////
@@ -564,7 +606,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
 
   def deleteOrgById(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
-    requireAuthorization(DELETE_ORG)
+    requireAuthorization(OrgFactory.DELETE_ORG)
     OrgFactory.findByOrgId(orgId) match {
       case Some(org) if org.parent.isDefined =>
         Future {
@@ -585,7 +627,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def deleteAppById(appId: java.util.UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
-    requireAuthorization(DELETE_APP)
+    requireAuthorization(OrgFactory.DELETE_APP)
     AppFactory.findByAppId(appId) match {
       case Some(app) if app.isServiceApp == false =>
         Future {
@@ -606,7 +648,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def disableAccount(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
-    requireAuthorization(DELETE_ACCOUNT)
+    requireAuthorization(OrgFactory.DELETE_ACCOUNT)
     UserAccountRepository.find(accountId) match {
       case Some(account) if account.disabled == false && account.id != request.user.identity.id =>
         Future {
@@ -632,14 +674,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   // TODO
   def deleteRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
-    AccountFactory.deleteAppGrant(appId,username,grantName) match {
-      case Success(wasDeleted) => Ok(Json.toJson(DeleteResult(wasDeleted)))
-      case Failure(e) => throw e
-    }
+    val wasDeleted = AccountFactory.deleteAppGrant(appId,username,grantName)
+    Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
-  // TODO
-  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) {  implicit request =>
     ???
   }
 
@@ -650,5 +689,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
   }
+
 
 }

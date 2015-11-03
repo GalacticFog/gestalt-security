@@ -2,19 +2,19 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
-import play.api.mvc.Result
 import scalikejdbc._
-
-import scala.util.Try
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
+
   override val autoSession = AutoSession
 
-  def create(name: String, dirId: UUID): Try[UserGroupRepository] = {
-    Try {
-      UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false)
-    }
+  def create(name: String, dirId: UUID): UserGroupRepository = {
+    UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false)
+  }
+
+  def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
+    UserGroupRepository.findAllBy(sqls"dir_id = ${dirId}")
   }
 
   def listAccountGroups(orgId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
@@ -26,6 +26,10 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
           from ${UserGroupRepository.as(grp)},${GroupMembershipRepository.as(axg)}
           where ${axg.accountId} = ${accountId} and ${axg.groupId} = ${grp.id}
       """.map(UserGroupRepository(grp)).list.apply()
+  }
+
+  def directoryLookup(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
   }
 
   def getAppGroupMapping(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {

@@ -2,7 +2,6 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.GestaltBasicCredsToken
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
@@ -10,9 +9,6 @@ import play.api.Logger
 import play.api.libs.json.JsValue
 import play.api.mvc.RequestHeader
 import scalikejdbc._
-
-import scala.collection.GenTraversableOnce
-import scala.util.{Try}
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
@@ -87,7 +83,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       """.map{UserAccountRepository(a)}.list.apply()
   }
 
-  def listAppGrants(appId: UUID, username: String): Try[Seq[RightGrantRepository]] = {
+  def listAppGrants(appId: UUID, username: String): Seq[RightGrantRepository] = {
     ???
 //    findAppUser(appId, username).headOption match {
 //      case Some(account) => Try{RightGrantFactory.listRights(appId, account.accountId)}
@@ -99,7 +95,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def getAppGrant(appId: UUID, username: String, grantName: String): Try[RightGrantRepository] = {
+  def getAppGrant(appId: UUID, username: String, grantName: String): RightGrantRepository = {
     ???
 //    listAppGrants(appId, username) flatMap {
 //      _.filter(_.grantName == grantName) match {
@@ -113,7 +109,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def deleteAppGrant(appId: UUID, username: String, grantName: String): Try[Boolean] = {
+  def deleteAppGrant(appId: UUID, username: String, grantName: String): Boolean = {
     ???
 //    listAppGrants(appId: String, username: String) flatMap {
 //      _.filter(_.grantName == grantName) match {
@@ -125,7 +121,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def updateAppGrant(appId: UUID, username: String, grantName: String, body: JsValue): Try[RightGrantRepository] = {
+  def updateAppGrant(appId: UUID, username: String, grantName: String, body: JsValue): RightGrantRepository = {
     ???
 //    Try{body.as[GestaltRightGrant]} flatMap { newGrant =>
 //      if (newGrant.grantName != grantName) Failure(new RuntimeException("payload grantName does not match URL"))
@@ -144,6 +140,23 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //        }
 //      }
 //    }
+  }
+
+  def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+    val (a, axg, asm) = (
+      UserAccountRepository.syntax("a"),
+      GroupMembershipRepository.syntax("axg"),
+      AccountStoreMappingRepository.syntax("asm")
+      )
+    sql"""select distinct ${a.result.*}
+          from ${UserAccountRepository.as(a)} inner join (
+            select axg.account_id,asm.account_store_id,asm.store_type
+            from account_x_group as axg
+              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
+              where asm.app_id = ${appId}
+          ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
+          where ${a.disabled} = false
+      """.map(UserAccountRepository(a)).list.apply()
   }
 
   private[this] def findAppUsersByEmail(appId: UUID, email: String)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {

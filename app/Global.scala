@@ -1,5 +1,6 @@
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
+import com.galacticfog.gestalt.security.data.domain.OrgFactory
 import play.api._
 import org.flywaydb.core.Flyway
 import org.apache.commons.dbcp2.BasicDataSource

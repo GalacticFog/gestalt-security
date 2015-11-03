@@ -2,43 +2,39 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, BadRequestException, ResourceNotFoundException}
-import com.galacticfog.gestalt.security.api.{DIRECTORY, GROUP, GestaltPasswordCredential, GestaltAccountCreateWithRights}
+import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, ResourceNotFoundException, UnknownAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountCreateWithRights}
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
 import scalikejdbc._
-import scalikejdbc.TxBoundary.Try._
-import scala.util.{Failure, Success, Try}
 
 object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
 
   def create(orgId: UUID, name: String, isServiceOrg: Boolean) = {
-    Try{GestaltAppRepository.create(
+    GestaltAppRepository.create(
       id = UUID.randomUUID(),
       name = name,
       orgId = orgId,
       serviceOrgId = if (isServiceOrg) Some(orgId) else None
-    )}
+    )
   }
 
   def listAccountStoreMappings(appId: UUID): Seq[AccountStoreMappingRepository] = {
     AccountStoreMappingRepository.findAllBy(sqls"app_id = ${appId}")
   }
 
-  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean): Try[AccountStoreMappingRepository] = {
-    Try {
-      AccountStoreMappingRepository.create(
-        id = UUID.randomUUID,
-        appId = appId,
-        storeType = "GROUP",
-        accountStoreId = groupId,
-        defaultAccountStore = if (defaultAccountStore) Some(appId) else None,
-        defaultGroupStore = None
-      )
-    }
+  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean): AccountStoreMappingRepository = {
+    AccountStoreMappingRepository.create(
+      id = UUID.randomUUID,
+      appId = appId,
+      storeType = "GROUP",
+      accountStoreId = groupId,
+      defaultAccountStore = if (defaultAccountStore) Some(appId) else None,
+      defaultGroupStore = None
+    )
   }
 
   def getDefaultAccountStore(appId: UUID): Either[GestaltDirectoryRepository,UserGroupRepository] = {
@@ -66,17 +62,37 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights): Try[UserAccountRepository] = DB localTx { implicit session =>
-    // have to find the default account store for the app
-    // if it's a directory, add the account to the directory
-    // if it's a group, add the account to the group's directory and then to the group
-    // then add the account to any groups specified in the create request
-    for {
-      app <- Try{AppFactory.findByAppId(appId).get}
-      cred <- Try{create.credential.asInstanceOf[GestaltPasswordCredential]}
-      asm <- Try{getDefaultAccountStore(appId)}
-      dirId = asm.fold(_.id, _.dirId).asInstanceOf[UUID]
-      newUser <- Try{UserAccountRepository.create(
+  def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights)(implicit session: DBSession = autoSession): UserAccountRepository = {
+    DB localTx { implicit session =>
+      // have to find the default account store for the app
+      // if it's a directory, add the account to the directory
+      // if it's a group, add the account to the group's directory and then to the group
+      // then add the account to any groups specified in the create request
+      if (GestaltAppRepository.find(appId).isEmpty) {
+        throw new ResourceNotFoundException(
+          resource = s"/apps/${appId}",
+          message = "could not create account in non-existent app",
+          developerMessage = "Could not create account in non-existent application. If this was created as a result of an attempt to create an account in an org, it suggests that the org is misconfigured."
+        )
+      }
+      val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
+      val asm = getDefaultAccountStore(appId)
+      val dirId = asm.fold(_.id, _.dirId).asInstanceOf[UUID]
+      if (UserAccountRepository.findBy(sqls"username = ${create.username} and dir_id = ${dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/apps/${appId}",
+          message = "username already exists",
+          developerMessage = "The default directory associated with this app already contains an account with the specified username."
+        )
+      }
+      if (UserAccountRepository.findBy(sqls"email = ${create.email} and dir_id = ${dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/directories/${dirId}",
+          message = "email address already exists",
+          developerMessage = "The default directory associated with this app already contains an account with the specified email address."
+        )
+      }
+      val newUser = UserAccountRepository.create(
         id = UUID.randomUUID(),
         dirId = dirId,
         username = create.username,
@@ -88,32 +104,36 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
         salt = "",
         disabled = false
-      )}
-    } yield {
+      )
       // add grants
       val newUserId = newUser.id.asInstanceOf[UUID]
-      create.rights foreach {_.foreach { grant =>
-        RightGrantRepository.create(
-          grantId = UUID.randomUUID,
-          appId = appId,
-          groupId = None,
-          accountId = Some(newUser.id),
-          grantName = grant.grantName,
-          grantValue = grant.grantValue)
-      }}
+      create.rights foreach {
+        _.foreach { grant =>
+          RightGrantRepository.create(
+            grantId = UUID.randomUUID,
+            appId = appId,
+            groupId = None,
+            accountId = Some(newUser.id),
+            grantName = grant.grantName,
+            grantValue = grant.grantValue
+          )
+        }
+      }
       // add groups
-      (create.groups.toSeq.flatten ++ asm.right.toSeq.map{_.id.asInstanceOf[UUID]}).distinct.map {
+      (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
+        _.id.asInstanceOf[UUID]
+      }).distinct.map {
         groupId => GroupMembershipRepository.create(accountId = newUserId, groupId = groupId)
       }
       newUser
     }
   }
 
-  def findByAppName(orgId: UUID, appName: String): Try[GestaltAppRepository] = {
-    GestaltAppRepository.findBy(sqls"org_id=${orgId} AND name=${appName}") map {Success.apply} getOrElse {
-      Failure(ResourceNotFoundException("app","could not find specified application","Could not find specified application. Ensure that you are providing the application ID and the correct organization ID.")      )
-    }
-  }
+//  def findByAppName(orgId: UUID, appName: String): Try[GestaltAppRepository] = {
+//    GestaltAppRepository.findBy(sqls"org_id=${orgId} AND name=${appName}") map {Success.apply} getOrElse {
+//      Failure(ResourceNotFoundException("app","could not find specified application","Could not find specified application. Ensure that you are providing the application ID and the correct organization ID.")      )
+//    }
+//  }
 
   def findServiceAppForOrg(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltAppRepository] = {
     val (a,o) = (

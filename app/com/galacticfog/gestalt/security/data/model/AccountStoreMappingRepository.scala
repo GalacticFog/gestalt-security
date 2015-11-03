@@ -7,6 +7,8 @@ case class AccountStoreMappingRepository(
   appId: Any,
   storeType: String,
   accountStoreId: Any,
+  name: Option[String] = None,
+  description: Option[String] = None,
   defaultAccountStore: Option[Any] = None,
   defaultGroupStore: Option[Any] = None) {
 
@@ -23,7 +25,7 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
 
   override val tableName = "account_store_mapping"
 
-  override val columns = Seq("id", "app_id", "store_type", "account_store_id", "default_account_store", "default_group_store")
+  override val columns = Seq("id", "app_id", "store_type", "account_store_id", "name", "description", "default_account_store", "default_group_store")
 
   def apply(asmr: SyntaxProvider[AccountStoreMappingRepository])(rs: WrappedResultSet): AccountStoreMappingRepository = apply(asmr.resultName)(rs)
   def apply(asmr: ResultName[AccountStoreMappingRepository])(rs: WrappedResultSet): AccountStoreMappingRepository = new AccountStoreMappingRepository(
@@ -31,6 +33,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
     appId = rs.any(asmr.appId),
     storeType = rs.get(asmr.storeType),
     accountStoreId = rs.any(asmr.accountStoreId),
+    name = rs.get(asmr.name),
+    description = rs.get(asmr.description),
     defaultAccountStore = rs.anyOpt(asmr.defaultAccountStore),
     defaultGroupStore = rs.anyOpt(asmr.defaultGroupStore)
   )
@@ -76,6 +80,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
     appId: Any,
     storeType: String,
     accountStoreId: Any,
+    name: Option[String] = None,
+    description: Option[String] = None,
     defaultAccountStore: Option[Any] = None,
     defaultGroupStore: Option[Any] = None)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
     withSQL {
@@ -84,6 +90,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         column.appId,
         column.storeType,
         column.accountStoreId,
+        column.name,
+        column.description,
         column.defaultAccountStore,
         column.defaultGroupStore
       ).values(
@@ -91,6 +99,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         appId,
         storeType,
         accountStoreId,
+        name,
+        description,
         defaultAccountStore,
         defaultGroupStore
       )
@@ -101,6 +111,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
       appId = appId,
       storeType = storeType,
       accountStoreId = accountStoreId,
+      name = name,
+      description = description,
       defaultAccountStore = defaultAccountStore,
       defaultGroupStore = defaultGroupStore)
   }
@@ -112,6 +124,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         'appId -> entity.appId,
         'storeType -> entity.storeType,
         'accountStoreId -> entity.accountStoreId,
+        'name -> entity.name,
+        'description -> entity.description,
         'defaultAccountStore -> entity.defaultAccountStore,
         'defaultGroupStore -> entity.defaultGroupStore))
         SQL("""insert into account_store_mapping(
@@ -119,6 +133,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         app_id,
         store_type,
         account_store_id,
+        name,
+        description,
         default_account_store,
         default_group_store
       ) values (
@@ -126,6 +142,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         {appId},
         {storeType},
         {accountStoreId},
+        {name},
+        {description},
         {defaultAccountStore},
         {defaultGroupStore}
       )""").batchByName(params: _*).apply()
@@ -138,6 +156,8 @@ object AccountStoreMappingRepository extends SQLSyntaxSupport[AccountStoreMappin
         column.appId -> entity.appId,
         column.storeType -> entity.storeType,
         column.accountStoreId -> entity.accountStoreId,
+        column.name -> entity.name,
+        column.description -> entity.description,
         column.defaultAccountStore -> entity.defaultAccountStore,
         column.defaultGroupStore -> entity.defaultGroupStore
       ).where.eq(column.id, entity.id)

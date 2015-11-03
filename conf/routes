@@ -19,7 +19,7 @@ GET           /orgs/:orgId/orgs                                         controll
 GET           /orgs/:orgId/sync                                         controllers.RESTAPIController.subOrgSync(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
-POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.createOrgDirectory(orgId: java.util.UUID)
+POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
 #
 POST          /orgs/:orgId/apps                                         controllers.RESTAPIController.createOrgApp(orgId: java.util.UUID)
 GET           /orgs/:orgId/apps                                         controllers.RESTAPIController.listOrgApps(orgId: java.util.UUID)
@@ -48,7 +48,11 @@ GET           /directories/:dirId                                       controll
 #
 GET           /directories/:dirId/accounts                              controllers.RESTAPIController.listDirAccounts(dirId: java.util.UUID)
 POST          /directories/:dirId/accounts                              controllers.RESTAPIController.createDirAccount(dirId: java.util.UUID)
-GET           /directories/:dirId/accounts/:username                    controllers.RESTAPIController.getDirAccount(dirId: java.util.UUID, username)
+GET           /directories/:dirId/accounts/:username                    controllers.RESTAPIController.getDirAccountByUsername(dirId: java.util.UUID, username)
+#
+GET           /directories/:dirId/groups                                controllers.RESTAPIController.listDirGroups(dirId: java.util.UUID)
+#POST          /directories/:dirId/groups                                controllers.RESTAPIController.createDirGroup(dirId: java.util.UUID)
+GET           /directories/:dirId/groups/:groupName                     controllers.RESTAPIController.getDirGroupByName(dirId: java.util.UUID, groupName)
 
 ##########################################
 # apps
@@ -77,10 +81,10 @@ DELETE        /apps/:appId/accounts/:username/rights/:grantName         controll
 ##########################################
 # account-store mappings
 ##########################################
-POST          /accountStore                                             controllers.RESTAPIController.createAccountStoreMapping()
-GET           /accountStore/:mapId                                      controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
-PUT           /accountStore/:mapId                                      controllers.RESTAPIController.updateAccountStoreMapping(mapId: java.util.UUID)
-DELETE        /accountStore/:mapId                                      controllers.RESTAPIController.deleteAccountStoreMapping(mapId: java.util.UUID)
+POST          /accountStores                                            controllers.RESTAPIController.createAccountStoreMapping()
+GET           /accountStores/:mapId                                     controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
+PUT           /accountStores/:mapId                                     controllers.RESTAPIController.updateAccountStoreMapping(mapId: java.util.UUID)
+DELETE        /accountStores/:mapId                                     controllers.RESTAPIController.deleteAccountStoreMapping(mapId: java.util.UUID)
 
 # Map static resources from the /public folder to the /assets URL path
 GET           /assets/*file                                             controllers.Assets.at(path="/public", file)

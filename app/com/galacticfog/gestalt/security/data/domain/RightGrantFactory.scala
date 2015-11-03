@@ -6,31 +6,23 @@ import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, UserGr
 import play.api.Logger
 import scalikejdbc._
 
-import scala.util.{Success, Try}
-
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
-  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[String]): Try[Seq[RightGrantRepository]] = {
-    // all will be attempted...
-    val allTry = rights map {
-      name => Try{RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = name)}
+  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[String]): Seq[RightGrantRepository] = {
+    rights map {
+      name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = name)
     }
-    // ... but a single failure will mark the whole operation as a failure
-    Try{allTry map {_.get}}
   }
 
-  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[String]): Try[Seq[RightGrantRepository]] = {
-    // all will be attempted...
-    val allTry = rights map {
-      name => Try{RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = name)}
+  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[String]): Seq[RightGrantRepository] = {
+    rights map {
+      name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = name)
     }
-    // ... but a single failure will mark the whole operation as a failure
-    Try{allTry map {_.get}}
   }
 
   override val autoSession = AutoSession
 
-  def deleteRightGrant(grantId: UUID): Try[Boolean] = {
+  def deleteRightGrant(grantId: UUID): Boolean = {
     ???
 //    RightGrantRepository.find(grantId) match {
 //      case None => Success(false)

@@ -18,7 +18,8 @@ INSERT INTO directory(name,description,config,org_id) VALUES
 INSERT INTO app(name,service_org_id,org_id) VALUES
   ('root-gestalt-framework',(SELECT id FROM org WHERE name = 'root'),(SELECT id FROM org WHERE name = 'root'));
 
-INSERT INTO account_store_mapping(app_id,store_type,account_store_id,default_account_store,default_group_store) VALUES (
+INSERT INTO account_store_mapping(description,app_id,store_type,account_store_id,default_account_store,default_group_store) VALUES (
+  'bootstrapped mapping between root org and full root directory gestalt-user-dir',
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   'DIRECTORY',
   (SELECT id FROM directory WHERE name = 'gestalt-user-dir'),
