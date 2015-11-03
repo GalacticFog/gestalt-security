@@ -30,9 +30,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   val DELETE_ACCOUNT = "deleteAccount"
   val CREATE_DIRECTORY = "createDirectory"
   val DELETE_DIRECTORY = "deleteDirectory"
+  val READ_DIRECTORY = "readDirectory"
   val CREATE_APP = "createApp"
   val DELETE_APP = "deleteApp"
-  val READ_DIRECTORY = "readDirectory"
 
   val NEW_ORG_OWNER_RIGHTS = Seq(
     CREATE_ORG,

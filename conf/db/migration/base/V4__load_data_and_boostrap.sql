@@ -64,7 +64,11 @@ INSERT INTO right_grant(app_id, group_id, grant_name) VALUES (
 ), (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),
-    'deleteDirectory'
+  'deleteDirectory'
+), (
+  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
+  (SELECT id FROM account_group WHERE name = 'admins'),
+    'readDirectory'
 ), (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),
