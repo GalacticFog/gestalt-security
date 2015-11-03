@@ -172,28 +172,29 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getOrgAccount(orgId: UUID, accountId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    UserAccountRepository.find(accountId) match {
+    AccountFactory.getAppAccount(appId = request.user.serviceAppId, accountId = accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+        message = "could not locate requested account in the organization",
+        developerMessage = "Could not locate the requested account in the organization. Make sure to use the account ID (not the username) and that the account is a member of the organization."
       )
     }
   }
 
   def getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    UserGroupRepository.find(groupId) match {
+    GroupFactory.getAppGroupMapping(appId = request.user.serviceAppId, groupId = groupId) match {
       case Some(group) => Ok(Json.toJson[GestaltGroup](group))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
-        message = "could not locate requested group",
-        developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the name."
+        message = "could not locate requested group in the organization",
+        developerMessage = "Could not locate the requested group in the organization. Make sure to use the group ID (not the name) and that the group is a member of the organization."
       )
     }
   }
 
   def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+    requireAuthorization(READ_DIRECTORY)
     UserAccountRepository.find(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => throw new ResourceNotFoundException(
@@ -212,6 +213,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId = request.user.serviceAppId) map {mapping => mapping: GestaltAccountStoreMapping}))
   }
 
+  // TODO
   def getAccountGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
     ???
     //    AccountFactory.getAppGrant(appId,username,grantName) match {
@@ -233,13 +235,34 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getDirAccount(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) {  implicit request =>
-    ???
+    requireAuthorization(READ_DIRECTORY)
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) => Ok(
+        Json.toJson(
+          AccountFactory.directoryLookup(dirId,username) match {
+            case Some(account) => Ok(Json.toJson[GestaltAccount](account))
+            case None => throw new ResourceNotFoundException(
+              resource = request.path,
+              message = "could not locate requested account in the directory",
+              developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+            )
+          }
+        )
+      )
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )
+    }
   }
 
+  // TODO
   def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) {  implicit request =>
     ???
   }
 
+  // TODO: WRONG: FINISH: this lists all accounts in any dir owned by the org... I only want the ones that are assigned to the org
   def rootOrgSync() = AuthenticatedAction(None) { implicit request =>
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
     val orgUsers = orgTree flatMap { org =>
@@ -265,6 +288,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ))
   }
 
+  // TODO: WRONG: FINISH: this lists all accounts in any dir owned by the org... I only want the ones that are assigned to the org
   def subOrgSync(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     GestaltOrgRepository.find(orgId) match {
       case Some(org) =>
@@ -314,6 +338,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  // TODO
   def listAppAccounts(appId: UUID) = AuthenticatedAction(None) { implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }))
@@ -325,6 +350,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  // TODO
   def listAccountRights(appId: UUID, username: String) = AuthenticatedAction(None) { implicit request =>
     AccountFactory.listAppGrants(appId,username) match {
       case Success(rights) => Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
@@ -336,12 +362,26 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
   }
 
-  def listOrgApps(orgId: UUID) = AuthenticatedAction(None) { implicit request =>
+  def listOrgApps(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
-  def listDirAccounts(dirId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request: Request[JsValue] =>
-    ???
+  def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) {  implicit request =>
+    requireAuthorization(READ_DIRECTORY)
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) => Ok(
+        Json.toJson(
+          AccountFactory.listByDirectoryId(dirId) map {
+            a => a: GestaltAccount
+          }
+        )
+      )
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )
+    }
   }
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
@@ -350,18 +390,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ) )
   }
 
-  // all groups in all directories contained in the account
   def listOrgGroupMappings(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    GestaltOrgRepository.find(orgId) match {
-      case Some(org) => Ok( Json.toJson[Seq[GestaltGroup]](
+    Ok( Json.toJson[Seq[GestaltGroup]](
         GroupFactory.listAppGroupMappings(appId = request.user.serviceAppId).map {g => g: GestaltGroup}
-      ) )
-      case None => throw new ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested org",
-        developerMessage = "Could not locate the requested organization. Make sure to use the organization ID and not the organization name."
-      )
-    }
+    ) )
   }
 
   def listAccountGroups(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
@@ -382,11 +414,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
 
   def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+    requireAuthorization(CREATE_ORG)
     val account = request.user.identity
     val accountId = account.id.asInstanceOf[UUID]
-    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
     OrgFactory.findByOrgId(parentOrgId) match {
-      case Some(parentOrg) if rights.exists(_.grantName == CREATE_ORG) =>
+      case Some(parentOrg) =>
         // TODO: this should be wrapped in a transaction
         val t = for {
           create <- Try { request.body.as[GestaltOrgCreate] }
@@ -426,10 +458,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           usersMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
         } yield Created(Json.toJson[GestaltOrg](newOrg))
         t.get
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "parent org does not exist",
@@ -439,11 +467,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def createAccountInOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId)).async(parse.json) { implicit request =>
-    val account = request.user.identity
+    requireAuthorization(CREATE_ACCOUNT)
     val serviceAppId = request.user.serviceAppId
-    val rights = RightGrantFactory.listRights(appId = serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
     OrgFactory.findByOrgId(parentOrgId) match {
-      case Some(parentOrg) if rights.exists(_.grantName == CREATE_ACCOUNT) =>
+      case Some(parentOrg) =>
         Future {
           val t = for {
             create <- Try{request.body.as[GestaltAccountCreateWithRights]}
@@ -452,10 +479,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           } yield Created(Json.toJson[GestaltAccount](newAccount))
           t.get
         }
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "parent org does not exist",
@@ -465,9 +488,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId)).async(parse.json) { implicit request =>
-    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    requireAuthorization(CREATE_APP)
     OrgFactory.findByOrgId(orgId) match {
-      case Some(org) if rights.exists(_.grantName == CREATE_APP) =>
+      case Some(org) =>
         Future {
           val t = for {
             create <- Try{request.body.as[GestaltAppCreate]}
@@ -476,10 +499,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           } yield Created(Json.toJson[GestaltApp](newApp))
           t.get
         }
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "org does not exist",
@@ -488,10 +507,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  // TODO
   def createOrgDirectory(orgId: UUID) = AuthenticatedAction(None)(parse.json) { implicit request =>
     ???
   }
 
+  // TODO
   def createAppAccount(appId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
     ???
   }
@@ -514,20 +535,26 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     //    )
   }
 
-  def createAccountStoreMapping() = AuthenticatedAction(None)(parse.json) {  implicit request =>
+  // TODO
+  def createAccountStoreMapping() = AuthenticatedAction(None)(parse.json) { implicit request =>
     ???
   }
 
-  def createGroupInOrg(orgId: UUID) = play.mvc.Results.TODO
+  // TODO
+  def createGroupInOrg(orgId: UUID) = AuthenticatedAction(None)(parse.json) { implicit request =>
+    ???
+  }
 
   ////////////////////////////////////////////////////////
   // Update methods
   ////////////////////////////////////////////////////////
 
+  // TODO
   def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
     ???
   }
 
+  // TODO
   def updateRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
     AccountFactory.updateAppGrant(appId,username,grantName,request.body) match {
       case Success(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
@@ -540,9 +567,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
 
   def deleteOrgById(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
-    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    requireAuthorization(DELETE_ORG)
     OrgFactory.findByOrgId(orgId) match {
-      case Some(org) if rights.exists(_.grantName == DELETE_ORG) && org.parent.isDefined =>
+      case Some(org) if org.parent.isDefined =>
         Future {
           GestaltOrgRepository.destroy(org)
         } map { _ => NoContent }
@@ -552,10 +579,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           message = "cannot delete root org",
           developerMessage = "It is not permissible to delete the root organization. Check that you specified the intended org id."
         )
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
         message = "org does not exist",
@@ -565,9 +588,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def deleteAppById(appId: java.util.UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
-    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    requireAuthorization(DELETE_APP)
     AppFactory.findByAppId(appId) match {
-      case Some(app) if rights.exists(_.grantName == DELETE_APP) && app.isServiceApp == false =>
+      case Some(app) if app.isServiceApp == false =>
         Future {
           GestaltAppRepository.destroy(app)
         } map { _ => NoContent }
@@ -577,10 +600,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           message = "cannot delete service app",
           developerMessage = "It is not permissible to delete the current service app for an organization. Verify that this is the app that you want to delete and select a new service app for the organization and try again, or delete the organization."
         )
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
         message = "app does not exist",
@@ -590,9 +609,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def disableAccount(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
-    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    requireAuthorization(DELETE_ACCOUNT)
     UserAccountRepository.find(accountId) match {
-      case Some(account) if rights.exists(_.grantName == DELETE_ACCOUNT) && account.disabled == false && account.id != request.user.identity.id =>
+      case Some(account) if account.disabled == false && account.id != request.user.identity.id =>
         Future {
           UserAccountRepository.save(account.copy(disabled = true))
         } map { _ => NoContent }
@@ -604,20 +623,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(account) if account.id != request.user.identity.id => throw new BadRequestException(
           resource = request.path,
           message = "cannot delete self",
-          developerMessage = "The authenticated account is the same as the account targetted by the delete operation. You cannot delete yourself. Get someone else to delete you."
+          developerMessage = "The authenticated account is the same as the account targeted by the delete operation. You cannot delete yourself. Get someone else to delete you."
         )
-      case Some(_) => throw new ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      )
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
-        message = "org does not exist",
-        developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it"
+        message = "account does not exist",
+        developerMessage = "Could not delete the target account because it does not exist or the provided credentials do not have rights to see it"
       )
     }
   }
 
+  // TODO
   def deleteRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
     AccountFactory.deleteAppGrant(appId,username,grantName) match {
       case Success(wasDeleted) => Ok(Json.toJson(DeleteResult(wasDeleted)))
@@ -625,9 +641,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  // TODO
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(None)(parse.json) {  implicit request =>
     ???
   }
 
+  private[this] def requireAuthorization[T](requiredRight: String)(implicit request: Security.AuthenticatedRequest[T,GestaltHeaderAuthentication.AccountWithOrgContext]) = {
+    val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    if ( ! rights.exists(r => r.grantName == requiredRight && r.grantValue.isEmpty) ) throw new ForbiddenAPIException(
+      message = "Forbidden",
+      developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+    )
+  }
 
 }

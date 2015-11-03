@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
+import play.api.mvc.Result
 import scalikejdbc._
 
 import scala.util.Try
@@ -25,6 +26,18 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
           from ${UserGroupRepository.as(grp)},${GroupMembershipRepository.as(axg)}
           where ${axg.accountId} = ${accountId} and ${axg.groupId} = ${grp.id}
       """.map(UserGroupRepository(grp)).list.apply()
+  }
+
+  def getAppGroupMapping(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    // TODO: needs to be optimized
+    val (grp, asm) = (
+      UserGroupRepository.syntax("grp"),
+      AccountStoreMappingRepository.syntax("asm")
+      )
+    sql"""select distinct ${grp.result.*}
+          from ${UserGroupRepository.as(grp)},${AccountStoreMappingRepository.as(asm)}
+          where ${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId} and ${grp.id} = ${groupId}
+      """.map(UserGroupRepository(grp)).list.apply().headOption
   }
 
   def listAppGroupMappings(appId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {

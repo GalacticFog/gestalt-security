@@ -20,6 +20,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     UserAccountRepository.findAllBy(sqls"dir_id=${dirId}")
   }
 
+  def directoryLookup(dirId: UUID, username: String): Option[UserAccountRepository] = {
+    UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
+  }
+
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
@@ -56,6 +60,19 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   }
 
   override val autoSession = AutoSession
+
+  def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    val a = UserAccountRepository.syntax("a")
+    sql"""select distinct ${a.result.*}
+          from ${UserAccountRepository.as(a)}
+          inner join (
+            select axg.account_id,asm.account_store_id from account_x_group as axg
+              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
+              where asm.app_id = ${appId}
+          ) as sub on ${a.id} = sub.account_id or ${a.dirId} = sub.account_store_id
+          where ${a.disabled} = false and ${a.id} = ${accountId}
+      """.map{UserAccountRepository(a)}.list.apply().headOption
+  }
 
   def listByAppId(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     val a = UserAccountRepository.syntax("a")
