@@ -237,18 +237,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getDirAccount(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) {  implicit request =>
     requireAuthorization(READ_DIRECTORY)
     GestaltDirectoryRepository.find(dirId) match {
-      case Some(dir) => Ok(
-        Json.toJson(
-          AccountFactory.directoryLookup(dirId,username) match {
-            case Some(account) => Ok(Json.toJson[GestaltAccount](account))
-            case None => throw new ResourceNotFoundException(
-              resource = request.path,
-              message = "could not locate requested account in the directory",
-              developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-            )
-          }
-        )
-      )
+      case Some(dir) =>
+        AccountFactory.directoryLookup(dirId,username) match {
+          case Some(account) => Ok(Json.toJson[GestaltAccount](account))
+          case None => throw new ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested account in the directory",
+            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+          )
+        }
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested directory",
