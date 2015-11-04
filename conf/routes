@@ -19,12 +19,13 @@ GET           /orgs/:orgId/orgs                                         controll
 GET           /orgs/:orgId/sync                                         controllers.RESTAPIController.subOrgSync(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
-POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.listOrgDirectories(orgId: java.util.UUID)
+POST          /orgs/:orgId/directories                                  controllers.RESTAPIController.createOrgDirectory(orgId: java.util.UUID)
 #
 POST          /orgs/:orgId/apps                                         controllers.RESTAPIController.createOrgApp(orgId: java.util.UUID)
 GET           /orgs/:orgId/apps                                         controllers.RESTAPIController.listOrgApps(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.getOrgAccountStores(orgId: java.util.UUID)
+POST          /orgs/:orgId/accountStores                                controllers.RESTAPIController.createOrgAccountStore(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/accounts                                     controllers.RESTAPIController.listOrgAccounts(orgId: java.util.UUID)
 GET           /orgs/:orgId/accounts/:accountId                          controllers.RESTAPIController.getOrgAccount(orgId: java.util.UUID, accountId: java.util.UUID)
@@ -51,7 +52,7 @@ POST          /directories/:dirId/accounts                              controll
 GET           /directories/:dirId/accounts/:username                    controllers.RESTAPIController.getDirAccountByUsername(dirId: java.util.UUID, username)
 #
 GET           /directories/:dirId/groups                                controllers.RESTAPIController.listDirGroups(dirId: java.util.UUID)
-#POST          /directories/:dirId/groups                                controllers.RESTAPIController.createDirGroup(dirId: java.util.UUID)
+POST          /directories/:dirId/groups                                controllers.RESTAPIController.createDirGroup(dirId: java.util.UUID)
 GET           /directories/:dirId/groups/:groupName                     controllers.RESTAPIController.getDirGroupByName(dirId: java.util.UUID, groupName)
 
 ##########################################

@@ -7,7 +7,7 @@ case class GestaltDirectoryRepository(
   name: String,
   description: Option[String] = None,
   orgId: Any,
-  config: Any) {
+  config: Option[String] = None) {
 
   def save()(implicit session: DBSession = GestaltDirectoryRepository.autoSession): GestaltDirectoryRepository = GestaltDirectoryRepository.save(this)(session)
 
@@ -30,7 +30,7 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
     name = rs.get(gdr.name),
     description = rs.get(gdr.description),
     orgId = rs.any(gdr.orgId),
-    config = rs.any(gdr.config)
+    config = rs.get(gdr.config)
   )
 
   val gdr = GestaltDirectoryRepository.syntax("gdr")
@@ -74,7 +74,7 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
     name: String,
     description: Option[String] = None,
     orgId: Any,
-    config: Any)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
+    config: Option[String] = None)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
     withSQL {
       insert.into(GestaltDirectoryRepository).columns(
         column.id,

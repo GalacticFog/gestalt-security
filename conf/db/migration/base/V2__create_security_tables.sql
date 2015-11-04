@@ -19,7 +19,7 @@ CREATE TABLE directory(
   name TEXT NOT NULL,
   description TEXT,
   org_id UUID NOT NULL REFERENCES org ON DELETE CASCADE,
-  config JSON NOT NULL,
+  config TEXT,
 
   UNIQUE (name,org_id)
 );

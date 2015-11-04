@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, ResourceNotFoundException, UnknownAPIException, BadRequestException}
-import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountCreateWithRights}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
@@ -37,6 +37,21 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )
   }
 
+  def getDefaultGroupStore(appId: UUID): Option[GestaltDirectoryRepository] = {
+    AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}") flatMap { asm =>
+      asm.storeType match {
+        case "GROUP" =>
+          throw new BadRequestException(
+            resource = s"/apps/${appId}",
+            message = "app is configured with an invalid default group store",
+            developerMessage = "App is configured with an invalid default group store. The store corresponds to a group, which cannot be used to store groups. The default group store for the app should be removed or changed to correspond to a directory."
+          )
+        case "DIRECTORY" =>
+          GestaltDirectoryRepository.find(asm.accountStoreId)
+      }
+    }
+  }
+
   def getDefaultAccountStore(appId: UUID): Either[GestaltDirectoryRepository,UserGroupRepository] = {
     AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}") match {
       case Some(asm) =>
@@ -60,6 +75,63 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           message = "app does not have a default account store",
           developerMessage = "Some operation attempted to use the app's default account store, but it does not have one. You will need to add one or avoid relying on its existence.")
     }
+  }
+
+  def createAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
+    if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType} and account_store_id = ${create.accountStoreId}").isDefined) {
+      throw new CreateConflictException(
+        resource = s"/apps/${appId}",
+        message = "mapping already exists",
+        developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
+      )
+    }
+    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${create.appId}").isDefined) {
+      throw new CreateConflictException(
+        resource = s"/apps/${appId}",
+        message = "default account store already set",
+        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
+      )
+    }
+    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${create.appId}").isDefined) {
+      throw new CreateConflictException(
+        resource = s"/apps/${appId}",
+        message = "default group store already set",
+        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
+      )
+    }
+    if (create.isDefaultGroupStore && create.storeType != DIRECTORY) {
+      throw new BadRequestException(
+        resource = s"/apps/${appId}",
+        message = "default group store must be an account store of type DIRECTORY",
+        developerMessage = "A default group store must correspond to an account store of type DIRECTORY."
+      )
+    }
+    create.storeType match {
+      case GROUP => if (GestaltDirectoryRepository.find(create.accountStoreId).isEmpty) {
+        throw new BadRequestException(
+          resource = s"/apps/${appId}",
+          message = "account store does not correspond to an existing directory",
+          developerMessage = "The account store indicates type DIRECTORY, but there is no directory with the given account store ID."
+        )
+      }
+      case DIRECTORY => if (UserGroupRepository.find(create.accountStoreId).isEmpty) {
+        throw new BadRequestException(
+          resource = s"/apps/${appId}",
+          message = "account store does not correspond to an existing group",
+          developerMessage = "The account store indicates type GROUP, but there is no group with the given account store ID."
+        )
+      }
+    }
+    AccountStoreMappingRepository.create(
+      id = UUID.randomUUID(),
+      appId = create.appId,
+      storeType = create.storeType.label,
+      accountStoreId = create.accountStoreId,
+      name = Some(create.name),
+      description = Some(create.description),
+      defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
+      defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
+    )
   }
 
   def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights)(implicit session: DBSession = autoSession): UserAccountRepository = {
@@ -129,11 +201,56 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-//  def findByAppName(orgId: UUID, appName: String): Try[GestaltAppRepository] = {
-//    GestaltAppRepository.findBy(sqls"org_id=${orgId} AND name=${appName}") map {Success.apply} getOrElse {
-//      Failure(ResourceNotFoundException("app","could not find specified application","Could not find specified application. Ensure that you are providing the application ID and the correct organization ID.")      )
-//    }
-//  }
+  def createGroupInApp(appId: UUID, create: GestaltGroupCreateWithRights)(implicit session: DBSession = autoSession): UserGroupRepository = {
+    DB localTx { implicit session =>
+      // have to find the default group store for the app
+      // then add the group to the directory
+      // then associate any rights specified in the request
+      if (GestaltAppRepository.find(appId).isEmpty) {
+        throw new ResourceNotFoundException(
+          resource = s"/apps/${appId}",
+          message = "could not create group in non-existent app",
+          developerMessage = "Could not create group in non-existent application. If this was created as a result of an attempt to create a group in an org, it suggests that the org is misconfigured."
+        )
+      }
+      val dirId = getDefaultGroupStore(appId) match {
+        case Some(dir) => dir.id.asInstanceOf[UUID]
+        case None => throw new BadRequestException(
+          resource = s"/apps/${appId}",
+          message = "specified app does not have a default group store",
+          developerMessage = "Specified app does not have a default group store. Please provide one or create the group directly in the desired directory."
+        )
+      }
+      if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/apps/${appId}",
+          message = "group name already exists",
+          developerMessage = "The default directory associated with this app already contains a group with the specified name."
+        )
+      }
+      val newGroup = UserGroupRepository.create(
+        id = UUID.randomUUID(),
+        dirId = dirId,
+        name = create.name,
+        disabled = false
+      )
+      // add grants
+      val newGroupId = newGroup.id.asInstanceOf[UUID]
+      create.rights foreach {
+        _.foreach { grant =>
+          RightGrantRepository.create(
+            grantId = UUID.randomUUID,
+            appId = appId,
+            groupId = Some(newGroupId),
+            accountId = None,
+            grantName = grant.grantName,
+            grantValue = grant.grantValue
+          )
+        }
+      }
+      newGroup
+    }
+  }
 
   def findServiceAppForOrg(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltAppRepository] = {
     val (a,o) = (

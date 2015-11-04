@@ -12,26 +12,36 @@ import scalikejdbc._
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
+  val SUPERUSER = "**"
+
   val CREATE_ORG = "createOrg"
   val DELETE_ORG = "deleteOrg"
   val CREATE_ACCOUNT = "createAccount"
   val DELETE_ACCOUNT = "deleteAccount"
+  val CREATE_GROUP = "createGroup"
+  val DELETE_GROUP = "deleteGroup"
   val CREATE_DIRECTORY = "createDirectory"
   val DELETE_DIRECTORY = "deleteDirectory"
   val READ_DIRECTORY = "readDirectory"
   val CREATE_APP = "createApp"
   val DELETE_APP = "deleteApp"
+  val CREATE_ACCOUNT_STORE_MAPPING = "createAccountStore"
+  val DELETE_ACCOUNT_STORE_MAPPING = "deleteAccountStore"
 
   val NEW_ORG_OWNER_RIGHTS = Seq(
     CREATE_ORG,
     DELETE_ORG,
     CREATE_ACCOUNT,
     DELETE_ACCOUNT,
+    CREATE_GROUP,
+    DELETE_GROUP,
     CREATE_DIRECTORY,
     DELETE_DIRECTORY,
+    READ_DIRECTORY,
     CREATE_APP,
     DELETE_APP,
-    READ_DIRECTORY
+    CREATE_ACCOUNT_STORE_MAPPING,
+    DELETE_ACCOUNT_STORE_MAPPING
   )
 
   def createSubOrgWithAdmin(parentOrg: GestaltOrgRepository, request: Security.AuthenticatedRequest[JsValue,AccountWithOrgContext])(implicit session: DBSession = autoSession): GestaltOrgRepository = {

@@ -45,37 +45,5 @@ INSERT INTO account_x_group(account_id,group_id) VALUES(
 INSERT INTO right_grant(app_id, group_id, grant_name) VALUES (
   (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
   (SELECT id FROM account_group WHERE name = 'admins'),
-    'createOrg'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-    'deleteOrg'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-  'createAccount'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-  'deleteAccount'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-    'createDirectory'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-  'deleteDirectory'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-    'readDirectory'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-    'createApp'
-), (
-  (SELECT id FROM app WHERE name = 'root-gestalt-framework'),
-  (SELECT id FROM account_group WHERE name = 'admins'),
-    'deleteApp'
+  '**'
 );
