@@ -203,7 +203,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   // TODO
-  def getAccountGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
+  def getAccountGrant(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(None) { implicit request =>
     ???
     //    AccountFactory.getAppGrant(appId,username,grantName) match {
     //      case Success(right) => Ok(Json.toJson[GestaltRightGrant](right))
@@ -370,9 +370,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  // TODO
-  def listAccountRights(appId: UUID, username: String) = AuthenticatedAction(None) { implicit request =>
-    val rights = AccountFactory.listAppGrants(appId,username)
+  def listAccountRights(appId: UUID, accountId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+    val rights = AccountFactory.listAppGrants(appId,accountId)
     Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
   }
 
@@ -516,15 +515,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     val serviceAppId = request.user.serviceAppId
     OrgFactory.findByOrgId(orgId) match {
       case Some(parentOrg) =>
-        val create = request.body.validate[GestaltAccountStoreMappingCreate] match {
-          case s: JsSuccess[GestaltAccountStoreMappingCreate] => s.get
+        val create = request.body.validate[GestaltOrgAccountStoreMappingCreate] match {
+          case s: JsSuccess[GestaltOrgAccountStoreMappingCreate] => s.get
           case e: JsError => throw new BadRequestException(
             resource = request.path,
             message = "invalid payload",
-            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountStoreMappingCreate"
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltOrgAccountStoreMappingCreate"
           )
         }
-        val newMapping = AppFactory.createAccountStoreMapping(appId = serviceAppId, create)
+        val newMapping = AppFactory.createOrgAccountStoreMapping(appId = serviceAppId, create)
         Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
@@ -655,9 +654,34 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  // TODO
-  def createAccountStoreMapping() = AuthenticatedAction(None)(parse.json) { implicit request =>
-    ???
+  def createAccountStoreMapping() = (new AuthenticatedActionBuilderAgainstRequest {
+    override def genOrgId[B](request: Request[B]): Option[UUID] = request.body match {
+      case json: JsValue => for {
+        appId <- (json \ "appId").asOpt[UUID]
+        app <- AppFactory.findByAppId(appId)
+      } yield app.orgId.asInstanceOf[UUID]
+      case _ => None
+    }}).apply(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.CREATE_ACCOUNT_STORE_MAPPING)
+    val create = request.body.validate[GestaltAccountStoreMappingCreate] match {
+      case s: JsSuccess[GestaltAccountStoreMappingCreate] => s.get
+      case e: JsError => throw new BadRequestException(
+        resource = request.path,
+        message = "invalid payload",
+        developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountStoreMappingCreate"
+      )
+    }
+    val appId = create.appId
+    AppFactory.findByAppId(appId) match {
+      case Some(app) =>
+        val newMapping = AppFactory.createAccountStoreMapping(appId = appId, create)
+        Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "app does not exist",
+        developerMessage = "Could not create account store mapping because the specified app does not exist."
+      )
+    }
   }
 
   ////////////////////////////////////////////////////////
@@ -670,9 +694,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   // TODO
-  def updateRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
-    val grant = AccountFactory.updateAppGrant(appId,username,grantName,request.body)
-    Ok(Json.toJson[GestaltRightGrant](grant))
+  def updateRightGrant(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
+    ???
+//    val grant = AccountFactory.updateAppGrant(appId,username,grantName,request.body)
+//    Ok(Json.toJson[GestaltRightGrant](grant))
   }
 
   ////////////////////////////////////////////////////////
@@ -747,9 +772,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   // TODO
-  def deleteRightGrant(appId: UUID, username: String, grantName: String) = AuthenticatedAction(None) { implicit request =>
-    val wasDeleted = AccountFactory.deleteAppGrant(appId,username,grantName)
-    Ok(Json.toJson(DeleteResult(wasDeleted)))
+  def deleteRightGrant(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(None) { implicit request =>
+    ???
+//    val wasDeleted = AccountFactory.deleteAppGrant(appId,username,grantName)
+//    Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
@@ -773,5 +799,29 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
   }
+
+  // TODO
+  def listOrgAccountRights(orgId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+
+  // TODO
+  def getOrgAccountGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
+  // TODO
+  def updateOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
+  // TODO
+  def deleteOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
+  // TODO
+  def listOrgGroupRights(orgId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+
+  // TODO
+  def getOrgGroupGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
+  // TODO
+  def updateOrgGroupRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
+  // TODO
+  def deleteOrgGroupRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
 
 }

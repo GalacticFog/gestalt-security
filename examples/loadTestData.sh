@@ -45,24 +45,23 @@ set +e
 read -r -d '' PAYLOAD <<EOM
 {
   "name": "",
-  "appId": "$2",
   "storeType": "GROUP",
-  "accountStoreId": "$3",
-  "description": "$4",
-  "isDefaultAccountStore": $5,
-  "isDefaultGroupStore": $6
+  "accountStoreId": "$2",
+  "description": "$3",
+  "isDefaultAccountStore": $4,
+  "isDefaultGroupStore": $5
 } 
 EOM
 set -e
 id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/accountStores | jq -r '.id')
 }
 
-createASM $gfOrgId   $gfAppId   $gfAdminGrpId  "mapping between galacticfog and gf-admins"                     false false
-createASM $gfeOrgId  $gfeAppId  $gfEngGrpId    "mapping between galacticfog.engineering and gf-engineers"      false false
-createASM $gfecOrgId $gfecAppId $gfEngGrpId    "mapping between galacticfog.engineering.core and gf-engineers" false false
-createASM $gfOrgId   $gfAppId   $gfUserGroupId "mapping between galacticfog and gf-users"                       true false
-createASM $gfeOrgId  $gfeAppId  $gfUserGroupId "mapping between galacticfog.engineering and gf-users"           true false
-createASM $gfecOrgId $gfecAppId $gfUserGroupId "mapping between galacticfog.engineering.core and gf-users"      true false
+createASM $gfOrgId   $gfAdminGrpId  "mapping between galacticfog and gf-admins"                     false false
+createASM $gfeOrgId  $gfEngGrpId    "mapping between galacticfog.engineering and gf-engineers"      false false
+createASM $gfecOrgId $gfEngGrpId    "mapping between galacticfog.engineering.core and gf-engineers" false false
+createASM $gfOrgId   $gfUserGroupId "mapping between galacticfog and gf-users"                       true false
+createASM $gfeOrgId  $gfUserGroupId "mapping between galacticfog.engineering and gf-users"           true false
+createASM $gfecOrgId $gfUserGroupId "mapping between galacticfog.engineering.core and gf-users"      true false
 
 set +e 
 read -r -d '' CHRIS <<EOM

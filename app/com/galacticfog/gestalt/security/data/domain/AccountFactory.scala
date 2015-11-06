@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.api.errors.ResourceNotFoundException
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
@@ -83,16 +84,15 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       """.map{UserAccountRepository(a)}.list.apply()
   }
 
-  def listAppGrants(appId: UUID, username: String)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
-    ???
-//    findAppUser(appId, username).headOption match {
-//      case Some(account) => Try{RightGrantFactory.listRights(appId, account.accountId)}
-//      case None => Failure(ResourceNotFoundException(
-//        resource = "account",
-//        message = "could not locate application account",
-//        developerMessage = "Could not location application account while looking up application grants. Ensure that the specified username corresponds to an account that is assigned to the specified application."
-//      ))
-//    }
+  def listAppGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
+    findAppUserByAccountId(appId, accountId) match {
+      case Some(account) => RightGrantFactory.listRights(appId, account.id.asInstanceOf[UUID])
+      case None => throw new ResourceNotFoundException(
+        resource = "account",
+        message = "could not locate application account",
+        developerMessage = "Could not location application account while looking up application grants. Ensure that the specified account ID corresponds to an account that is assigned to the specified application."
+      )
+    }
   }
 
   def getAppGrant(appId: UUID, username: String, grantName: String)(implicit session: DBSession = autoSession): RightGrantRepository = {
@@ -157,6 +157,23 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
           where ${a.disabled} = false
       """.map(UserAccountRepository(a)).list.apply()
+  }
+
+  private[this] def findAppUserByAccountId(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    val (a, axg, asm) = (
+      UserAccountRepository.syntax("a"),
+      GroupMembershipRepository.syntax("axg"),
+      AccountStoreMappingRepository.syntax("asm")
+      )
+    sql"""select distinct ${a.result.*}
+          from ${UserAccountRepository.as(a)} inner join (
+            select axg.account_id,asm.account_store_id,asm.store_type
+            from account_x_group as axg
+              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
+              where asm.app_id = ${appId}
+          ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
+          where ${a.id} = ${accountId} and ${a.disabled} = false
+      """.map(UserAccountRepository(a)).single().apply()
   }
 
   private[this] def findAppUsersByEmail(appId: UUID, email: String)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {

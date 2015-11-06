@@ -4,6 +4,7 @@ import java.util.{UUID, Base64}
 import com.galacticfog.gestalt.security.data.domain.{OrgFactory, AccountFactory, AppFactory, APICredentialFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import play.api.Logger
+import play.api.libs.json.JsValue
 import play.api.mvc._
 import play.api.mvc.Security._
 import scala.concurrent.Future
@@ -20,16 +21,15 @@ trait GestaltHeaderAuthentication {
     }
   }
 
-  class AuthenticatedActionBuilderAgainstRequest(maybeGenFQON: Option[PartialFunction[Request[_], Option[UUID]]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+  abstract class AuthenticatedActionBuilderAgainstRequest extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+    def genOrgId[B](request: Request[B]): Option[UUID]
+
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
-      AuthenticatedBuilder(authenticateAgainstOrg(maybeGenFQON flatMap {
-        _.applyOrElse(request, {_: Request[B] => None})
-      }), onUnauthorized = onUnauthorized).invokeBlock(request, block)
+      AuthenticatedBuilder(authenticateAgainstOrg(genOrgId(request)), onUnauthorized = onUnauthorized).invokeBlock(request, block)
     }
   }
 
   object AuthenticatedAction extends AuthenticatedActionBuilder {
-    def withRequest(genFQON: PartialFunction[Request[_], Option[UUID]]) = new AuthenticatedActionBuilderAgainstRequest(Some(genFQON))
     def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
     def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({rh: RequestHeader => genFQON}))
   }
