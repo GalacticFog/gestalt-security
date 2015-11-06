@@ -10,6 +10,7 @@ import com.galacticfog.gestalt.security.data.model.{UserGroupRepository, Gestalt
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
+  override val autoSession = AutoSession
 
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
     if (GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}").isDefined) {
@@ -89,7 +90,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     )
   }
 
-  def listByOrgId(orgId: UUID): List[GestaltDirectoryRepository] = {
+  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[GestaltDirectoryRepository] = {
     GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}")
   }
 

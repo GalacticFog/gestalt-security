@@ -90,7 +90,7 @@ object GestaltHeaderAuthentication {
       account <- UserAccountRepository.find(foundKey.accountId)
     } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
     lazy val maybeAccountAuth = for {
-      orgId <- orgId orElse OrgFactory.getRootOrg.map{_.id.asInstanceOf[UUID]}
+      orgId <- orgId
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       account <- AccountFactory.frameworkAuth(serviceAppId, request)

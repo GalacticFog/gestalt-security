@@ -26,7 +26,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Methods for extracting orgId for authentication from context
   ////////////////////////////////////////////////////////////////
 
+  def rootFromCredentials(requestHeader: RequestHeader): Option[UUID] = {
+    val keyRoot = for {
+      authToken <- GestaltHeaderAuthentication.extractAuthToken(requestHeader)
+      apiKey <- APICredentialFactory.findByAPIKey(authToken.username)
+    } yield apiKey.orgId.asInstanceOf[UUID]
+    keyRoot orElse rootOrg
+  }
+
   def fqonToOrgUUID(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {_.id.asInstanceOf[UUID]}
+
+  def rootOrg(): Option[UUID] = OrgFactory.getRootOrg() map {_.id.asInstanceOf[UUID]}
 
   def getParentOrg(childOrgId: UUID): Option[UUID] = for {
     org <- OrgFactory.findByOrgId(childOrgId)
@@ -72,7 +82,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(ar))
   }
 
-  def apiAuth() = AuthenticatedAction(None) { implicit request =>
+  def apiAuth() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
     val rights = RightGrantFactory.listRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -106,7 +116,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok("healthy")
   }
 
-  def getCurrentOrg() = AuthenticatedAction(None) { implicit request =>
+  def getCurrentOrg() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     OrgFactory.findByOrgId(request.user.orgId) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => throw new ResourceNotFoundException(
@@ -264,7 +274,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def rootOrgSync() = AuthenticatedAction(None) { implicit request =>
+  def rootOrgSync() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     // get the org tree
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
     val dirCache = GestaltDirectoryRepository.findAll map {
@@ -333,7 +343,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listAllOrgs() = AuthenticatedAction(None) { implicit request =>
+  def listAllOrgs() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     Ok(Json.toJson(OrgFactory.getOrgTree(request.user.orgId).map{o => o: GestaltOrg}))
   }
 
@@ -366,7 +376,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant}) )
   }
 
-  def listOrgDirectories(orgId: UUID) = AuthenticatedAction(None) { implicit request =>
+  def listOrgDirectories(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
   }
 
@@ -685,7 +695,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
         message = "org does not exist",
-        developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it"
+        developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it."
       )
     }
   }
@@ -706,7 +716,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
         message = "app does not exist",
-        developerMessage = "Could not delete the target app because it does not exist or the provided credentials do not have rights to see it"
+        developerMessage = "Could not delete the target app because it does not exist or the provided credentials do not have rights to see it."
       )
     }
   }
@@ -731,7 +741,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None =>  throw new ResourceNotFoundException(
         resource = request.path,
         message = "account does not exist",
-        developerMessage = "Could not delete the target account because it does not exist or the provided credentials do not have rights to see it"
+        developerMessage = "Could not delete the target account because it does not exist or the provided credentials do not have rights to see it."
       )
     }
   }
@@ -742,9 +752,18 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
-  // TODO
-  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) {  implicit request =>
-    ???
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
+    requireAuthorization(OrgFactory.DELETE_ACCOUNT_STORE_MAPPING)
+    AccountStoreMappingRepository.find(mapId) match {
+      case Some(asm) =>
+        AccountStoreMappingRepository.destroy(asm)
+        NoContent
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "account store mapping does not exist",
+        developerMessage = "Could not delete the target account store mapping because it does not exist or the provided credentials do not have rights to see it."
+      )
+    }
   }
 
   private[this] def requireAuthorization[T](requiredRight: String)(implicit request: Security.AuthenticatedRequest[T,GestaltHeaderAuthentication.AccountWithOrgContext]) = {
@@ -754,6 +773,5 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
   }
-
 
 }

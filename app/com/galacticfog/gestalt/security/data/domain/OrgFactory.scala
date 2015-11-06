@@ -1,12 +1,12 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
-import com.galacticfog.gestalt.security.api.GestaltOrgCreate
+import com.galacticfog.gestalt.security.api.{GestaltDirectoryCreate, GestaltOrgCreate}
 import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import play.api.Logger
-import play.api.libs.json.{JsResultException, JsValue}
+import play.api.libs.json.{Json, JsResultException, JsValue}
 import play.api.mvc.Security
 import scalikejdbc._
 
@@ -29,20 +29,10 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   val DELETE_ACCOUNT_STORE_MAPPING = "deleteAccountStore"
 
   val NEW_ORG_OWNER_RIGHTS = Seq(
-    CREATE_ORG,
-    DELETE_ORG,
-    CREATE_ACCOUNT,
-    DELETE_ACCOUNT,
-    CREATE_GROUP,
-    DELETE_GROUP,
-    CREATE_DIRECTORY,
-    DELETE_DIRECTORY,
-    READ_DIRECTORY,
-    CREATE_APP,
-    DELETE_APP,
-    CREATE_ACCOUNT_STORE_MAPPING,
-    DELETE_ACCOUNT_STORE_MAPPING
+    SUPERUSER
   )
+
+  override val autoSession = AutoSession
 
   def createSubOrgWithAdmin(parentOrg: GestaltOrgRepository, request: Security.AuthenticatedRequest[JsValue,AccountWithOrgContext])(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     import com.galacticfog.gestalt.security.api.json.JsonImports._
@@ -75,31 +65,35 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       // create system app
       val newApp = AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
       val newAppId = newApp.id.asInstanceOf[UUID]
-      // create admins group
-      val adminGroup = GroupFactory.create(name = newOrg.fqon + "-admins", dirId = account.dirId.asInstanceOf[UUID])
+      // create admins group, add user
+      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = account.dirId.asInstanceOf[UUID])
       val adminGroupId = adminGroup.id.asInstanceOf[UUID]
-      // create users group
-      val usersGroup = GroupFactory.create(name = newOrg.fqon + "-users", dirId = account.dirId.asInstanceOf[UUID])
-      val usersGroupId = usersGroup.id.asInstanceOf[UUID]
-      // put user in group
-      GroupMembershipRepository.create(accountId = accountId, groupId = adminGroupId)
-      GroupMembershipRepository.create(accountId = accountId, groupId = usersGroupId)
+      GroupFactory.addAccountToGroup(accountId = accountId, groupId = adminGroupId)
+      AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
       // give admin rights to new account
       RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = NEW_ORG_OWNER_RIGHTS)
-      // map group to new system app
-      AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
-      AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
+      // create users group in a new directory under this org, map new group
+      if (create.createDefaultUserGroup) {
+        val newDir = DirectoryFactory.createDirectory(orgId = newOrgId, GestaltDirectoryCreate(
+          name = newOrgId + "-user-dir",
+          description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
+          config = Some(Json.obj(
+            "directoryType" -> "native"
+          )
+        )))
+        val usersGroup = GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id.asInstanceOf[UUID])
+        val usersGroupId = usersGroup.id.asInstanceOf[UUID]
+        AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
+      }
       newOrg
     }
   }
 
-  override val autoSession = AutoSession
-
-  def getRootOrg(): Option[GestaltOrgRepository] = {
+  def getRootOrg()(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     GestaltOrgRepository.findBy(sqls"parent is null")
   }
 
-  def createOrg(parentOrg: GestaltOrgRepository, name: String): GestaltOrgRepository = {
+  def createOrg(parentOrg: GestaltOrgRepository, name: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
       if (name.contains('.')) throw new BadRequestException(resource = s"/orgs/${parentOrg.id}", message = "org names cannot contain periods", developerMessage = "Org names cannot contain periods.")
       val newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
       GestaltOrgRepository.create(
@@ -110,17 +104,17 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       )
     }
 
-  def findByFQON(fqon: String): Option[GestaltOrgRepository] = {
+  def findByFQON(fqon: String)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     Logger.info("looking for org with fqon = " + fqon)
     GestaltOrgRepository.findBy(sqls"fqon = ${fqon}")
   }
 
-  def findByOrgId(orgId: UUID): Option[GestaltOrgRepository] = {
+  def findByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     Logger.info("looking for org with org_id = " + orgId)
     GestaltOrgRepository.find(orgId)
   }
 
-  def getChildren(parentOrgId: UUID): Seq[GestaltOrgRepository] = GestaltOrgRepository.findAllBy(sqls"parent = ${parentOrgId}")
+  def getChildren(parentOrgId: UUID)(implicit session: DBSession = autoSession): Seq[GestaltOrgRepository] = GestaltOrgRepository.findAllBy(sqls"parent = ${parentOrgId}")
 
   def getOrgTree(rootId: UUID)(implicit session: DBSession = autoSession): Seq[GestaltOrgRepository] = {
     sql"""WITH RECURSIVE org_tree (id, name, fqon, level, parent)

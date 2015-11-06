@@ -13,7 +13,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
 
-  def create(orgId: UUID, name: String, isServiceOrg: Boolean) = {
+  def create(orgId: UUID, name: String, isServiceOrg: Boolean)(implicit session: DBSession = autoSession) = {
     GestaltAppRepository.create(
       id = UUID.randomUUID(),
       name = name,
@@ -22,11 +22,11 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )
   }
 
-  def listAccountStoreMappings(appId: UUID): Seq[AccountStoreMappingRepository] = {
+  def listAccountStoreMappings(appId: UUID)(implicit session: DBSession = autoSession): Seq[AccountStoreMappingRepository] = {
     AccountStoreMappingRepository.findAllBy(sqls"app_id = ${appId}")
   }
 
-  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean): AccountStoreMappingRepository = {
+  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
     AccountStoreMappingRepository.create(
       id = UUID.randomUUID,
       appId = appId,
@@ -37,7 +37,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )
   }
 
-  def getDefaultGroupStore(appId: UUID): Option[GestaltDirectoryRepository] = {
+  def getDefaultGroupStore(appId: UUID)(implicit session: DBSession = autoSession): Option[GestaltDirectoryRepository] = {
     AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}") flatMap { asm =>
       asm.storeType match {
         case "GROUP" =>
@@ -52,7 +52,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def getDefaultAccountStore(appId: UUID): Either[GestaltDirectoryRepository,UserGroupRepository] = {
+  def getDefaultAccountStore(appId: UUID)(implicit session: DBSession = autoSession): Either[GestaltDirectoryRepository,UserGroupRepository] = {
     AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}") match {
       case Some(asm) =>
         asm.storeType match {
@@ -78,45 +78,45 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
   }
 
   def createAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
-    if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType} and account_store_id = ${create.accountStoreId}").isDefined) {
+    if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType.label} and account_store_id = ${create.accountStoreId}").isDefined) {
       throw new CreateConflictException(
-        resource = s"/apps/${appId}",
+        resource = s"/apps/${appId}/accountStores",
         message = "mapping already exists",
         developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
       )
     }
     if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${create.appId}").isDefined) {
       throw new CreateConflictException(
-        resource = s"/apps/${appId}",
+        resource = s"/apps/${appId}/accountStores",
         message = "default account store already set",
         developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
       )
     }
     if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${create.appId}").isDefined) {
       throw new CreateConflictException(
-        resource = s"/apps/${appId}",
+        resource = s"/apps/${appId}/accountStores",
         message = "default group store already set",
         developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
       )
     }
     if (create.isDefaultGroupStore && create.storeType != DIRECTORY) {
       throw new BadRequestException(
-        resource = s"/apps/${appId}",
+        resource = s"/apps/${appId}/accountStores",
         message = "default group store must be an account store of type DIRECTORY",
         developerMessage = "A default group store must correspond to an account store of type DIRECTORY."
       )
     }
     create.storeType match {
-      case GROUP => if (GestaltDirectoryRepository.find(create.accountStoreId).isEmpty) {
+      case DIRECTORY => if (GestaltDirectoryRepository.find(create.accountStoreId).isEmpty) {
         throw new BadRequestException(
-          resource = s"/apps/${appId}",
+          resource = s"/apps/${appId}/accountStores",
           message = "account store does not correspond to an existing directory",
           developerMessage = "The account store indicates type DIRECTORY, but there is no directory with the given account store ID."
         )
       }
-      case DIRECTORY => if (UserGroupRepository.find(create.accountStoreId).isEmpty) {
+      case GROUP => if (UserGroupRepository.find(create.accountStoreId).isEmpty) {
         throw new BadRequestException(
-          resource = s"/apps/${appId}",
+          resource = s"/apps/${appId}/accountStores",
           message = "account store does not correspond to an existing group",
           developerMessage = "The account store indicates type GROUP, but there is no group with the given account store ID."
         )
@@ -195,7 +195,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
         _.id.asInstanceOf[UUID]
       }).distinct.map {
-        groupId => GroupMembershipRepository.create(accountId = newUserId, groupId = groupId)
+        groupId => GroupFactory.addAccountToGroup(accountId = newUserId, groupId = groupId)
       }
       newUser
     }
@@ -278,9 +278,11 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     """.map(GestaltAppRepository(a)).single.apply()
   }
 
-  def findByAppId(appId: UUID): Option[GestaltAppRepository] = GestaltAppRepository.find(appId)
+  def findByAppId(appId: UUID)(implicit session: DBSession = autoSession): Option[GestaltAppRepository] = {
+    GestaltAppRepository.find(appId)
+  }
 
-  def listByOrgId(orgId: UUID): List[GestaltAppRepository] = {
+  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[GestaltAppRepository] = {
     GestaltAppRepository.findAllBy(sqls"org_id=${orgId}")
   }
 

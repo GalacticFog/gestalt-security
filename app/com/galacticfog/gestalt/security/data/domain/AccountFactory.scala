@@ -12,11 +12,13 @@ import scalikejdbc._
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
-  def listByDirectoryId(dirId: UUID): List[UserAccountRepository] = {
+  override val autoSession = AutoSession
+
+  def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     UserAccountRepository.findAllBy(sqls"dir_id=${dirId}")
   }
 
-  def directoryLookup(dirId: UUID, username: String): Option[UserAccountRepository] = {
+  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
   }
 
@@ -30,7 +32,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def frameworkAuth(appId: UUID, request: RequestHeader): Option[UserAccountRepository] = {
+  def frameworkAuth(appId: UUID, request: RequestHeader)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val usernameAuths = for {
       token <- GestaltHeaderAuthentication.extractAuthToken(request).toSeq
       acc <- findAppUsersByUsername(appId,token.username)
@@ -45,7 +47,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     usernameAuths.headOption orElse emailAuths.headOption
   }
 
-  def authenticate(appId: UUID, authInfo: JsValue): Option[UserAccountRepository] = {
+  def authenticate(appId: UUID, authInfo: JsValue)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val authAttempt = for {
       username <- (authInfo \ "username").asOpt[String].toSeq
       password <- (authInfo \ "password").asOpt[String].toSeq
@@ -54,8 +56,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     } yield acc
     authAttempt.headOption // first success is good enough
   }
-
-  override val autoSession = AutoSession
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val a = UserAccountRepository.syntax("a")
@@ -83,7 +83,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       """.map{UserAccountRepository(a)}.list.apply()
   }
 
-  def listAppGrants(appId: UUID, username: String): Seq[RightGrantRepository] = {
+  def listAppGrants(appId: UUID, username: String)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     ???
 //    findAppUser(appId, username).headOption match {
 //      case Some(account) => Try{RightGrantFactory.listRights(appId, account.accountId)}
@@ -95,7 +95,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def getAppGrant(appId: UUID, username: String, grantName: String): RightGrantRepository = {
+  def getAppGrant(appId: UUID, username: String, grantName: String)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
 //    listAppGrants(appId, username) flatMap {
 //      _.filter(_.grantName == grantName) match {
@@ -109,7 +109,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def deleteAppGrant(appId: UUID, username: String, grantName: String): Boolean = {
+  def deleteAppGrant(appId: UUID, username: String, grantName: String)(implicit session: DBSession = autoSession): Boolean = {
     ???
 //    listAppGrants(appId: String, username: String) flatMap {
 //      _.filter(_.grantName == grantName) match {
@@ -121,7 +121,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def updateAppGrant(appId: UUID, username: String, grantName: String, body: JsValue): RightGrantRepository = {
+  def updateAppGrant(appId: UUID, username: String, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
 //    Try{body.as[GestaltRightGrant]} flatMap { newGrant =>
 //      if (newGrant.grantName != grantName) Failure(new RuntimeException("payload grantName does not match URL"))

@@ -14,15 +14,15 @@ rootOrgId=$(echo $AUTHRESP | jq -r '.orgId')
 adminGrpId=$(echo $AUTHRESP | jq -r '.groups | .[] | select(.name == "admins") | .id')
 
 # create galacticfog
-gfOrgId=$(echo '{"orgName": "galacticfog"}' | http $auth $security/orgs/$rootOrgId | jq -r '.id')
+gfOrgId=$(echo '{"orgName": "galacticfog", "createDefaultUserGroup": false}' | http $auth $security/orgs/$rootOrgId | jq -r '.id')
 gfAppId=$(http $auth $security/orgs/$gfOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering
-gfeOrgId=$(echo '{"orgName": "engineering"}' | http $auth $security/orgs/$gfOrgId | jq -r '.id')
+gfeOrgId=$(echo '{"orgName": "engineering", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfOrgId | jq -r '.id')
 gfeAppId=$(http $auth $security/orgs/$gfeOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering.core
-gfecOrgId=$(echo '{"orgName": "core"}' | http $auth $security/orgs/$gfeOrgId | jq -r '.id')
+gfecOrgId=$(echo '{"orgName": "core", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfeOrgId | jq -r '.id')
 gfecAppId=$(http $auth $security/orgs/$gfecOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 
@@ -30,6 +30,9 @@ gfDirId=$(echo '{"name": "galacticfog-people", "description": "directory of gala
     http $auth $security/orgs/$gfOrgId/directories |
     jq -r '.id')
 
+gfUserGroupId=$(echo '{"name": "gf-users"}' |
+    http $auth $security/directories/$gfDirId/groups |
+    jq -r '.id')
 gfEngGrpId=$(echo '{"name": "gf-engineers"}' |
     http $auth $security/directories/$gfDirId/groups |
     jq -r '.id')
@@ -47,23 +50,72 @@ read -r -d '' PAYLOAD <<EOM
   "accountStoreId": "$3",
   "description": "$4",
   "isDefaultAccountStore": $5,
-  "isDefaultGroupStore": $5
+  "isDefaultGroupStore": $6
 } 
 EOM
 set -e
-echo "$PAYLOAD" | http $auth $security/orgs/$1/accountStores
+id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/accountStores | jq -r '.id')
 }
 
-createASM $gfOrgId $gfAppId $gfAdminGrpId "mapping between galacticfog and gf-admins" true
-createASM $gfeOrgId $gfeAppId $gfEngGrpId "mapping between galacticfog.engineering and gf-engineers" true
-createASM $gfecOrgId $gfecAppId $gfEngGrpId "mapping between galacticfog.engineering.core and gf-engineers" true
+createASM $gfOrgId   $gfAppId   $gfAdminGrpId  "mapping between galacticfog and gf-admins"                     false false
+createASM $gfeOrgId  $gfeAppId  $gfEngGrpId    "mapping between galacticfog.engineering and gf-engineers"      false false
+createASM $gfecOrgId $gfecAppId $gfEngGrpId    "mapping between galacticfog.engineering.core and gf-engineers" false false
+createASM $gfOrgId   $gfAppId   $gfUserGroupId "mapping between galacticfog and gf-users"                       true false
+createASM $gfeOrgId  $gfeAppId  $gfUserGroupId "mapping between galacticfog.engineering and gf-users"           true false
+createASM $gfecOrgId $gfecAppId $gfUserGroupId "mapping between galacticfog.engineering.core and gf-users"      true false
 
-#{
-#  "username": "chris",
-#  "firstName": "Chris",
-#  "lastName": "Baker",
-#  "email": "chris@galacticfog.com",
-#  "phoneNumber": "",
-#  "groups": ["$gfEngGrpId","$gfAdminGrpId"],
-#  "credential": {"credentialType": "password", "password": "letmein"}
-#}
+set +e 
+read -r -d '' CHRIS <<EOM
+{
+  "username": "chris",
+  "firstName": "Chris",
+  "lastName": "Baker",
+  "email": "chris@galacticfog.com",
+  "phoneNumber": "",
+  "groups": ["$gfEngGrpId","$gfAdminGrpId"],
+  "credential": {"credentialType": "password", "password": "letmein"}
+}
+EOM
+read -r -d '' SY <<EOM
+{
+  "username": "sy",
+  "firstName": "Sy",
+  "lastName": "Smythe",
+  "email": "sy@galacticfog.com",
+  "phoneNumber": "",
+  "groups": ["$gfEngGrpId","$gfAdminGrpId"],
+  "credential": {"credentialType": "password", "password": "letmein"}
+}
+EOM
+read -r -d '' BRAD <<EOM
+{
+  "username": "brad",
+  "firstName": "Brad",
+  "lastName": "Futch",
+  "email": "brad@galacticfog.com",
+  "phoneNumber": "",
+  "groups": ["$gfEngGrpId","$gfAdminGrpId"],
+  "credential": {"credentialType": "password", "password": "letmein"}
+}
+EOM
+read -r -d '' ANTHONY <<EOM
+{
+  "username": "anthony",
+  "firstName": "Anthony",
+  "lastName": "Skipper",
+  "email": "anthony@galacticfog.com",
+  "phoneNumber": "",
+  "groups": ["$gfAdminGrpId"],
+  "credential": {"credentialType": "password", "password": "letmein"}
+}
+EOM
+set -e
+
+chrisId=$(echo "$CHRIS"   | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+syId=$(echo "$SY"      | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+bradId=$(echo "$BRAD"    | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+anthonyId=$(echo "$ANTHONY" | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+
+grantRight $gfOrgId   $gfAdminGrpId "**"
+grantRight $gfeOrgId  $gfEngGrpId   "**"
+grantRight $gfecOrgId $gfEngGrpId   "**"

@@ -8,21 +8,21 @@ import scalikejdbc._
 
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
-  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[String]): Seq[RightGrantRepository] = {
+  override val autoSession = AutoSession
+
+  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[String])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     rights map {
       name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = name)
     }
   }
 
-  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[String]): Seq[RightGrantRepository] = {
+  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[String])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     rights map {
       name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = name)
     }
   }
 
-  override val autoSession = AutoSession
-
-  def deleteRightGrant(grantId: UUID): Boolean = {
+  def deleteRightGrant(grantId: UUID)(implicit session: DBSession = autoSession): Boolean = {
     ???
 //    RightGrantRepository.find(grantId) match {
 //      case None => Success(false)

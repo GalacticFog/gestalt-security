@@ -47,24 +47,6 @@ resolvers ++= {
   } getOrElse(Seq())
 }
 
-credentials ++= {
-  (for {
-    realm <- sys.env.get("GESTALT_RESOLVER_REALM")
-    username <- sys.env.get("GESTALT_RESOLVER_USERNAME")
-    resolverUrlStr <- sys.env.get("GESTALT_RESOLVER_URL")
-    resolverUrl <- scala.util.Try{url(resolverUrlStr)}.toOption
-    password <- sys.env.get("GESTALT_RESOLVER_PASSWORD")
-  } yield {
-    Seq(Credentials(realm, resolverUrl.getHost, username, password))
-  }) getOrElse(Seq())
-}
-
-resolvers ++= {
-  sys.env.get("GESTALT_RESOLVER_URL") map {
-    url => Seq("gestalt-resolver" at url)
-  } getOrElse(Seq())
-}
-
 //
 // Adds project name to prompt like in a Play project
 //
