@@ -65,7 +65,7 @@ scalikejdbcSettings
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.2.0-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.2.0" withSources()
 )
 
 // ----------------------------------------------------------------------------
