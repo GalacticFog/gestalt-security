@@ -6,8 +6,15 @@ object SecureIdGenerator {
 
   val random = new SecureRandom()
 
+  val alpha36 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
   val alpha62 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
   val alpha64 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/+"
+
+  def genId36(len: Int) = {
+    val id = new StringBuilder(len)
+    (1 to len) foreach(_ => id += alpha36.charAt(random.nextInt(alpha36.size)))
+    id.toString
+  }
 
   def genId62(len: Int) = {
     val id = new StringBuilder(len)

@@ -3,96 +3,130 @@ package com.galacticfog.gestalt.security.data.model
 import scalikejdbc._
 
 case class UserGroupRepository(
-  groupId: String, 
-  groupName: String) {
+  id: Any,
+  dirId: Any,
+  name: String,
+  disabled: Boolean) {
 
   def save()(implicit session: DBSession = UserGroupRepository.autoSession): UserGroupRepository = UserGroupRepository.save(this)(session)
 
   def destroy()(implicit session: DBSession = UserGroupRepository.autoSession): Unit = UserGroupRepository.destroy(this)(session)
 
 }
-      
+
 
 object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
 
   override val schemaName = Some("public")
 
-  override val tableName = "user_group"
+  override val tableName = "account_group"
 
-  override val columns = Seq("group_id", "group_name")
+  override val columns = Seq("id", "dir_id", "name", "disabled")
 
   def apply(ugr: SyntaxProvider[UserGroupRepository])(rs: WrappedResultSet): UserGroupRepository = apply(ugr.resultName)(rs)
   def apply(ugr: ResultName[UserGroupRepository])(rs: WrappedResultSet): UserGroupRepository = new UserGroupRepository(
-    groupId = rs.get(ugr.groupId),
-    groupName = rs.get(ugr.groupName)
+    id = rs.any(ugr.id),
+    dirId = rs.any(ugr.dirId),
+    name = rs.get(ugr.name),
+    disabled = rs.get(ugr.disabled)
   )
-      
+
   val ugr = UserGroupRepository.syntax("ugr")
 
   override val autoSession = AutoSession
 
-  def find(groupId: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+  def find(id: Any)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
     withSQL {
-      select.from(UserGroupRepository as ugr).where.eq(ugr.groupId, groupId)
+      select.from(UserGroupRepository as ugr).where.eq(ugr.id, id)
     }.map(UserGroupRepository(ugr.resultName)).single.apply()
   }
-          
+
   def findAll()(implicit session: DBSession = autoSession): List[UserGroupRepository] = {
     withSQL(select.from(UserGroupRepository as ugr)).map(UserGroupRepository(ugr.resultName)).list.apply()
   }
-          
+
   def countAll()(implicit session: DBSession = autoSession): Long = {
-    withSQL(select(sqls"count(1)").from(UserGroupRepository as ugr)).map(rs => rs.long(1)).single.apply().get
+    withSQL(select(sqls.count).from(UserGroupRepository as ugr)).map(rs => rs.long(1)).single.apply().get
   }
-          
+
   def findBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
     withSQL {
-      select.from(UserGroupRepository as ugr).where.append(sqls"${where}")
+      select.from(UserGroupRepository as ugr).where.append(where)
     }.map(UserGroupRepository(ugr.resultName)).single.apply()
   }
-      
+
   def findAllBy(where: SQLSyntax)(implicit session: DBSession = autoSession): List[UserGroupRepository] = {
     withSQL {
-      select.from(UserGroupRepository as ugr).where.append(sqls"${where}")
+      select.from(UserGroupRepository as ugr).where.append(where)
     }.map(UserGroupRepository(ugr.resultName)).list.apply()
   }
-      
+
   def countBy(where: SQLSyntax)(implicit session: DBSession = autoSession): Long = {
     withSQL {
-      select(sqls"count(1)").from(UserGroupRepository as ugr).where.append(sqls"${where}")
+      select(sqls.count).from(UserGroupRepository as ugr).where.append(where)
     }.map(_.long(1)).single.apply().get
   }
-      
+
   def create(
-    groupId: String,
-    groupName: String)(implicit session: DBSession = autoSession): UserGroupRepository = {
+    id: Any,
+    dirId: Any,
+    name: String,
+    disabled: Boolean)(implicit session: DBSession = autoSession): UserGroupRepository = {
     withSQL {
       insert.into(UserGroupRepository).columns(
-        column.groupId,
-        column.groupName
+        column.id,
+        column.dirId,
+        column.name,
+        column.disabled
       ).values(
-        groupId,
-        groupName
+        id,
+        dirId,
+        name,
+        disabled
       )
     }.update.apply()
 
     UserGroupRepository(
-      groupId = groupId,
-      groupName = groupName)
+      id = id,
+      dirId = dirId,
+      name = name,
+      disabled = disabled)
   }
+
+  def batchInsert(entities: Seq[UserGroupRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
+    val params: Seq[Seq[(Symbol, Any)]] = entities.map(entity => 
+      Seq(
+        'id -> entity.id,
+        'dirId -> entity.dirId,
+        'name -> entity.name,
+        'disabled -> entity.disabled))
+        SQL("""insert into account_group(
+        id,
+        dir_id,
+        name,
+        disabled
+      ) values (
+        {id},
+        {dirId},
+        {name},
+        {disabled}
+      )""").batchByName(params: _*).apply()
+    }
 
   def save(entity: UserGroupRepository)(implicit session: DBSession = autoSession): UserGroupRepository = {
     withSQL {
       update(UserGroupRepository).set(
-        column.groupId -> entity.groupId,
-        column.groupName -> entity.groupName
-      ).where.eq(column.groupId, entity.groupId)
+        column.id -> entity.id,
+        column.dirId -> entity.dirId,
+        column.name -> entity.name,
+        column.disabled -> entity.disabled
+      ).where.eq(column.id, entity.id)
     }.update.apply()
     entity
   }
-        
+
   def destroy(entity: UserGroupRepository)(implicit session: DBSession = autoSession): Unit = {
-    withSQL { delete.from(UserGroupRepository).where.eq(column.groupId, entity.groupId) }.update.apply()
+    withSQL { delete.from(UserGroupRepository).where.eq(column.id, entity.id) }.update.apply()
   }
-        
+
 }

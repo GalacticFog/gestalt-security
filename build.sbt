@@ -4,34 +4,30 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "1.1.1"
-
-lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
-
-scalaVersion := "2.11.4"
+version := "1.2.0"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
-dockerBaseImage := "galacticfog.artifactoryonline.com/play-with-ssl-utils"
-
 dockerUpdateLatest := true
-
-dockerExposedPorts := Seq(9000)
 
 dockerRepository := Some("galacticfog.artifactoryonline.com")
 
-publishTo := Some("Artifactory Realm" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local")
+lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
+
+scalaVersion := "2.11.7"
 
 libraryDependencies ++= Seq(
   jdbc,
-  anorm,
   cache,
   ws
 )
 
 resolvers ++= Seq(
+  "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
   "snapshots" at "http://scala-tools.org/repo-snapshots",
-  "releases"  at "http://scala-tools.org/repo-releases")
+  "releases"  at "http://scala-tools.org/repo-releases",
+  "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
+)
 
 credentials ++= {
   (for {
@@ -56,54 +52,21 @@ resolvers ++= {
 //
 shellPrompt in ThisBuild := { state => "\033[0;36m" + Project.extract(state).currentRef.project + "\033[0m] " }
 
-// ----------------------------------------------------------------------------
-// This adds a new command to sbt: type 'flyway' to execute
-// 'flywayClean' and 'flywayMigrate' in sequence
-// ----------------------------------------------------------------------------
-lazy val FlywayRebuild = Command.command("flyway") { state =>
-	"flywayClean" :: "flywayMigrate" :: state
-}
-
-commands += FlywayRebuild
-
 lazy val GenDataModel = Command.command("generateModel") { state => 
- "scalikejdbcGenForce org GestaltOrgRepository" :: "scalikejdbcGenForce api_account APIAccountRepository" :: "scalikejdbcGenForce app AppRepository" :: "scalikejdbcGenForce user_account UserAccountRepository" :: "scalikejdbcGenForce right_grant RightGrantRepository" :: "scalikejdbcGenForce user_group UserGroupRepository" :: "scalikejdbcGenForce account_x_group GroupMembershipRepository" :: "scalikejdbcGenForce app_x_group AppGroupAssignmentRepository" :: "scalikejdbcGenForce app_x_account AppAccountAssignmentRepository" :: state
+ "scalikejdbcGenForce directory GestaltDirectoryRepository" :: "scalikejdbcGenForce org GestaltOrgRepository" :: "scalikejdbcGenForce account UserAccountRepository" :: "scalikejdbcGenForce account_group UserGroupRepository" :: "scalikejdbcGenForce account_store_type AccountStoreTypeRepository" :: "scalikejdbcGenForce account_store_mapping AccountStoreMappingRepository" :: "scalikejdbcGenForce account_x_group GroupMembershipRepository" :: "scalikejdbcGenForce app GestaltAppRepository" :: "scalikejdbcGenForce api_credential APICredentialRepository" :: "scalikejdbcGenForce right_grant RightGrantRepository" :: state
 }
 
 commands += GenDataModel
 
 scalikejdbcSettings
 
-
 // ----------------------------------------------------------------------------
 // Gestalt Security SDK
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.1.2" withSources()
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.2.0" withSources()
 )
-
-// ----------------------------------------------------------------------------
-// Apache Shiro
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.apache.shiro" % "shiro-core" % "1.2.3"
-
-
-// ----------------------------------------------------------------------------
-// ScalikeJDBC
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc" % "2.2.3"
-
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.3"   % "test"
-
-// ----------------------------------------------------------------------------
-// PostgreSQL
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
-
 
 // ----------------------------------------------------------------------------
 // Play JSON
@@ -111,6 +74,19 @@ libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 
 libraryDependencies += "com.typesafe.play" %% "play-json" % "2.4.0-M2"
 
+// ----------------------------------------------------------------------------
+// ScalikeJDBC
+// ----------------------------------------------------------------------------
+
+libraryDependencies += "org.scalikejdbc" %% "scalikejdbc" % "2.2.9"
+
+libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.9"   % "test"
+
+// ----------------------------------------------------------------------------
+// PostgreSQL
+// ----------------------------------------------------------------------------
+
+libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 
 // ----------------------------------------------------------------------------
 // Specs 2
@@ -122,27 +98,32 @@ libraryDependencies += "org.specs2" %% "specs2-junit" % "2.4.15" % "test"
 
 libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.15" % "test"
 
-
-// ----------------------------------------------------------------------------
-// Flyway
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "com.h2database" % "h2" % "1.4.186"
+libraryDependencies += "org.apache.commons" % "commons-dbcp2" % "2.1"
 
 libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
-
 
 // ----------------------------------------------------------------------------
 // Flyway Plugin Settings
 // ----------------------------------------------------------------------------
 
-seq(flywaySettings: _*)
-
-flywayUser := sys.env.get( "DB_USER" ) getOrElse "dbUser"
-
-flywayPassword := sys.env.get( "DB_PASSWORD" ) getOrElse "dbS3cr3t"
-
 val hostname = sys.env.get( "DB_HOST" ) getOrElse "localhost"
 
-flywayUrl := s"jdbc:postgresql://$hostname:5432/gestaltbilling"
+val dbname = sys.env.get( "DB_NAME" ) getOrElse "gestalt-security"
 
+lazy val migration = (project in file("migration")).
+  settings(flywaySettings: _*).
+  settings(
+    flywayUrl := s"jdbc:postgresql://$hostname:5432/$dbname",
+    flywayUser := sys.env.get( "DB_USER" ) getOrElse "dbUser",
+    flywayPassword := sys.env.get( "DB_PASSWORD" ) getOrElse "dbS3cr3t",
+    flywayLocations := Seq("filesystem:conf/db/migration"),
+    flywayTarget := "4",
+    flywayPlaceholders := Map(
+      "root_username" -> sys.env.get( "ROOT_USERNAME" ).getOrElse("admin"),
+      "root_password" -> sys.env.get( "ROOT_PASSWORD" ).getOrElse("letmein")
+    )
+  ).
+  settings(
+    libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
+  )
+  

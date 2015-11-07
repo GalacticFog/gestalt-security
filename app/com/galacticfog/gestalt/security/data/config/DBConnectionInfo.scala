@@ -1,11 +1,11 @@
 package com.galacticfog.gestalt.security.data.config
 
-abstract class DBConnectionInfo(
-    val host: String, 
-    val port: Int, 
-    val database: String, 
-    val user: String, 
-    val password: String) {
+abstract class DBConnectionInfo(val host: String,
+                                val port: Int,
+                                val database: String,
+                                val username: String,
+                                val password: String)
+{
   val driver: String
   val url: String
 }
@@ -20,7 +20,6 @@ object InMemH2JdbcInfo {
   def apply(host: String, port: Int, database: String, user: String, password: String) = 
     new InMemH2JdbcInfo(host, port, database, user, password)
 }
-
 
 class PostgresJdbcInfo(host: String, port: Int, database: String, user: String, password: String) 
     extends DBConnectionInfo(host, port, database, user, password) {
