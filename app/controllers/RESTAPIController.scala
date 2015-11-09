@@ -710,7 +710,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(org) if org.parent.isDefined =>
         Future {
           GestaltOrgRepository.destroy(org)
-        } map { _ => NoContent }
+        } map { _ => Ok(Json.toJson(DeleteResult(true))) }
       case Some(org) if org.parent.isEmpty =>
         throw new BadRequestException(
           resource = request.path,
@@ -731,7 +731,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(app) if app.isServiceApp == false =>
         Future {
           GestaltAppRepository.destroy(app)
-        } map { _ => NoContent }
+        } map { _ => Ok(Json.toJson(DeleteResult(true))) }
       case Some(app) if app.isServiceApp == true =>
         throw new BadRequestException(
           resource = request.path,
@@ -752,7 +752,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(account) if account.disabled == false && account.id != request.user.identity.id =>
         Future {
           UserAccountRepository.save(account.copy(disabled = true))
-        } map { _ => NoContent }
+        } map { acc => Ok(Json.toJson(DeleteResult(acc.disabled))) }
       case Some(account) if account.disabled == true => throw new BadRequestException(
           resource = request.path,
           message = "account has already been deleted",
@@ -775,15 +775,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def deleteRightGrant(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(None) { implicit request =>
     ???
 //    val wasDeleted = AccountFactory.deleteAppGrant(appId,username,grantName)
-//    Ok(Json.toJson(DeleteResult(wasDeleted)))
+//    Ok(Json.toJson(Json.toJson(DeleteResult(wasDeleted))))
   }
 
-  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_ACCOUNT_STORE_MAPPING)
     AccountStoreMappingRepository.find(mapId) match {
       case Some(asm) =>
-        AccountStoreMappingRepository.destroy(asm)
-        NoContent
+        Future{ AccountStoreMappingRepository.destroy(asm) } map {
+          _ => Ok(Json.toJson(DeleteResult(true)))
+        }
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "account store mapping does not exist",
