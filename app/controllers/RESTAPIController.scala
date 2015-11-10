@@ -184,7 +184,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     requireAuthorization(OrgFactory.READ_DIRECTORY)
-    UserAccountRepository.find(accountId) match {
+    AccountFactory.findEnabled(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => throw new ResourceNotFoundException(
         resource = request.path,

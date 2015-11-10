@@ -15,6 +15,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
 
+  def findEnabled(accountId: UUID): Option[UserAccountRepository] = {
+    UserAccountRepository.findBy(sqls"id = ${accountId} and disabled = false")
+  }
+
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     UserAccountRepository.findAllBy(sqls"dir_id=${dirId}")
   }

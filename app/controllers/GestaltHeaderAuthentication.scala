@@ -1,13 +1,15 @@
 package controllers
 
 import java.util.{UUID, Base64}
+import com.galacticfog.gestalt.security.api.errors.UnauthorizedAPIException
 import com.galacticfog.gestalt.security.data.domain.{OrgFactory, AccountFactory, AppFactory, APICredentialFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import play.api.Logger
-import play.api.libs.json.JsValue
+import play.api.libs.json.{Json, JsValue}
 import play.api.mvc._
 import play.api.mvc.Security._
 import scala.concurrent.Future
+import com.galacticfog.gestalt.security.api.json.JsonImports.exceptionFormat
 
 trait GestaltHeaderAuthentication {
 
@@ -36,7 +38,13 @@ trait GestaltHeaderAuthentication {
 
   def onUnauthorized(request: RequestHeader) = {
     Logger.info("rejected request from " + extractAuthToken(request).map{_.username})
-    Results.Unauthorized("").withHeaders(("WWW-Authenticate","Basic"))
+    Results.Unauthorized(
+      Json.toJson(UnauthorizedAPIException(
+        resource = request.path,
+        message = "Unauthorized",
+        developerMessage = "Not authenticated. Authentication credentials were missing or not valid for the resource context."
+      ))
+    ).withHeaders(("WWW-Authenticate","Basic"))
   }
 
 }
