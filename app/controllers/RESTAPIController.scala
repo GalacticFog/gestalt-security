@@ -48,7 +48,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getAccountOrg(accountId: UUID): Option[UUID] = {
     for {
-      account <- UserAccountRepository.find(accountId)
+      account <- AccountFactory.findEnabled(accountId)
       dir <- GestaltDirectoryRepository.find(account.dirId)
     } yield dir.orgId.asInstanceOf[UUID]
   }
@@ -186,6 +186,29 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(OrgFactory.READ_DIRECTORY)
     AccountFactory.findEnabled(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account",
+        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+      )
+    }
+  }
+
+  def updateAccount(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
+    // user can update their own account
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.UPDATE_ACCOUNT)
+    AccountFactory.findEnabled(accountId) match {
+      case Some(account) =>
+        val update = request.body.validate[GestaltAccountUpdate] match {
+          case s: JsSuccess[GestaltAccountUpdate] => s.get
+          case e: JsError => throw new BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountUpdate"
+          )
+        }
+        val newAccount = AccountFactory.updateAccount(account, update)
+        Ok(Json.toJson[GestaltAccount](newAccount))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested account",
@@ -432,7 +455,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def listAccountGroups(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
-    UserAccountRepository.find(accountId) match {
+    AccountFactory.findEnabled(accountId) match {
       case Some(account) => Ok( Json.toJson[Seq[GestaltGroup]](
         GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId).map {g => g: GestaltGroup}
       ) )
@@ -824,5 +847,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   // TODO
   def deleteOrgGroupRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+
 
 }

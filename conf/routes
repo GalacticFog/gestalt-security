@@ -47,6 +47,7 @@ DELETE        /orgs/:orgId/groups/:groupId/rights/:grantName            controll
 # accounts
 ##########################################
 GET           /accounts/:accountId                                      controllers.RESTAPIController.getAccount(accountId: java.util.UUID)
+PATCH         /accounts/:accountId                                      controllers.RESTAPIController.updateAccount(accountId: java.util.UUID)
 DELETE        /accounts/:accountId                                      controllers.RESTAPIController.disableAccount(accountId: java.util.UUID)
 GET           /accounts/:accountId/groups                               controllers.RESTAPIController.listAccountGroups(accountId: java.util.UUID)
 

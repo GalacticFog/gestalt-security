@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.ResourceNotFoundException
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
@@ -13,9 +14,10 @@ import scalikejdbc._
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
+
   override val autoSession = AutoSession
 
-  def findEnabled(accountId: UUID): Option[UserAccountRepository] = {
+  def findEnabled(accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     UserAccountRepository.findBy(sqls"id = ${accountId} and disabled = false")
   }
 
@@ -35,6 +37,22 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         Logger.warn("Unsupported password hash method: " + s)
         false
     }
+  }
+
+  def updateAccount(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
+    val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
+    val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
+    UserAccountRepository.save(
+      account.copy(
+        firstName = update.firstName getOrElse account.firstName,
+        lastName = update.lastName getOrElse account.lastName,
+        email = update.email getOrElse account.email,
+        username = update.username getOrElse account.username,
+        phoneNumber = update.phoneNumber orElse account.phoneNumber,
+        hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
+        secret = newpass getOrElse account.secret
+      )
+    )
   }
 
   def frameworkAuth(appId: UUID, request: RequestHeader)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {

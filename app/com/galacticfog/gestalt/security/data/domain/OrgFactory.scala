@@ -17,6 +17,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   val CREATE_ORG = "createOrg"
   val DELETE_ORG = "deleteOrg"
   val CREATE_ACCOUNT = "createAccount"
+  val UPDATE_ACCOUNT = "updateAccount"
   val DELETE_ACCOUNT = "deleteAccount"
   val CREATE_GROUP = "createGroup"
   val DELETE_GROUP = "deleteGroup"
