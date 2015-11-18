@@ -25,8 +25,26 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   override def overrideParameter: String = "_method"
 
   override def onError(request: RequestHeader, ex: Throwable) = {
-    Logger.info("got an error: " + ex.getMessage)
+    Logger.info("Global::onError: " + ex.getMessage)
     Future.successful(handleError(ex))
+  }
+
+  override def onBadRequest(request: RequestHeader, error: String) = {
+    Logger.info("Global::onBadRequest: " + error)
+    Future.successful(handleError(BadRequestException(
+      resource = request.path,
+      message = s"bad request: ${error}",
+      developerMessage = s"Bad request: ${error}"
+    )))
+  }
+
+  override def onHandlerNotFound(request: RequestHeader) = {
+    Logger.info(s"Global::onHandlerNotFound: ${request.path}")
+    Future.successful(handleError(ResourceNotFoundException(
+      resource = request.path,
+      message = s"resource/endpoint not found",
+      developerMessage = s"Resource/endpoint not found. Most likely a result of referencing a non-existent org by org name."
+    )))
   }
 
   override def onStart(app: Application): Unit = {
@@ -70,6 +88,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     }
   }
 
+
   private def handleError(e: Throwable): Result = {
     e.getCause match {
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound))
@@ -78,7 +97,9 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
       case conflict: CreateConflictException => Conflict(Json.toJson(conflict))
       case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown)) // not sure why this would happen, but if we have that level of info, might as well use it
-      case nope: Throwable => InternalServerError("")
+      case nope: Throwable => InternalServerError(Json.toJson(UnknownAPIException(
+        code = 500, resource = "", message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
+      )))
     }
   }
 

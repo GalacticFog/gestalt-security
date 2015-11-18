@@ -6,7 +6,8 @@ CREATE TABLE account(
   dir_id       UUID NOT NULL REFERENCES directory(id) ON DELETE CASCADE,
   username     CHARACTER VARYING(256) NOT NULL,
   email        CHARACTER VARYING(256) NOT NULL,
-  phone_number CHARACTER VARYING(15),
+  phone_number TEXT CHECK (phone_number ~ '^\+\d{10,15}$'),
+
   first_name   TEXT NOT NULL,
   last_name    TEXT NOT NULL,
   hash_method  TEXT NOT NULL,
@@ -15,7 +16,8 @@ CREATE TABLE account(
   disabled     BOOL NOT NULL,
 
   UNIQUE (dir_id,username),
-  UNIQUE (dir_id,email)
+  UNIQUE (dir_id,email),
+  UNIQUE (dir_id,phone_number)
 );
 
 -- ----------------------------------------------------------------------------

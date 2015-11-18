@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountUpdate}
-import com.galacticfog.gestalt.security.api.errors.ResourceNotFoundException
+import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
@@ -12,8 +12,26 @@ import play.api.libs.json.JsValue
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
+import scala.util.{Failure, Success, Try}
+import scala.util.matching.Regex
+
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
+  val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
+
+  def validatePhoneNumber(phoneNumber: String): Try[String] = {
+    Try {
+      val stripped = phoneNumber.replaceAll("[- ().]","")
+      E164_PHONE_NUMBER.findFirstIn(stripped) match {
+        case Some(validNumber) => validNumber
+        case None => throw new BadRequestException(
+          resource = "",
+          message = "badly formatted phoneNumber",
+          developerMessage = s"""Badly formatted phone number. Must match E.164 formatting."""
+        )
+      }
+    }
+  }
 
   override val autoSession = AutoSession
 
@@ -42,13 +60,45 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def updateAccount(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
+    val newPhoneNumber = update.phoneNumber map { pn =>
+      val t = validatePhoneNumber(pn)
+      t match {
+        case Success(canonicalPN) => canonicalPN
+        case Failure(ex) => ex match {
+          case br: BadRequestException => throw br.copy(
+            resource = s"/accounts/${account.id}"
+          )
+          case t: Throwable => throw t
+        }
+      }
+    }
+    val phoneNumber = if (! update.phoneNumber.isEmpty) {
+      val newPhoneNumber = update.phoneNumber map {pn =>
+        validatePhoneNumber(pn) match {
+          case Success(canonicalPN) =>
+            if (UserAccountRepository.findBy(sqls"phone_number = ${canonicalPN} and dir_id = ${account.dirId}").isDefined) {
+              throw new CreateConflictException(
+                resource = s"/accounts/${account.id}",
+                message = "phone number already exists",
+                developerMessage = "The provided phone number is already present in the directory containing the account."
+              )
+            }
+          case Failure(ex) => ex match {
+            case br: BadRequestException => throw br.copy(
+              resource = s"/accounts"
+            )
+            case t: Throwable => throw t
+          }
+        }
+      }
+    }
     UserAccountRepository.save(
       account.copy(
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
         email = update.email getOrElse account.email,
         username = update.username getOrElse account.username,
-        phoneNumber = update.phoneNumber orElse account.phoneNumber,
+        phoneNumber = newPhoneNumber orElse account.phoneNumber,
         hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
         secret = newpass getOrElse account.secret
       )

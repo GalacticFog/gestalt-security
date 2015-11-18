@@ -9,6 +9,9 @@ import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
 import scalikejdbc._
 
+import scala.util.{Success, Failure}
+import scala.util.matching.Regex
+
 object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
@@ -221,12 +224,34 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           developerMessage = "The default directory associated with this app already contains an account with the specified email address."
         )
       }
+      val phoneNumber = if (! create.phoneNumber.isEmpty) {
+        val newNumber = {
+          val t = AccountFactory.validatePhoneNumber(create.phoneNumber)
+          t match {
+            case Success(canonicalPN) => canonicalPN
+            case Failure(ex) => ex match {
+              case br: BadRequestException => throw br.copy(
+                resource = s"/accounts"
+              )
+              case t: Throwable => throw t
+            }
+          }
+        }
+        if (UserAccountRepository.findBy(sqls"phone_number = ${newNumber} and dir_id = ${dirId}").isDefined) {
+          throw new CreateConflictException(
+            resource = s"/directories/${dirId}",
+            message = "phone number already exists",
+            developerMessage = "The default directory associated with this app already contains an account with the specified phone number."
+          )
+        }
+        Some(newNumber)
+      } else None
       val newUser = UserAccountRepository.create(
         id = UUID.randomUUID(),
         dirId = dirId,
         username = create.username,
         email = create.email,
-        phoneNumber = if (create.phoneNumber.isEmpty) None else Some(create.phoneNumber),
+        phoneNumber = phoneNumber,
         firstName = create.firstName,
         lastName = create.lastName,
         hashMethod = "bcrypt",
