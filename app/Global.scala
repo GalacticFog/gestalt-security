@@ -1,6 +1,9 @@
+package app
+
 import com.galacticfog.gestalt.security.api.errors._
+import com.galacticfog.gestalt.security.data.SecurityServices
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
-import com.galacticfog.gestalt.security.data.domain.OrgFactory
+import com.galacticfog.gestalt.security.data.domain.{DefaultAccountStoreMappingServiceImpl, OrgFactory}
 import play.api._
 import org.flywaydb.core.Flyway
 import org.apache.commons.dbcp2.BasicDataSource
@@ -102,6 +105,10 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       )))
     }
   }
+
+  val services = SecurityServices(
+    accountStoreMappingService = new DefaultAccountStoreMappingServiceImpl
+  )
 
 }
 

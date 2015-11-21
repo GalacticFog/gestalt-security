@@ -2,6 +2,7 @@ package controllers
 
 import java.util.UUID
 
+import app.Global
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
@@ -58,7 +59,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   } yield dir.orgId.asInstanceOf[UUID]
 
   def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = for {
-    mapping <- AccountStoreMappingRepository.find(mapId)
+    mapping <- Global.services.accountStoreMappingService.find(mapId)
     app <- GestaltAppRepository.find(mapping.appId)
   } yield app.orgId.asInstanceOf[UUID]
 
