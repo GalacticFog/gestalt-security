@@ -16,6 +16,14 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
 
+  def delete(app: GestaltAppRepository)(implicit session: DBSession = autoSession) = {
+    GestaltAppRepository.destroy(app)
+  }
+
+  def find(appId: UUID)(implicit session: DBSession = autoSession) = {
+    GestaltAppRepository.find(appId)
+  }
+
   def create(orgId: UUID, name: String, isServiceOrg: Boolean)(implicit session: DBSession = autoSession) = {
     GestaltAppRepository.create(
       id = UUID.randomUUID(),

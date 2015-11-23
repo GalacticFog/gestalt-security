@@ -35,6 +35,14 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
   override val autoSession = AutoSession
 
+  def delete(org: GestaltOrgRepository)(implicit session: DBSession = autoSession) = {
+    GestaltOrgRepository.destroy(org)
+  }
+
+  def find(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
+    GestaltOrgRepository.find(orgId)
+  }
+
   def createSubOrgWithAdmin(parentOrg: GestaltOrgRepository, request: Security.AuthenticatedRequest[JsValue,AccountWithOrgContext])(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     import com.galacticfog.gestalt.security.api.json.JsonImports._
     DB localTx { implicit session =>

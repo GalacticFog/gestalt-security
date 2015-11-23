@@ -1,18 +1,58 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import com.galacticfog.gestalt.security.api.{GestaltGroupCreate, GestaltDirectoryCreate, GestaltPasswordCredential, GestaltAccountCreate}
-import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, BadRequestException, CreateConflictException, ResourceNotFoundException}
 import org.mindrot.jbcrypt.BCrypt
 import play.api.libs.json.Json
 import scalikejdbc._
 import java.util.UUID
-import com.galacticfog.gestalt.security.data.model.{UserGroupRepository, GestaltAppRepository, UserAccountRepository, GestaltDirectoryRepository}
+import com.galacticfog.gestalt.security.data.model._
+
+trait Directory {
+  def id: UUID
+  def name: String
+  def description: Option[String]
+  def orgId: UUID
+
+  def disableAccount(accountId: UUID)
+}
+
+case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
+  override def id: UUID = daoDir.id.asInstanceOf[UUID]
+  override def name: String = daoDir.name
+  override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
+  override def description: Option[String] = daoDir.description
+
+  override def disableAccount(accountId: UUID): Unit = {
+    AccountFactory.disableAccount(accountId)
+  }
+}
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
+  implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): Directory = {
+    daoDir.directoryType.toUpperCase match {
+      case "INTERNAL" => InternalDirectory(daoDir)
+      case _ => throw new BadRequestException(
+        resource = s"/directories/${daoDir.id}",
+        message = "invalid directory type",
+        developerMessage = "The requested directory has an unsupported directory type. Please ensure that you are running the latest version and contact support."
+      )
+    }
+
+  }
+
   override val autoSession = AutoSession
 
-  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
+  def find(dirId: UUID)(implicit session: DBSession = autoSession): Option[Directory] = {
+    GestaltDirectoryRepository.find(dirId) map {d => d:Directory}
+  }
+
+  def findAll(implicit session: DBSession = autoSession): List[Directory] = {
+    GestaltDirectoryRepository.findAll map {d => d:Directory}
+  }
+
+  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Directory = {
     if (GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}").isDefined) {
       throw new CreateConflictException(
         resource = s"/orgs/${orgId}/directories",
@@ -20,12 +60,36 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         developerMessage = "The org already contains a directory with the specified name."
       )
     }
+    val directoryType = {
+      create.config flatMap {c => (c \ "directoryType").asOpt[String]} match {
+        case None =>
+          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER('INTERNAL')") match {
+            case None => throw new UnknownAPIException(
+              code = 500,
+              resource = s"/orgs/${orgId}/directories",
+              message = "default directory type INTERNAL not found",
+              developerMessage = "A directory type not specified during directory create request, and the default directory type was not available."
+            )
+            case Some(dirType) => dirType.name.toUpperCase
+          }
+        case Some(dirType) =>
+          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${dirType})") match {
+            case None => throw new BadRequestException(
+              resource = s"/orgs/${orgId}/directories",
+              message = "directory type not valid",
+              developerMessage = "During directory creation, the requested directory type was not valid."
+            )
+            case Some(dirType) => dirType.name.toUpperCase
+          }
+      }
+    }
     GestaltDirectoryRepository.create(
       id = UUID.randomUUID(),
       orgId = orgId,
       name = create.name,
       description = create.description,
-      config = create.config map {_.toString}
+      config = create.config map {_.toString},
+      directoryType = directoryType
     )
   }
 
@@ -90,8 +154,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     )
   }
 
-  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[GestaltDirectoryRepository] = {
-    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}")
+  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[Directory] = {
+    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}") map {d => d:Directory}
   }
 
 }

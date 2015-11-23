@@ -35,6 +35,17 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val autoSession = AutoSession
 
+  def disableAccount(accountId: UUID)(implicit session: DBSession = autoSession): Unit = {
+    val column = UserAccountRepository.column
+    withSQL {
+      update(UserAccountRepository).set(column.disabled -> true).where.eq(column.id, accountId)
+    }.update().apply()
+  }
+
+  def find(accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    UserAccountRepository.find(accountId)
+  }
+
   def findEnabled(accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     UserAccountRepository.findBy(sqls"id = ${accountId} and disabled = false")
   }

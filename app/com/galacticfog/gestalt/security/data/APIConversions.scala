@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.data.domain.OrgFactory
+import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, Directory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
 
 object APIConversions {
@@ -15,7 +15,7 @@ object APIConversions {
       lastName = uar.lastName,
       email = uar.email,
       phoneNumber  = uar.phoneNumber getOrElse "",
-      directory = GestaltDirectoryRepository.find(uar.dirId).get
+      directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get
     )
   }
 
@@ -70,12 +70,12 @@ object APIConversions {
     )
   }
 
-  implicit def dirModelToApi(dir: GestaltDirectoryRepository): GestaltDirectory = {
+  implicit def dirModelToApi(dir: Directory): GestaltDirectory = {
     GestaltDirectory(
-      id = dir.id.asInstanceOf[UUID],
+      id = dir.id,
       name = dir.name,
       description = dir.description getOrElse "",
-      orgId = dir.orgId.asInstanceOf[UUID]
+      orgId = dir.orgId
     )
   }
 

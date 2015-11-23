@@ -7,7 +7,6 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
-import org.postgresql.util.PGobject
 import play.api.libs.json.{JsSuccess, JsError, JsValue, Json}
 import play.api._
 import play.api.mvc._
@@ -17,11 +16,12 @@ import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 import scala.concurrent.Future
-import scala.util.{Try, Failure}
 
 case class SecurityControllerInitializationError(msg: String) extends RuntimeException(msg)
 
 object RESTAPIController extends Controller with GestaltHeaderAuthentication {
+
+  val services = Global.services
 
   ////////////////////////////////////////////////////////////////
   // Methods for extracting orgId for authentication from context
@@ -50,17 +50,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAccountOrg(accountId: UUID): Option[UUID] = {
     for {
       account <- AccountFactory.findEnabled(accountId)
-      dir <- GestaltDirectoryRepository.find(account.dirId)
-    } yield dir.orgId.asInstanceOf[UUID]
+      dir <- DirectoryFactory.find(account.dirId.asInstanceOf[UUID])
+    } yield dir.id
   }
 
   def getOrgFromDirectory(dirId: UUID): Option[UUID] = for {
-    dir <- GestaltDirectoryRepository.find(dirId)
-  } yield dir.orgId.asInstanceOf[UUID]
+    dir <- DirectoryFactory.find(dirId)
+  } yield dir.id
 
   def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = for {
-    mapping <- Global.services.accountStoreMappingService.find(mapId)
-    app <- GestaltAppRepository.find(mapping.appId)
+    mapping <- services.accountStoreMappingService.find(mapId)
+    app <- AppFactory.find(mapping.appId.asInstanceOf[UUID])
   } yield app.orgId.asInstanceOf[UUID]
 
   ////////////////////////////////////////////////////////
@@ -172,7 +172,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def getOrgGroup(orgId: UUID, groupId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     GroupFactory.getAppGroupMapping(appId = request.user.serviceAppId, groupId = groupId) match {
       case Some(group) => Ok(Json.toJson[GestaltGroup](group))
       case None => throw new ResourceNotFoundException(
@@ -195,7 +195,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateAccount(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
+  def updateAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.UPDATE_ACCOUNT)
     AccountFactory.findEnabled(accountId) match {
@@ -222,7 +222,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId) map {mapping => mapping: GestaltAccountStoreMapping}))
   }
 
-  def getOrgAccountStores(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def getOrgAccountStores(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId = request.user.serviceAppId) map {mapping => mapping: GestaltAccountStoreMapping}))
   }
 
@@ -236,7 +236,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getDirectory(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         Ok(Json.toJson[GestaltDirectory](dir))
       case None => throw new ResourceNotFoundException(
@@ -249,7 +249,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
     requireAuthorization(OrgFactory.READ_DIRECTORY)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         AccountFactory.directoryLookup(dirId,username) match {
           case Some(account) => Ok(Json.toJson[GestaltAccount](account))
@@ -269,7 +269,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
     requireAuthorization(OrgFactory.READ_DIRECTORY)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         GroupFactory.directoryLookup(dirId,groupName) match {
           case Some(group) => Ok(Json.toJson[GestaltGroup](group))
@@ -288,7 +288,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
-    AccountStoreMappingRepository.find(mapId) match {
+    services.accountStoreMappingService.find(mapId) match {
       case Some(asm) => Ok(Json.toJson[GestaltAccountStoreMapping](asm))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
@@ -301,7 +301,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def rootOrgSync() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     // get the org tree
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
-    val dirCache = GestaltDirectoryRepository.findAll map {
+    val dirCache = DirectoryFactory.findAll map {
       dir => (dir.id.asInstanceOf[UUID], dir)
     } toMap
     val orgUsers = (orgTree flatMap {
@@ -329,11 +329,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ))
   }
 
-  def subOrgSync(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    GestaltOrgRepository.find(orgId) match {
+  def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    OrgFactory.find(orgId) match {
       case Some(org) =>
         val orgTree = OrgFactory.getOrgTree(org.id.asInstanceOf[UUID])
-        val dirCache = GestaltDirectoryRepository.findAll map {
+        val dirCache = DirectoryFactory.findAll map {
           dir => (dir.id.asInstanceOf[UUID], dir)
         } toMap
         val orgUsers = (orgTree flatMap {
@@ -371,8 +371,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(OrgFactory.getOrgTree(request.user.orgId).map{o => o: GestaltOrg}))
   }
 
-  def listOrgTree(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    GestaltOrgRepository.find(orgId) match {
+  def listOrgTree(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    OrgFactory.find(orgId) match {
       case Some(org) =>
         Ok(Json.toJson(OrgFactory.getOrgTree(org.id.asInstanceOf[UUID]).map{o => o: GestaltOrg}))
       case None => throw new ResourceNotFoundException(
@@ -409,7 +409,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) {  implicit request =>
     requireAuthorization(OrgFactory.READ_DIRECTORY)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) => Ok(
         Json.toJson(
           AccountFactory.listByDirectoryId(dirId) map {
@@ -425,9 +425,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listDirGroups(dirId: java.util.UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def listDirGroups(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
     requireAuthorization(OrgFactory.READ_DIRECTORY)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) => Ok(
         Json.toJson(
         GroupFactory.listByDirectoryId(dirId) map {
@@ -455,7 +455,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ) )
   }
 
-  def listAccountGroups(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def listAccountGroups(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     AccountFactory.findEnabled(accountId) match {
       case Some(account) => Ok( Json.toJson[Seq[GestaltGroup]](
         GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId).map {g => g: GestaltGroup}
@@ -534,7 +534,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createOrgAccountStore(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+  def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(OrgFactory.CREATE_ACCOUNT_STORE_MAPPING)
     val serviceAppId = request.user.serviceAppId
     OrgFactory.findByOrgId(orgId) match {
@@ -636,7 +636,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def createDirAccount(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
     requireAuthorization(OrgFactory.CREATE_ACCOUNT)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         val create = request.body.validate[GestaltAccountCreate] match {
           case s: JsSuccess[GestaltAccountCreate] => s.get
@@ -656,9 +656,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createDirGroup(dirId: java.util.UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
+  def createDirGroup(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
     requireAuthorization(OrgFactory.CREATE_GROUP)
-    GestaltDirectoryRepository.find(dirId) match {
+    DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         val create = request.body.validate[GestaltGroupCreate] match {
           case s: JsSuccess[GestaltGroupCreate] => s.get
@@ -728,12 +728,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Delete methods
   ////////////////////////////////////////////////////////
 
-  def deleteOrgById(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
+  def deleteOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_ORG)
     OrgFactory.findByOrgId(orgId) match {
       case Some(org) if org.parent.isDefined =>
         Future {
-          GestaltOrgRepository.destroy(org)
+          OrgFactory.delete(org)
         } map { _ => Ok(Json.toJson(DeleteResult(true))) }
       case Some(org) if org.parent.isEmpty =>
         throw new BadRequestException(
@@ -749,12 +749,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def deleteAppById(appId: java.util.UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
+  def deleteAppById(appId: UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_APP)
     AppFactory.findByAppId(appId) match {
       case Some(app) if app.isServiceApp == false =>
         Future {
-          GestaltAppRepository.destroy(app)
+          AppFactory.delete(app)
         } map { _ => Ok(Json.toJson(DeleteResult(true))) }
       case Some(app) if app.isServiceApp == true =>
         throw new BadRequestException(
@@ -770,13 +770,18 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def disableAccount(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
+  def disableAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_ACCOUNT)
-    UserAccountRepository.find(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) if account.disabled == false && account.id != request.user.identity.id =>
         Future {
-          UserAccountRepository.save(account.copy(disabled = true))
-        } map { acc => Ok(Json.toJson(DeleteResult(acc.disabled))) }
+          DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
+            case None => InternalServerError("could not locate directory associated with account")
+            case Some(dir) =>
+              dir.disableAccount(account.id.asInstanceOf[UUID])
+              Ok(Json.toJson(DeleteResult(true)))
+          }
+        }
       case Some(account) if account.disabled == true => throw new BadRequestException(
           resource = request.path,
           message = "account has already been deleted",
@@ -804,7 +809,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_ACCOUNT_STORE_MAPPING)
-    AccountStoreMappingRepository.find(mapId) match {
+    services.accountStoreMappingService.find(mapId) match {
       case Some(asm) =>
         Future{ AccountStoreMappingRepository.destroy(asm) } map {
           _ => Ok(Json.toJson(DeleteResult(true)))
@@ -826,28 +831,28 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   // TODO
-  def listOrgAccountRights(orgId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+  def listOrgAccountRights(orgId: UUID, accountId: UUID) = play.mvc.Results.TODO
 
   // TODO
-  def getOrgAccountGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def getOrgAccountGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
   // TODO
-  def updateOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def updateOrgAccountRightGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
   // TODO
-  def deleteOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def deleteOrgAccountRightGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
   // TODO
-  def listOrgGroupRights(orgId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+  def listOrgGroupRights(orgId: UUID, accountId: UUID) = play.mvc.Results.TODO
 
   // TODO
-  def getOrgGroupGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def getOrgGroupGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
   // TODO
-  def updateOrgGroupRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def updateOrgGroupRightGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
   // TODO
-  def deleteOrgGroupRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def deleteOrgGroupRightGrant(orgId: UUID, accountId: UUID, grantName: String) = play.mvc.Results.TODO
 
 
 }
