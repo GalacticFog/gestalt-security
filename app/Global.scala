@@ -34,20 +34,20 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
   override def onBadRequest(request: RequestHeader, error: String) = {
     Logger.info("Global::onBadRequest: " + error)
-    Future.successful(handleError(BadRequestException(
+    Future.successful(BadRequest(Json.toJson(BadRequestException(
       resource = request.path,
       message = s"bad request: ${error}",
       developerMessage = s"Bad request: ${error}"
-    )))
+    ))))
   }
 
   override def onHandlerNotFound(request: RequestHeader) = {
     Logger.info(s"Global::onHandlerNotFound: ${request.path}")
-    Future.successful(handleError(ResourceNotFoundException(
+    Future.successful(NotFound(Json.toJson(ResourceNotFoundException(
       resource = request.path,
       message = s"resource/endpoint not found",
-      developerMessage = s"Resource/endpoint not found. Most likely a result of referencing a non-existent org by org name."
-    )))
+      developerMessage = s"Resource/endpoint not found after authentication."
+    ))))
   }
 
   override def onStart(app: Application): Unit = {
@@ -100,7 +100,9 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
       case conflict: CreateConflictException => Conflict(Json.toJson(conflict))
       case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown)) // not sure why this would happen, but if we have that level of info, might as well use it
-      case nope: Throwable => InternalServerError(Json.toJson(UnknownAPIException(
+      case nope: Throwable =>
+        nope.printStackTrace()
+        InternalServerError(Json.toJson(UnknownAPIException(
         code = 500, resource = "", message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
       )))
     }
