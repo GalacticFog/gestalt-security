@@ -6,7 +6,8 @@ case class UserGroupRepository(
   id: Any,
   dirId: Any,
   name: String,
-  disabled: Boolean) {
+  disabled: Boolean,
+  parentOrg: Option[Any] = None) {
 
   def save()(implicit session: DBSession = UserGroupRepository.autoSession): UserGroupRepository = UserGroupRepository.save(this)(session)
 
@@ -21,14 +22,15 @@ object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
 
   override val tableName = "account_group"
 
-  override val columns = Seq("id", "dir_id", "name", "disabled")
+  override val columns = Seq("id", "dir_id", "name", "disabled", "parent_org")
 
   def apply(ugr: SyntaxProvider[UserGroupRepository])(rs: WrappedResultSet): UserGroupRepository = apply(ugr.resultName)(rs)
   def apply(ugr: ResultName[UserGroupRepository])(rs: WrappedResultSet): UserGroupRepository = new UserGroupRepository(
     id = rs.any(ugr.id),
     dirId = rs.any(ugr.dirId),
     name = rs.get(ugr.name),
-    disabled = rs.get(ugr.disabled)
+    disabled = rs.get(ugr.disabled),
+    parentOrg = rs.anyOpt(ugr.parentOrg)
   )
 
   val ugr = UserGroupRepository.syntax("ugr")
@@ -71,18 +73,21 @@ object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
     id: Any,
     dirId: Any,
     name: String,
-    disabled: Boolean)(implicit session: DBSession = autoSession): UserGroupRepository = {
+    disabled: Boolean,
+    parentOrg: Option[Any] = None)(implicit session: DBSession = autoSession): UserGroupRepository = {
     withSQL {
       insert.into(UserGroupRepository).columns(
         column.id,
         column.dirId,
         column.name,
-        column.disabled
+        column.disabled,
+        column.parentOrg
       ).values(
         id,
         dirId,
         name,
-        disabled
+        disabled,
+        parentOrg
       )
     }.update.apply()
 
@@ -90,7 +95,8 @@ object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
       id = id,
       dirId = dirId,
       name = name,
-      disabled = disabled)
+      disabled = disabled,
+      parentOrg = parentOrg)
   }
 
   def batchInsert(entities: Seq[UserGroupRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -99,17 +105,20 @@ object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
         'id -> entity.id,
         'dirId -> entity.dirId,
         'name -> entity.name,
-        'disabled -> entity.disabled))
+        'disabled -> entity.disabled,
+        'parentOrg -> entity.parentOrg))
         SQL("""insert into account_group(
         id,
         dir_id,
         name,
-        disabled
+        disabled,
+        parent_org
       ) values (
         {id},
         {dirId},
         {name},
-        {disabled}
+        {disabled},
+        {parentOrg}
       )""").batchByName(params: _*).apply()
     }
 
@@ -119,7 +128,8 @@ object UserGroupRepository extends SQLSyntaxSupport[UserGroupRepository] {
         column.id -> entity.id,
         column.dirId -> entity.dirId,
         column.name -> entity.name,
-        column.disabled -> entity.disabled
+        column.disabled -> entity.disabled,
+        column.parentOrg -> entity.parentOrg
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity

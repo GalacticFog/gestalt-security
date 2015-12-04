@@ -108,19 +108,22 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         developerMessage = "The directory already contains an account with the specified username."
       )
     }
-    if (UserAccountRepository.findBy(sqls"email = ${create.email} and dir_id = ${dirId}").isDefined) {
-      throw new CreateConflictException(
-        resource = s"/directories/${dirId}/accounts",
-        message = "email address already exists in directory",
-        developerMessage = "The directory already contains an account with the specified email address."
-      )
-    }
+    val email = if (! create.email.isEmpty) {
+      if (UserAccountRepository.findBy(sqls"phone_number = ${create.email} and dir_id = ${dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/directories/${dirId}",
+          message = "email address already exists",
+          developerMessage = "The directory already contains an account with the specified email address."
+        )
+      }
+      Some(create.email)
+    } else None
     val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
     UserAccountRepository.create(
       id = UUID.randomUUID(),
       dirId = dirId,
       username = create.username,
-      email = create.email,
+      email = email,
       phoneNumber = if (create.phoneNumber.isEmpty) None else Some(create.phoneNumber),
       firstName = create.firstName,
       lastName = create.lastName,

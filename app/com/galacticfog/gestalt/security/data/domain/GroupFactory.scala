@@ -9,8 +9,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
   override val autoSession = AutoSession
 
-  def create(name: String, dirId: UUID)(implicit session: DBSession = autoSession): UserGroupRepository = {
-    UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false)
+  def create(name: String, dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): UserGroupRepository = {
+    UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg))
   }
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {

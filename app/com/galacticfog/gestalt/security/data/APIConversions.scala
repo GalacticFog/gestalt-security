@@ -13,7 +13,7 @@ object APIConversions {
       username = uar.username,
       firstName = uar.firstName,
       lastName = uar.lastName,
-      email = uar.email,
+      email = uar.email getOrElse "",
       phoneNumber  = uar.phoneNumber getOrElse "",
       directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get
     )

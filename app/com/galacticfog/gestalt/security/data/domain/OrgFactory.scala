@@ -60,6 +60,11 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           code = 500, resource = request.path, message = "unknown error parsing payload", developerMessage = e.getMessage
         )
       }
+      if (create.orgName.toLowerCase != create.orgName) throw new BadRequestException(
+        resource = request.path,
+        message = "org names must be lower case",
+        developerMessage = "Org names are required to be lower case."
+      )
       // create org
       val newOrg = try {
         OrgFactory.createOrg(parentOrg = parentOrg, name = create.orgName)
@@ -75,7 +80,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       val newApp = AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
       val newAppId = newApp.id.asInstanceOf[UUID]
       // create admins group, add user
-      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = account.dirId.asInstanceOf[UUID])
+      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = account.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
       val adminGroupId = adminGroup.id.asInstanceOf[UUID]
       GroupFactory.addAccountToGroup(accountId = accountId, groupId = adminGroupId)
       AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
@@ -87,10 +92,10 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           name = newOrgId + "-user-dir",
           description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
           config = Some(Json.obj(
-            "directoryType" -> "native"
+            "directoryType" -> "INTERNAL"
           )
         )))
-        val usersGroup = GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id.asInstanceOf[UUID])
+        val usersGroup = GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)
         val usersGroupId = usersGroup.id.asInstanceOf[UUID]
         AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
       }

@@ -107,7 +107,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       account.copy(
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
-        email = update.email getOrElse account.email,
+        email = update.email orElse account.email,
         username = update.username getOrElse account.username,
         phoneNumber = newPhoneNumber orElse account.phoneNumber,
         hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
