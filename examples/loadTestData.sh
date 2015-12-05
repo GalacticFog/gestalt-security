@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o xtrace
 
-username=${ROOT_USERNAME-admin}
+username=${ROOT_USERNAME-root}
 password=${ROOT_PASSWORD-letmein}
 security=${1-localhost:9455}
 auth="--auth $username:$password"
@@ -26,7 +26,7 @@ gfecOrgId=$(echo '{"orgName": "core", "createDefaultUserGroup": false}' | http $
 gfecAppId=$(http $auth $security/orgs/$gfecOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 
-gfDirId=$(echo '{"name": "galacticfog-people", "description": "directory of galacticfog employees", "config": {"directoryType": "native"}}' |
+gfDirId=$(echo '{"name": "galacticfog-people", "description": "directory of galacticfog employees", "config": {"directoryType": "internal"}}' |
     http $auth $security/orgs/$gfOrgId/directories |
     jq -r '.id')
 
@@ -115,6 +115,17 @@ syId=$(echo "$SY"      | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.i
 bradId=$(echo "$BRAD"    | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
 anthonyId=$(echo "$ANTHONY" | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
 
-grantRight $gfOrgId   $gfAdminGrpId "**"
-grantRight $gfeOrgId  $gfEngGrpId   "**"
-grantRight $gfecOrgId $gfEngGrpId   "**"
+grantGroupRight() {
+set +e
+read -r -d '' PAYLOAD <<EOM
+{
+  "grantName": "$3"
+} 
+EOM
+set -e
+id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/groups/$2/rights | jq -r '.id')
+}
+
+grantGroupRight $gfOrgId   $gfAdminGrpId "**"
+grantGroupRight $gfeOrgId  $gfEngGrpId   "**"
+grantGroupRight $gfecOrgId $gfEngGrpId   "**"

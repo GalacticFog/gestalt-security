@@ -62,7 +62,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getOrgFromDirectory(dirId: UUID): Option[UUID] = for {
     dir <- DirectoryFactory.find(dirId)
-  } yield dir.id
+  } yield dir.orgId
 
   def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = for {
     mapping <- services.accountStoreMappingService.find(mapId)
