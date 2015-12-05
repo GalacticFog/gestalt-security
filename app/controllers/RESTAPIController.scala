@@ -835,11 +835,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ???
   }
 
-  // TODO
-  def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(None)(parse.json) { implicit request: Request[JsValue] =>
-    ???
-//    val grant = AccountFactory.updateAppGrant(appId,username,grantName,request.body)
-//    Ok(Json.toJson[GestaltRightGrant](grant))
+  def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+    val grant = AccountFactory.updateAppAccountGrant(appId,accountId,grantName,request.body)
+    Ok(Json.toJson[GestaltRightGrant](grant))
+  }
+
+  def updateOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+    val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId,accountId,grantName,request.body)
+    Ok(Json.toJson[GestaltRightGrant](grant))
   }
 
   ////////////////////////////////////////////////////////
@@ -984,7 +987,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getAppGroup(orgId: java.util.UUID, groupId: java.util.UUID) = play.mvc.Results.TODO
 
-  def updateAppGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName: String) = play.mvc.Results.TODO
+  def updateOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+    val grant = AccountFactory.updateAppGroupGrant(request.user.serviceAppId, groupId = groupId, grantName,request.body)
+    Ok(Json.toJson[GestaltRightGrant](grant))
+  }
+
+  def updateAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+    val grant = AccountFactory.updateAppGroupGrant(appId, groupId = groupId, grantName,request.body)
+    Ok(Json.toJson[GestaltRightGrant](grant))
+  }
 
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)).async { implicit request =>
     requireAuthorization(OrgFactory.DELETE_ACCOUNT_STORE_MAPPING)
@@ -1008,5 +1019,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )))
   }
+
 
 }

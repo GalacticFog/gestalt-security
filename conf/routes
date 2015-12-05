@@ -32,6 +32,7 @@ POST          /orgs/:orgId/accounts                                     controll
 GET           /orgs/:orgId/accounts/:accountId                          controllers.RESTAPIController.getOrgAccount(orgId: java.util.UUID, accountId: java.util.UUID)
 GET           /orgs/:orgId/accounts/:accountId/rights                   controllers.RESTAPIController.listOrgAccountRights(orgId: java.util.UUID, accountId: java.util.UUID)
 GET           /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.getOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
+PUT           /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.updateOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
 DELETE        /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.deleteOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
 #
 GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroupMappings(orgId: java.util.UUID)
@@ -39,6 +40,7 @@ POST          /orgs/:orgId/groups                                       controll
 GET           /orgs/:orgId/groups/:groupId                              controllers.RESTAPIController.getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId/rights                       controllers.RESTAPIController.listOrgGroupRights(orgId: java.util.UUID, groupId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.getOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
+PUT           /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.updateOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
 DELETE        /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
 
 ##########################################

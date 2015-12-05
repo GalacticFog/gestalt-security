@@ -213,7 +213,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def updateAppAccountGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
-//    Try{body.as[GestaltRightGrant]} flatMap { newGrant =>
+//    body.as[GestaltRightGrant]} flatMap { newGrant =>
 //      if (newGrant.grantName != grantName) Failure(new RuntimeException("payload grantName does not match URL"))
 //      else {
 //        getAppGrant(appId,username,grantName) flatMap {
@@ -232,7 +232,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //    }
   }
 
-  def updateAppGroupGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
+  def updateAppGroupGrant(appId: UUID, groupId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
   }
 
