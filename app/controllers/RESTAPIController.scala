@@ -51,7 +51,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     for {
       account <- AccountFactory.findEnabled(accountId)
       dir <- DirectoryFactory.find(account.dirId.asInstanceOf[UUID])
-    } yield dir.id
+    } yield dir.orgId
   }
 
   def getOrgFromDirectory(dirId: UUID): Option[UUID] = for {
@@ -184,7 +184,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
-    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.READ_DIRECTORY)
     AccountFactory.findEnabled(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => throw new ResourceNotFoundException(
@@ -209,6 +209,64 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           )
         }
         val newAccount = AccountFactory.updateAccount(account, update)
+        Ok(Json.toJson[GestaltAccount](newAccount))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account",
+        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+      )
+    }
+  }
+
+  def getAccountEmail(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+    // user can update their own account
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.READ_DIRECTORY)
+    AccountFactory.findEnabled(accountId) match {
+      case Some(account) =>
+        Ok(account.email getOrElse "")
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account",
+        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+      )
+    }
+  }
+
+  def getAccountPhoneNumber(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+    // user can update their own account
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.READ_DIRECTORY)
+    AccountFactory.findEnabled(accountId) match {
+      case Some(account) =>
+        Ok(account.phoneNumber getOrElse "")
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account",
+        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+      )
+    }
+  }
+
+  def removeAccountEmail(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+    // user can update their own account
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.UPDATE_ACCOUNT)
+    AccountFactory.findEnabled(accountId) match {
+      case Some(account) =>
+        val newAccount = account.copy(email = None).save()
+        Ok(Json.toJson[GestaltAccount](newAccount))
+      case None => throw new ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account",
+        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+      )
+    }
+  }
+
+  def removeAccountPhoneNumber(accountId: java.util.UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+    // user can update their own account
+    if (request.user.identity.id != accountId) requireAuthorization(OrgFactory.UPDATE_ACCOUNT)
+    AccountFactory.findEnabled(accountId) match {
+      case Some(account) =>
+        val newAccount = account.copy(phoneNumber = None).save()
         Ok(Json.toJson[GestaltAccount](newAccount))
       case None => throw new ResourceNotFoundException(
         resource = request.path,
@@ -315,7 +373,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           username = uar.username,
           firstName = uar.firstName,
           lastName = uar.lastName,
-          email = uar.email,
+          email = uar.email getOrElse "",
           phoneNumber = uar.phoneNumber getOrElse "",
           directory = dir
         )
@@ -347,7 +405,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
               username = uar.username,
               firstName = uar.firstName,
               lastName = uar.lastName,
-              email = uar.email,
+              email = uar.email getOrElse "",
               phoneNumber = uar.phoneNumber getOrElse "",
               directory = dir
             )
