@@ -23,16 +23,15 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
   }
 
   def deleteRightGrant(grantId: UUID)(implicit session: DBSession = autoSession): Boolean = {
-    ???
-//    RightGrantRepository.find(grantId) match {
-//      case None => Success(false)
-//      case Some(grant) =>
-//        grant.destroy()
-//        Success(false)
-//    }
+    RightGrantRepository.find(grantId) match {
+      case None => false
+      case Some(grant) =>
+        grant.destroy()
+        false
+    }
   }
 
-  def listRights(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
+  def listAccountRights(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
     Logger.info(s"looking up rights for appId = ${appId}, accountId = ${accountId}")
     val (rg, axg) = (RightGrantRepository.syntax("rg"), GroupMembershipRepository.syntax("axg"))
     withSQL {
@@ -40,6 +39,11 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
         .leftJoin(GroupMembershipRepository as axg).on(sqls"axg.account_id = ${accountId}")
         .where(sqls"rg.app_id = ${appId} AND (rg.account_id = ${accountId} OR rg.group_id = axg.group_id)")
     }.map(RightGrantRepository(rg.resultName)).list.apply().distinct
+  }
+
+  def listGroupRights(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
+    Logger.info(s"looking up rights for appId = ${appId}, groupId = ${groupId}")
+    RightGrantRepository.findAllBy(sqls"appId = ${appId} AND group_id = ${groupId}")
   }
 
 }

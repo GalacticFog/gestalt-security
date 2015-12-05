@@ -12,6 +12,7 @@ import scalikejdbc._
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
+
   val SUPERUSER = "**"
 
   val CREATE_ORG = "createOrg"
@@ -26,8 +27,11 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   val READ_DIRECTORY = "readDirectory"
   val CREATE_APP = "createApp"
   val DELETE_APP = "deleteApp"
+  val LIST_APP_GRANTS = "listAppGrants"
+  val DELETE_APP_GRANT = "deleteAppGrant"
   val CREATE_ACCOUNT_STORE_MAPPING = "createAccountStore"
   val DELETE_ACCOUNT_STORE_MAPPING = "deleteAccountStore"
+  val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
 
   val NEW_ORG_OWNER_RIGHTS = Seq(
     SUPERUSER

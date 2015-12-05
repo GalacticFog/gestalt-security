@@ -17,6 +17,9 @@ import scala.util.matching.Regex
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
+
+
+
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
   def validatePhoneNumber(phoneNumber: String): Try[String] = {
@@ -167,9 +170,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       """.map{UserAccountRepository(a)}.list.apply()
   }
 
-  def listAppGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
+  def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     findAppUserByAccountId(appId, accountId) match {
-      case Some(account) => RightGrantFactory.listRights(appId, account.id.asInstanceOf[UUID])
+      case Some(account) => RightGrantFactory.listAccountRights(appId, account.id.asInstanceOf[UUID])
       case None => throw new ResourceNotFoundException(
         resource = "account",
         message = "could not locate application account",
@@ -178,33 +181,37 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def getAppGrant(appId: UUID, username: String, grantName: String)(implicit session: DBSession = autoSession): RightGrantRepository = {
-    ???
-//    listAppGrants(appId, username) flatMap {
-//      _.filter(_.grantName == grantName) match {
-//        case Nil => Failure(ResourceNotFoundException(
-//          resource = "rightgrant",
-//          message = "right grant not found",
-//          developerMessage = "Could not location a right grant with the specified grant name, for the specified account and application."
-//        ))
-//        case list => Success(list.head)
-//      }
-//    }
+  def listAppGroupGrants(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
+    RightGrantFactory.listAccountRights(appId, groupId)
   }
 
-  def deleteAppGrant(appId: UUID, username: String, grantName: String)(implicit session: DBSession = autoSession): Boolean = {
-    ???
-//    listAppGrants(appId: String, username: String) flatMap {
-//      _.filter(_.grantName == grantName) match {
-//        case Nil => Success(false)
-//        case list =>
-//          list foreach {_.destroy()}
-//          Success(true)
-//      }
-//    }
+  def getAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = {
+    listAppAccountGrants(appId, accountId) filter(_.grantName == grantName) headOption
   }
 
-  def updateAppGrant(appId: UUID, username: String, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
+  def getAppGroupGrant(appId: UUID, groupId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = {
+    listAppGroupGrants(appId, groupId) filter(_.grantName == grantName) headOption
+  }
+
+  def deleteAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Boolean = {
+    listAppAccountGrants(appId, accountId) find(_.grantName == grantName) match {
+      case None => false
+      case Some(grant) =>
+        grant.destroy()
+        true
+    }
+  }
+
+  def deleteAppGroupGrant(appId: UUID, groupId: UUID, grantName: String)(implicit session: DBSession = autoSession): Boolean = {
+    listAppGroupGrants(appId, groupId) find(_.grantName == grantName) match {
+      case None => false
+      case Some(grant) =>
+        grant.destroy()
+        true
+    }
+  }
+
+  def updateAppAccountGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
 //    Try{body.as[GestaltRightGrant]} flatMap { newGrant =>
 //      if (newGrant.grantName != grantName) Failure(new RuntimeException("payload grantName does not match URL"))
@@ -223,6 +230,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 //        }
 //      }
 //    }
+  }
+
+  def updateAppGroupGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
+    ???
   }
 
   def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
