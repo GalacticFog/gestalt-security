@@ -1,7 +1,7 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
-import com.galacticfog.gestalt.security.api.{GestaltDirectoryCreate, GestaltOrgCreate}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
@@ -28,6 +28,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   val CREATE_APP = "createApp"
   val DELETE_APP = "deleteApp"
   val LIST_APP_GRANTS = "listAppGrants"
+  val MODIFY_APP_GRANTS = "modifyAppGrants"
   val DELETE_APP_GRANT = "deleteAppGrant"
   val CREATE_ACCOUNT_STORE_MAPPING = "createAccountStore"
   val DELETE_ACCOUNT_STORE_MAPPING = "deleteAccountStore"

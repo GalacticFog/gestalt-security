@@ -118,12 +118,10 @@ anthonyId=$(echo "$ANTHONY" | http $auth $security/orgs/$gfOrgId/accounts | jq -
 grantGroupRight() {
 set +e
 read -r -d '' PAYLOAD <<EOM
-{
-  "grantName": "$3"
-} 
+{} 
 EOM
 set -e
-id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/groups/$2/rights | jq -r '.id')
+id=$(echo "$PAYLOAD" | http $auth PUT "$security/orgs/$1/groups/$2/rights/$3" | jq -r '.id')
 }
 
 grantGroupRight $gfOrgId   $gfAdminGrpId "**"

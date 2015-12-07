@@ -198,6 +198,47 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def getOrgAccountByUsername(orgId: java.util.UUID, username: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
+      case Some(dir) => dir.findByUsername(username) match {
+        case Some(account) =>
+          Ok(Json.toJson[GestaltAccount](account))
+        case None => NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested account in the organization",
+          developerMessage = "Could not locate the requested account in the organization in the default account store associated with the org."
+        )))
+      }
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate the default account directory for the org",
+        developerMessage = "Could not locate the default account directory for the organization."
+      )))
+    }
+  }
+
+  def getAppAccountByUsername(appId: java.util.UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
+      case Some(dir) => dir.findByUsername(username) match {
+        case Some(account) =>
+          Ok(Json.toJson[GestaltAccount](account))
+        case None => NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested account in the organization",
+          developerMessage = "Could not locate the requested account in the organization in the default account store associated with the org."
+        )))
+      }
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate the default account directory for the org",
+        developerMessage = "Could not locate the default account directory for the organization."
+      )))
+    }
+  }
+
+
   def getOrgGroup(orgId: UUID, groupId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     GroupFactory.getAppGroupMapping(appId = request.user.serviceAppId, groupId = groupId) match {
       case Some(group) => Ok(Json.toJson[GestaltGroup](group))
@@ -401,7 +442,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     // get the org tree
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
     val dirCache = DirectoryFactory.findAll map {
-      dir => (dir.id.asInstanceOf[UUID], dir)
+      dir => (dir.id, dir)
     } toMap
     val orgUsers = (orgTree flatMap {
       org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
@@ -433,7 +474,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(org) =>
         val orgTree = OrgFactory.getOrgTree(org.id.asInstanceOf[UUID])
         val dirCache = DirectoryFactory.findAll map {
-          dir => (dir.id.asInstanceOf[UUID], dir)
+          dir => (dir.id, dir)
         } toMap
         val orgUsers = (orgTree flatMap {
           org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
@@ -840,9 +881,31 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[GestaltRightGrant](grant))
   }
 
+  // TODO
   def updateOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+//    requireAuthorization(OrgFactory.MODIFY_APP_GRANTS)
+//    AccountFactory.findEnabled(accountId) match {
+//      case Some(account) =>
+//        val update = request.body.validate[GestaltAccountUpdate] match {
+//          case s: JsSuccess[GestaltGrantCreate] => s.get
+//          case e: JsError => throw new BadRequestException(
+//            resource = request.path,
+//            message = "invalid payload",
+//            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountUpdate"
+//          )
+//        }
+//        val newAccount = AccountFactory.updateAccount(account, update)
+//        Ok(Json.toJson[GestaltAccount](newAccount))
+//      case None => NotFound(Json.toJson(ResourceNotFoundException(
+//        resource = request.path,
+//        message = "could not locate requested account",
+//        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+//      )))
+//    }
+
     val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId,accountId,grantName,request.body)
     Ok(Json.toJson[GestaltRightGrant](grant))
+
   }
 
   ////////////////////////////////////////////////////////
@@ -1020,5 +1083,35 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     )))
   }
 
+
+  def createOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+
+  def createOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID) = play.mvc.Results.TODO
+
+  def createOrgGroupRight(orgId: java.util.UUID, groupName: String) = play.mvc.Results.TODO
+
+  def listOrgAccountRightsByUsername(orgId: java.util.UUID, username: String) = play.mvc.Results.TODO
+
+  def getOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def updateOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def deleteOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def createAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID) = play.mvc.Results.TODO
+
+  def createAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID) = play.mvc.Results.TODO
+
+  def deleteAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def updateAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def getAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+
+  def listAppAccountRightsByUsername(appId: java.util.UUID, username: String) = play.mvc.Results.TODO
+
+  def deleteRightGrant(rightId: java.util.UUID) = play.mvc.Results.TODO
+
+  def updateRightGrant(rightId: java.util.UUID) = play.mvc.Results.TODO
 
 }

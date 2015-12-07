@@ -9,6 +9,8 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
 
 trait Directory {
+  def findByUsername(username: String): Option[UserAccountRepository]
+
   def id: UUID
   def name: String
   def description: Option[String]
@@ -26,6 +28,8 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   override def disableAccount(accountId: UUID): Unit = {
     AccountFactory.disableAccount(accountId)
   }
+
+  override def findByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
 }
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {

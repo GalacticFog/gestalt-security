@@ -2,7 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.{GestaltPasswordCredential, GestaltAccountUpdate}
+import com.galacticfog.gestalt.security.api.{GestaltRightGrant, GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
@@ -213,8 +213,8 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def updateAppAccountGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
     ???
-//    body.as[GestaltRightGrant]} flatMap { newGrant =>
-//      if (newGrant.grantName != grantName) Failure(new RuntimeException("payload grantName does not match URL"))
+//    body.as[GestaltRightGrant] flatMap { newGrant =>
+//      if (newGrant.grantName != grantName) Failure(new BadRequest("payload grantName does not match URL"))
 //      else {
 //        getAppGrant(appId,username,grantName) flatMap {
 //          existing => Try{ existing.copy(grantValue = newGrant.grantValue).save() }
