@@ -29,7 +29,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
   override def onError(request: RequestHeader, ex: Throwable) = {
     Logger.info("Global::onError: " + ex.getMessage)
-    Future.successful(handleError(ex))
+    Future.successful(handleError(request,ex))
   }
 
   override def onBadRequest(request: RequestHeader, error: String) = {
@@ -93,18 +93,23 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
 
-  private def handleError(e: Throwable): Result = {
+  private def handleError(request: RequestHeader, e: Throwable): Result = {
+    val resource = e.getCause match {
+      case sre: SecurityRESTException if !sre.resource.isEmpty =>
+        sre.resource
+      case _ => request.path
+    }
     e.getCause match {
-      case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound))
-      case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest))
-      case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc))
+      case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
+      case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
+      case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
       case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
-      case conflict: CreateConflictException => Conflict(Json.toJson(conflict))
-      case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown)) // not sure why this would happen, but if we have that level of info, might as well use it
+      case conflict: CreateConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
+      case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
       case nope: Throwable =>
         nope.printStackTrace()
         InternalServerError(Json.toJson(UnknownAPIException(
-        code = 500, resource = "", message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
+        code = 500, resource = request.path, message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
       )))
     }
   }
