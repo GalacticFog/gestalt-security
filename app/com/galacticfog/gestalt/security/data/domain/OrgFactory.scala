@@ -28,10 +28,12 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   val CREATE_APP = "createApp"
   val DELETE_APP = "deleteApp"
   val LIST_APP_GRANTS = "listAppGrants"
-  val MODIFY_APP_GRANTS = "modifyAppGrants"
+  val CREATE_APP_GRANT = "createAppGrant"
   val DELETE_APP_GRANT = "deleteAppGrant"
-  val CREATE_ACCOUNT_STORE_MAPPING = "createAccountStore"
-  val DELETE_ACCOUNT_STORE_MAPPING = "deleteAccountStore"
+  val UPDATE_APP_GRANT = "updateAppGrant"
+  val CREATE_ACCOUNT_STORE = "createAccountStore"
+  val UPDATE_ACCOUNT_STORE = "updateAccountStore"
+  val DELETE_ACCOUNT_STORE = "deleteAccountStore"
   val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
 
   val NEW_ORG_OWNER_RIGHTS = Seq(
