@@ -71,13 +71,14 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
     if (doMigrate) {
       val doClean: Boolean = current.configuration.getBoolean("database.clean") getOrElse false
-      val doShutdown: Boolean = current.configuration.getBoolean("shutdownAfterMigrate") getOrElse false
+      val doShutdown: Boolean = current.configuration.getBoolean("database.shutdownAfterMigrate") getOrElse false
       val rootUsername = current.configuration.getString("root.username") getOrElse "root"
       val rootPassword = current.configuration.getString("root.password") getOrElse "letmein"
       log.info("Migrating databases")
       FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword)
       if (doShutdown) {
         log.info("Shutting because database.shutdownAfterMigrate == true")
+        Play.stop()
         scala.sys.exit()
       }
     }
@@ -138,7 +139,10 @@ object FlywayMigration {
         "root_username" -> rootUsername,
         "root_password" -> rootPassword
       ).asJava)
-      if (clean) baseFlyway.clean()
+      if (clean) {
+        log.info("cleaning database")
+        baseFlyway.clean()
+      }
       baseFlyway.migrate()
     }
     if ( ! baseDS.isClosed ) try {
