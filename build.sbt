@@ -16,6 +16,11 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager
 
 scalaVersion := "2.11.7"
 
+scalacOptions ++= Seq(
+  "-unchecked", "-deprecation", "-feature",
+  "-language:postfixOps", "-language:implicitConversions"
+)
+
 libraryDependencies ++= Seq(
   jdbc,
   cache,
