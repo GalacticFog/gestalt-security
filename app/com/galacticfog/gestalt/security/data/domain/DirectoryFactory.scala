@@ -76,8 +76,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
             )
             case Some(dirType) => dirType.name.toUpperCase
           }
-        case Some(dirType) =>
-          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${dirType})") match {
+        case Some(createType) =>
+          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${createType})") match {
             case None => throw new BadRequestException(
               resource = s"/orgs/${orgId}/directories",
               message = "directory type not valid",

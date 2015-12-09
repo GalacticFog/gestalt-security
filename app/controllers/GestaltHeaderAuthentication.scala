@@ -11,6 +11,8 @@ import play.api.mvc.Security._
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.json.JsonImports.exceptionFormat
 
+import scala.language.reflectiveCalls
+
 trait GestaltHeaderAuthentication {
 
   import GestaltHeaderAuthentication._
@@ -91,7 +93,7 @@ object GestaltHeaderAuthentication {
     lazy val maybeTokenAuth = for {
       token <- extractAuthToken(request)
       foundKey <- APICredentialFactory.findByAPIKey(token.username)
-      if foundKey.apiSecret == token.password && orgId.exists(_ == foundKey.orgId) && foundKey.disabled == false
+      if foundKey.apiSecret == token.password && orgId.contains(foundKey.orgId) && !foundKey.disabled
       orgId = foundKey.orgId.asInstanceOf[UUID]
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]

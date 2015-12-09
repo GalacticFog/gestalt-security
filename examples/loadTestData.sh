@@ -57,11 +57,11 @@ id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/accountStores | jq -r '.id')
 }
 
 createASM $gfOrgId   $gfAdminGrpId  "mapping between galacticfog and gf-admins"                     false false
-createASM $gfeOrgId  $gfEngGrpId    "mapping between galacticfog.engineering and gf-engineers"      false false
-createASM $gfecOrgId $gfEngGrpId    "mapping between galacticfog.engineering.core and gf-engineers" false false
 createASM $gfOrgId   $gfUserGroupId "mapping between galacticfog and gf-users"                       true false
-createASM $gfeOrgId  $gfUserGroupId "mapping between galacticfog.engineering and gf-users"           true false
-createASM $gfecOrgId $gfUserGroupId "mapping between galacticfog.engineering.core and gf-users"      true false
+createASM $gfeOrgId  $gfEngGrpId    "mapping between galacticfog.engineering and gf-engineers"       true false
+createASM $gfeOrgId  $gfUserGroupId "mapping between galacticfog.engineering and gf-users"          false false
+createASM $gfecOrgId $gfEngGrpId    "mapping between galacticfog.engineering.core and gf-engineers"  true false
+createASM $gfecOrgId $gfUserGroupId "mapping between galacticfog.engineering.core and gf-users"     false false
 
 set +e 
 read -r -d '' CHRIS <<EOM
@@ -110,18 +110,20 @@ read -r -d '' ANTHONY <<EOM
 EOM
 set -e
 
-chrisId=$(echo "$CHRIS"   | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
-syId=$(echo "$SY"      | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
-bradId=$(echo "$BRAD"    | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+chrisId=$(echo "$CHRIS"     | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+syId=$(echo "$SY"           | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+bradId=$(echo "$BRAD"       | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
 anthonyId=$(echo "$ANTHONY" | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
 
 grantGroupRight() {
-set +e
-read -r -d '' PAYLOAD <<EOM
-{} 
+  set +e
+  read -r -d '' PAYLOAD <<EOM
+{
+  "grantName": "$3"
+} 
 EOM
-set -e
-id=$(echo "$PAYLOAD" | http $auth PUT "$security/orgs/$1/groups/$2/rights/$3" | jq -r '.id')
+  set -e
+  id=$(echo "$PAYLOAD" | http $auth "$security/orgs/$1/groups/$2/rights" | jq -r '.id')
 }
 
 grantGroupRight $gfOrgId   $gfAdminGrpId "**"

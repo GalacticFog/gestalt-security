@@ -1,10 +1,9 @@
 package controllers
 
 import java.util.UUID
-
-import app.Global
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.io.util.PatchUpdate._
+import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
@@ -43,7 +42,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     _.id.asInstanceOf[UUID]
   }
 
-  def rootOrg(): Option[UUID] = OrgFactory.getRootOrg() map {
+  def rootOrg: Option[UUID] = OrgFactory.getRootOrg() map {
     _.id.asInstanceOf[UUID]
   }
 
@@ -113,8 +112,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       message = "error looking up application",
       developerMessage = "The application could not be located, but the API request was authenticated. This suggests a problem with the database; please try again or contact support."
     )
-    val account = AccountFactory.authenticate(app.get.id.asInstanceOf[UUID], request.body)
-    account match {
+    AccountFactory.authenticate(app.get.id.asInstanceOf[UUID], request.body) match {
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "invalid username or password",
@@ -137,7 +135,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Get/List methods
   ////////////////////////////////////////////////////////
 
-  def getHealth() = Action.async {
+  def getHealth = Action.async {
     Future {
       Try {
         rootOrg
@@ -152,7 +150,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getCurrentOrg() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
+  def getCurrentOrg = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     OrgFactory.findByOrgId(request.user.orgId) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -875,7 +873,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createAccountStoreMapping() = (new AuthenticatedActionBuilderAgainstRequest {
+  def createAccountStoreMapping() = new AuthenticatedActionBuilderAgainstRequest {
     override def genOrgId[B](request: Request[B]): Option[UUID] = request.body match {
       case json: JsValue => for {
         appId <- (json \ "appId").asOpt[UUID]
@@ -883,7 +881,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       } yield app.orgId.asInstanceOf[UUID]
       case _ => None
     }
-  }).apply(parse.json) { implicit request =>
+  }.apply(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT_STORE)
     val create = validateBody[GestaltAccountStoreMappingCreate]
     val appId = create.appId
@@ -1030,11 +1028,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def deleteAppById(appId: UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
     requireAuthorization(DELETE_APP)
     AppFactory.findByAppId(appId) match {
-      case Some(app) if app.isServiceApp == false =>
+      case Some(app) if !app.isServiceApp =>
         Future {
           AppFactory.delete(app)
         } map { _ => Ok(Json.toJson(DeleteResult(true))) }
-      case Some(app) if app.isServiceApp == true =>
+      case Some(app) if app.isServiceApp =>
         Future {
           BadRequest(Json.toJson(BadRequestException(
             resource = request.path,
@@ -1055,7 +1053,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def disableAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
     requireAuthorization(DELETE_ACCOUNT)
     AccountFactory.find(accountId) match {
-      case Some(account) if account.disabled == false && account.id != request.user.identity.id =>
+      case Some(account) if !account.disabled && account.id != request.user.identity.id =>
         Future {
           DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
             case None => InternalServerError("could not locate directory associated with account")
@@ -1064,7 +1062,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
               Ok(Json.toJson(DeleteResult(true)))
           }
         }
-      case Some(account) if account.disabled == true => Future {
+      case Some(account) if account.disabled => Future {
         BadRequest(Json.toJson(BadRequestException(
           resource = request.path,
           message = "account has already been deleted",

@@ -46,5 +46,4 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
     Logger.info(s"looking up rights for appId = ${appId}, groupId = ${groupId}")
     RightGrantRepository.findAllBy(sqls"appId = ${appId} AND group_id = ${groupId}")
   }
-
 }

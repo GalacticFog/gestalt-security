@@ -18,9 +18,6 @@ import scala.util.matching.Regex
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
-
-
-
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
   def validatePhoneNumber(phoneNumber: String): Try[String] = {
@@ -183,13 +180,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     RightGrantFactory.listAccountRights(appId, groupId)
   }
 
-  def getAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = {
-    listAppAccountGrants(appId, accountId) filter(_.grantName == grantName) headOption
-  }
+  def getAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = listAppAccountGrants(appId, accountId) find (_.grantName == grantName)
 
-  def getAppGroupGrant(appId: UUID, groupId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = {
-    listAppGroupGrants(appId, groupId) filter(_.grantName == grantName) headOption
-  }
+  def getAppGroupGrant(appId: UUID, groupId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = listAppGroupGrants(appId, groupId) find (_.grantName == grantName)
 
   def deleteAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Boolean = {
     listAppAccountGrants(appId, accountId) find(_.grantName == grantName) match {

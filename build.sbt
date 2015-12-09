@@ -43,13 +43,13 @@ credentials ++= {
     password <- sys.env.get("GESTALT_RESOLVER_PASSWORD")
   } yield {
     Seq(Credentials(realm, resolverUrl.getHost, username, password))
-  }) getOrElse(Seq())
+  }) getOrElse Seq()
 }
 
 resolvers ++= {
   sys.env.get("GESTALT_RESOLVER_URL") map {
     url => Seq("gestalt-resolver" at url)
-  } getOrElse(Seq())
+  } getOrElse Seq()
 }
 
 //
@@ -112,21 +112,21 @@ libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 // Flyway Plugin Settings
 // ----------------------------------------------------------------------------
 
-val hostname = sys.env.get( "DB_HOST" ) getOrElse "localhost"
+val hostname = sys.env.getOrElse("DB_HOST", "localhost")
 
-val dbname = sys.env.get( "DB_NAME" ) getOrElse "gestalt-security"
+val dbname = sys.env.getOrElse("DB_NAME", "gestalt-security")
 
 lazy val migration = (project in file("migration")).
   settings(flywaySettings: _*).
   settings(
     flywayUrl := s"jdbc:postgresql://$hostname:5432/$dbname",
-    flywayUser := sys.env.get( "DB_USER" ) getOrElse "dbUser",
-    flywayPassword := sys.env.get( "DB_PASSWORD" ) getOrElse "dbS3cr3t",
+    flywayUser := sys.env.getOrElse("DB_USER", "dbUser"),
+    flywayPassword := sys.env.getOrElse("DB_PASSWORD", "dbS3cr3t"),
     flywayLocations := Seq("filesystem:conf/db/migration"),
     flywayTarget := "4",
     flywayPlaceholders := Map(
-      "root_username" -> sys.env.get( "ROOT_USERNAME" ).getOrElse("admin"),
-      "root_password" -> sys.env.get( "ROOT_PASSWORD" ).getOrElse("letmein")
+      "root_username" -> sys.env.getOrElse("ROOT_USERNAME", "admin"),
+      "root_password" -> sys.env.getOrElse("ROOT_PASSWORD", "letmein")
     )
   ).
   settings(

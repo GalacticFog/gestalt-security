@@ -87,8 +87,8 @@ object APIConversions {
       storeType = if (asm.storeType == GROUP.label) GROUP else DIRECTORY,
       storeId = asm.accountStoreId.asInstanceOf[UUID],
       appId = asm.appId.asInstanceOf[UUID],
-      isDefaultAccountStore = asm.defaultAccountStore.exists{_ == asm.appId},
-      isDefaultGroupStore = asm.defaultGroupStore.exists(_ == asm.appId)
+      isDefaultAccountStore = asm.defaultAccountStore.contains(asm.appId),
+      isDefaultGroupStore = asm.defaultGroupStore.contains(asm.appId)
     )
   }
 }
