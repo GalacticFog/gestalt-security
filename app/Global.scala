@@ -78,7 +78,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword)
       if (doShutdown) {
         log.info("Shutting because database.shutdownAfterMigrate == true")
-        Play.stop()
+        scala.sys.exit()
       }
     }
   }
