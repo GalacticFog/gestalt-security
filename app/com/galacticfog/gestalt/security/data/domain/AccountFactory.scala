@@ -74,10 +74,28 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def updateAccount(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
+    val newEmail = update.email map { email =>
+      if (UserAccountRepository.findBy(sqls"email = ${email} and dir_id = ${account.dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/accounts/${account.id}",
+          message = "email address already exists",
+          developerMessage = "The provided email address is already present in the directory containing the account."
+        )
+      }
+      email
+    }
     val newPhoneNumber = update.phoneNumber map { pn =>
       val t = validatePhoneNumber(pn)
       t match {
-        case Success(canonicalPN) => canonicalPN
+        case Success(canonicalPN) =>
+          if (UserAccountRepository.findBy(sqls"phone_number = ${canonicalPN} and dir_id = ${account.dirId}").isDefined) {
+            throw new CreateConflictException(
+              resource = s"/accounts/${account.id}",
+              message = "phone number already exists",
+              developerMessage = "The provided phone number is already present in the directory containing the account."
+            )
+          }
+          canonicalPN
         case Failure(ex) => ex match {
           case br: BadRequestException => throw br.copy(
             resource = s"/accounts/${account.id}"
@@ -86,32 +104,12 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         }
       }
     }
-    val phoneNumber = if (! update.phoneNumber.isEmpty) {
-      val newPhoneNumber = update.phoneNumber map {pn =>
-        validatePhoneNumber(pn) match {
-          case Success(canonicalPN) =>
-            if (UserAccountRepository.findBy(sqls"phone_number = ${canonicalPN} and dir_id = ${account.dirId}").isDefined) {
-              throw new CreateConflictException(
-                resource = s"/accounts/${account.id}",
-                message = "phone number already exists",
-                developerMessage = "The provided phone number is already present in the directory containing the account."
-              )
-            }
-          case Failure(ex) => ex match {
-            case br: BadRequestException => throw br.copy(
-              resource = s"/accounts"
-            )
-            case t: Throwable => throw t
-          }
-        }
-      }
-    }
     UserAccountRepository.save(
       account.copy(
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
-        email = update.email orElse account.email,
         username = update.username getOrElse account.username,
+        email = newEmail orElse account.email,
         phoneNumber = newPhoneNumber orElse account.phoneNumber,
         hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
         secret = newpass getOrElse account.secret
