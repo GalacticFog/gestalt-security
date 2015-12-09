@@ -621,7 +621,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getRightGrant(rightId: java.util.UUID) = AuthenticatedAction(getGrantOrg(rightId)) { implicit request =>
     RightGrantRepository.find(rightId) match {
-      case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+      case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "right grant not found",
@@ -973,43 +973,60 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
-    val grant = AccountFactory.updateAppAccountGrant(appId, accountId, grantName, request.body)
-    Ok(Json.toJson[GestaltRightGrant](grant))
+    requireAuthorization(OrgFactory.UPDATE_APP_GRANT)
+    val patch = request.body.as[Seq[PatchOp]]
+    val grant = AccountFactory.updateAppAccountGrant(appId, accountId, grantName, patch)
+    Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
-  // TODO
-  def updateAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
+  def updateAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.UPDATE_APP_GRANT)
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    val patch = request.body.as[Seq[PatchOp]]
+    val dirId = AppFactory.getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]
+    DirectoryFactory.find(dirId) match {
+      case Some(dir) =>
+        AccountFactory.directoryLookup(dirId, username) match {
+          case Some(account) =>
+            val grant = AccountFactory.updateAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName, patch)
+            Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
+          case None => NotFound(Json.toJson(ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested account in the directory",
+            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+          )))
+        }
+      case None => defaultResourceNotFound
+    }
+  }
 
-  // TODO
   def updateOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
-    //    requireAuthorization(OrgFactory.MODIFY_APP_GRANTS)
-    //    AccountFactory.findEnabled(accountId) match {
-    //      case Some(account) =>
-    //        val update = request.body.validate[GestaltAccountUpdate] match {
-    //          case s: JsSuccess[GestaltGrantCreate] => s.get
-    //          case e: JsError => throw new BadRequestException(
-    //            resource = request.path,
-    //            message = "invalid payload",
-    //            developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltAccountUpdate"
-    //          )
-    //        }
-    //        val newAccount = AccountFactory.updateAccount(account, update)
-    //        Ok(Json.toJson[GestaltAccount](newAccount))
-    //      case None => NotFound(Json.toJson(ResourceNotFoundException(
-    //        resource = request.path,
-    //        message = "could not locate requested account",
-    //        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-    //      )))
-    //    }
-
-    val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId, accountId, grantName, request.body)
-    Ok(Json.toJson[GestaltRightGrant](grant))
-
+    requireAuthorization(OrgFactory.UPDATE_ORG_GRANT)
+    val patch = request.body.as[Seq[PatchOp]]
+    val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId, accountId, grantName, patch)
+    Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
-  // TODO
-  def updateOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName: String) = play.mvc.Results.TODO
-
+  def updateOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+    requireAuthorization(OrgFactory.UPDATE_ORG_GRANT)
+    requireAuthorization(OrgFactory.READ_DIRECTORY)
+    val patch = request.body.as[Seq[PatchOp]]
+    val dirId = AppFactory.getDefaultAccountStore(request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]
+    DirectoryFactory.find(dirId) match {
+      case Some(dir) =>
+        AccountFactory.directoryLookup(dirId, username) match {
+          case Some(account) =>
+            val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName, patch)
+            Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
+          case None => NotFound(Json.toJson(ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested account in the directory",
+            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+          )))
+        }
+      case None => defaultResourceNotFound
+    }
+  }
 
   ////////////////////////////////////////////////////////
   // Delete methods
@@ -1154,7 +1171,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(OrgFactory.LIST_APP_GRANTS)
     AccountFactory.getAppGroupGrant(appId, groupId, grantName) match {
-      case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+      case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested right",
@@ -1176,13 +1193,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAppGroup(orgId: java.util.UUID, groupId: java.util.UUID) = play.mvc.Results.TODO
 
   def updateOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName: String) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
-    val grant = AccountFactory.updateAppGroupGrant(request.user.serviceAppId, groupId = groupId, grantName, request.body)
-    Ok(Json.toJson[GestaltRightGrant](grant))
+    val patch = request.body.as[Seq[PatchOp]]
+    val grant = AccountFactory.updateAppGroupGrant(request.user.serviceAppId, groupId = groupId, grantName, patch)
+    Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
   def updateAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
-    val grant = AccountFactory.updateAppGroupGrant(appId, groupId = groupId, grantName, request.body)
-    Ok(Json.toJson[GestaltRightGrant](grant))
+    val patch = request.body.as[Seq[PatchOp]]
+    val grant = AccountFactory.updateAppGroupGrant(appId, groupId = groupId, grantName, patch)
+    Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)).async { implicit request =>

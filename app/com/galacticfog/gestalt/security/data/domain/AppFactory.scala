@@ -379,4 +379,8 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     GestaltAppRepository.findAllBy(sqls"org_id=${orgId}")
   }
 
+  def findUsernameInDefaultAccountStore(appId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    ???
+  }
+
 }

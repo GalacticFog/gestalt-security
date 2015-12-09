@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.{GestaltRightGrant, GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
@@ -108,7 +109,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       account.copy(
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
-        username = update.username getOrElse account.username,
         email = newEmail orElse account.email,
         phoneNumber = newPhoneNumber orElse account.phoneNumber,
         hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
@@ -209,29 +209,54 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def updateAppAccountGrant(appId: UUID, accountId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
-    ???
-//    body.as[GestaltRightGrant] flatMap { newGrant =>
-//      if (newGrant.grantName != grantName) Failure(new BadRequest("payload grantName does not match URL"))
-//      else {
-//        getAppGrant(appId,username,grantName) flatMap {
-//          existing => Try{ existing.copy(grantValue = newGrant.grantValue).save() }
-//        } recoverWith {
-//          case grantNotFound: ResourceNotFoundException if grantNotFound.resource == "rightgrant" => Try { RightGrantRepository.create(
-//            grantId = SecureIdGenerator.genId62(RightGrantFactory.RIGHT_ID_LEN),
-//            appId = appId,
-//            accountId = Some(findAppUser(appId, username).head.accountId),
-//            groupId = None,
-//            grantName = grantName,
-//            grantValue = newGrant.grantValue
-//          ) }
-//        }
-//      }
-//    }
+  def updateAppAccountGrant(appId: UUID, accountId: UUID, grantName: String, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): RightGrantRepository = {
+    getAppAccountGrant(appId,accountId,grantName) match {
+      case Some(grant) =>
+        val newGrant = patch.foldLeft(grant)((g, p) => {
+          p match {
+            case PatchOp(op,"/grantValue",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+              g.copy(grantValue = Some(value.as[String]))
+            case PatchOp("remove","/grantValue",value) =>
+              g.copy(grantValue = None)
+            case _ => throw new BadRequestException(
+              resource = "",
+              message = "bad PATCH payload for updating account grant",
+              developerMessage = "The PATCH payload for updating the accoutn grant had invalid fields."
+            )
+          }
+        })
+        newGrant.save()
+      case None => throw new ResourceNotFoundException(
+        resource = "",
+        message = "grant does not exist",
+        developerMessage = "A grant with the given name does not exist for the given account in the given app."
+      )
+    }
   }
 
-  def updateAppGroupGrant(appId: UUID, groupId: UUID, grantName: String, body: JsValue)(implicit session: DBSession = autoSession): RightGrantRepository = {
-    ???
+  def updateAppGroupGrant(appId: UUID, groupId: UUID, grantName: String, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): RightGrantRepository = {
+    getAppGroupGrant(appId,groupId,grantName) match {
+      case Some(grant) =>
+        val newGrant = patch.foldLeft(grant)((g, p) => {
+          p match {
+            case PatchOp(op,"/grantValue",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+              g.copy(grantValue = Some(value.as[String]))
+            case PatchOp("remove","/grantValue",value) =>
+              g.copy(grantValue = None)
+            case _ => throw new BadRequestException(
+              resource = "",
+              message = "bad PATCH payload for updating account grant",
+              developerMessage = "The PATCH payload for updating the accoutn grant had invalid fields."
+            )
+          }
+        })
+        newGrant.save()
+      case None => throw new ResourceNotFoundException(
+        resource = "",
+        message = "grant does not exist",
+        developerMessage = "A grant with the given name does not exist for the given account in the given app."
+      )
+    }
   }
 
   def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
