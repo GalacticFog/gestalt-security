@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.api.GestaltGrantCreate
 import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, UserGroupRepository, GroupMembershipRepository}
 import play.api.Logger
 import scalikejdbc._
@@ -10,15 +11,15 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
   override val autoSession = AutoSession
 
-  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[String])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
+  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[GestaltGrantCreate])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     rights map {
-      name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = name)
+      grant => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = grant.grantName, grantValue = grant.grantValue)
     }
   }
 
-  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[String])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
+  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[GestaltGrantCreate])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     rights map {
-      name => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = name)
+      grant => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = grant.grantName, grantValue = grant.grantValue)
     }
   }
 

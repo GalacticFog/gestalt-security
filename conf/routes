@@ -43,7 +43,7 @@ PATCH         /orgs/:orgId/usernames/:username/rights/:grantName        controll
 DELETE        /orgs/:orgId/usernames/:username/rights/:grantName        controllers.RESTAPIController.deleteOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName)
 #
 GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroupMappings(orgId: java.util.UUID)
-POST          /orgs/:orgId/groups                                       controllers.RESTAPIController.createGroupInOrg(orgId: java.util.UUID)
+POST          /orgs/:orgId/groups                                       controllers.RESTAPIController.createOrgGroup(orgId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId                              controllers.RESTAPIController.getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId/rights                       controllers.RESTAPIController.listOrgGroupRights(orgId: java.util.UUID, groupId: java.util.UUID)
 POST          /orgs/:orgId/groups/:groupId/rights                       controllers.RESTAPIController.createOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID)
@@ -99,7 +99,7 @@ PATCH         /apps/:appId/usernames/:username/rights/:grantName        controll
 DELETE        /apps/:appId/usernames/:username/rights/:grantName        controllers.RESTAPIController.deleteAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName)
 #
 GET           /apps/:appId/groups                                       controllers.RESTAPIController.listAppGroupMappings(appId: java.util.UUID)
-POST          /apps/:appId/groups                                       controllers.RESTAPIController.createGroupInApp(appId: java.util.UUID)
+POST          /apps/:appId/groups                                       controllers.RESTAPIController.createAppGroup(appId: java.util.UUID)
 GET           /apps/:appId/groups/:groupId                              controllers.RESTAPIController.getAppGroup(appId: java.util.UUID, groupId: java.util.UUID)
 GET           /apps/:appId/groups/:groupId/rights                       controllers.RESTAPIController.listAppGroupRights(appId: java.util.UUID, groupId: java.util.UUID)
 POST          /apps/:appId/groups/:groupId/rights                       controllers.RESTAPIController.createAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID)

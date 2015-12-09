@@ -12,37 +12,38 @@ import scalikejdbc._
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
+  object Rights {
+    val SUPERUSER = "**"
 
-  val SUPERUSER = "**"
+    val CREATE_ORG = "createOrg"
+    val DELETE_ORG = "deleteOrg"
+    val CREATE_ACCOUNT = "createAccount"
+    val UPDATE_ACCOUNT = "updateAccount"
+    val DELETE_ACCOUNT = "deleteAccount"
+    val CREATE_GROUP = "createGroup"
+    val DELETE_GROUP = "deleteGroup"
+    val CREATE_DIRECTORY = "createDirectory"
+    val DELETE_DIRECTORY = "deleteDirectory"
+    val READ_DIRECTORY = "readDirectory"
+    val CREATE_APP = "createApp"
+    val DELETE_APP = "deleteApp"
+    val LIST_ORG_GRANTS = "listOrgGrants"
+    val CREATE_ORG_GRANT = "createOrgGrant"
+    val DELETE_ORG_GRANT = "deleteOrgGrant"
+    val UPDATE_ORG_GRANT = "updateOrgGrant"
+    val LIST_APP_GRANTS = "listAppGrants"
+    val CREATE_APP_GRANT = "createAppGrant"
+    val DELETE_APP_GRANT = "deleteAppGrant"
+    val UPDATE_APP_GRANT = "updateAppGrant"
+    val CREATE_ACCOUNT_STORE = "createAccountStore"
+    val UPDATE_ACCOUNT_STORE = "updateAccountStore"
+    val DELETE_ACCOUNT_STORE = "deleteAccountStore"
+    val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
 
-  val CREATE_ORG = "createOrg"
-  val DELETE_ORG = "deleteOrg"
-  val CREATE_ACCOUNT = "createAccount"
-  val UPDATE_ACCOUNT = "updateAccount"
-  val DELETE_ACCOUNT = "deleteAccount"
-  val CREATE_GROUP = "createGroup"
-  val DELETE_GROUP = "deleteGroup"
-  val CREATE_DIRECTORY = "createDirectory"
-  val DELETE_DIRECTORY = "deleteDirectory"
-  val READ_DIRECTORY = "readDirectory"
-  val CREATE_APP = "createApp"
-  val DELETE_APP = "deleteApp"
-  val LIST_ORG_GRANTS = "listOrgGrants"
-  val CREATE_ORG_GRANT = "createOrgGrant"
-  val DELETE_ORG_GRANT = "deleteOrgGrant"
-  val UPDATE_ORG_GRANT = "updateOrgGrant"
-  val LIST_APP_GRANTS = "listAppGrants"
-  val CREATE_APP_GRANT = "createAppGrant"
-  val DELETE_APP_GRANT = "deleteAppGrant"
-  val UPDATE_APP_GRANT = "updateAppGrant"
-  val CREATE_ACCOUNT_STORE = "createAccountStore"
-  val UPDATE_ACCOUNT_STORE = "updateAccountStore"
-  val DELETE_ACCOUNT_STORE = "deleteAccountStore"
-  val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
-
-  val NEW_ORG_OWNER_RIGHTS = Seq(
-    SUPERUSER
-  )
+    val NEW_ORG_OWNER_RIGHTS = Seq(
+      SUPERUSER
+    )
+  }
 
   override val autoSession = AutoSession
 
@@ -96,7 +97,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       GroupFactory.addAccountToGroup(accountId = accountId, groupId = adminGroupId)
       AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
       // give admin rights to new account
-      RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = NEW_ORG_OWNER_RIGHTS)
+      RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
       // create users group in a new directory under this org, map new group
       if (create.createDefaultUserGroup) {
         val newDir = DirectoryFactory.createDirectory(orgId = newOrgId, GestaltDirectoryCreate(
