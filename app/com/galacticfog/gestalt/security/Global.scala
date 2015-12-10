@@ -13,7 +13,7 @@ import org.apache.commons.dbcp2.BasicDataSource
 import play.api.Play.current
 import play.api.libs.json.Json
 import play.api.mvc.{Result, RequestHeader}
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import play.api.mvc.Results._
 
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
@@ -136,7 +136,7 @@ object FlywayMigration {
 
     val baseFlyway = new Flyway()
     val baseDS = getDataSource(info)
-    val mlevel1 = Try {
+    val migLevel = Try {
       baseFlyway.setDataSource(baseDS)
       baseFlyway.setLocations("classpath:db/migration/base")
       baseFlyway.setPlaceholders(Map(
@@ -154,7 +154,11 @@ object FlywayMigration {
     } catch {
       case e: Throwable => log.error("error closing base datasource",e)
     }
-    log.info("Base DB migrated to level " + mlevel1)
+    migLevel match {
+      case Success(l) => log.info("Base DB migrated to level " + l)
+      case Failure(ex) => throw ex
+    }
+
   }
 
 }
