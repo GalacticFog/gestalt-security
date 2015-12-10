@@ -59,7 +59,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   }
 
   def getAppGroupMapping(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
-    // TODO: needs to be optimized
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
       AccountStoreMappingRepository.syntax("asm")
@@ -70,6 +69,14 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       """.map(UserGroupRepository(grp)).list.apply().headOption
   }
 
+  /*
+    This is all groups where a user in the group would be auth'd in the app
+    Therefore, it's
+    - all groups directly assigned to the app
+    - all groups in a directory that is assigned to the app
+    The latter is because any user in the directory is assigned to the app, so that any user in any group in the
+    directory (therefore, a user in the directory) is in the app.
+   */
   def listAppGroupMappings(appId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
@@ -77,7 +84,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       )
     sql"""select ${grp.result.*}
           from ${UserGroupRepository.as(grp)},${AccountStoreMappingRepository.as(asm)}
-          where ${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId}
+          where (${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId}) OR
+                (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId})
       """.map(UserGroupRepository(grp)).list.apply()
   }
 

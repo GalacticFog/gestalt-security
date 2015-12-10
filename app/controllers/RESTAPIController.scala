@@ -353,19 +353,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getOrgAccountRightByUsername(orgId: UUID, username: String, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
-    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.findByUsername(username) match {
-        case Some(account) =>
-          AccountFactory.getAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName) match {
-            case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
-            case None => NotFound(Json.toJson(ResourceNotFoundException(
-              resource = request.path,
-              message = "could not locate requested right",
-              developerMessage = "Could not locate a right grant with the given name, for that account in that org."
-            )))
-          }
-        case None => defaultResourceNotFound
-      }
+    AppFactory.findUsernameInDefaultAccountStore(request.user.serviceAppId, username) match {
+      case Some(account) =>
+        AccountFactory.getAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName) match {
+          case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+          case None => NotFound(Json.toJson(ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested right",
+            developerMessage = "Could not locate a right grant with the given name, for that account in that org."
+          )))
+        }
       case None => defaultResourceNotFound
     }
   }
@@ -384,19 +381,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
-    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.findByUsername(username) match {
-        case Some(account) =>
-          AccountFactory.getAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName) match {
-            case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
-            case None => NotFound(Json.toJson(ResourceNotFoundException(
-              resource = request.path,
-              message = "could not locate requested right",
-              developerMessage = "Could not locate a right grant with the given name, for that account in that app."
-            )))
-          }
-        case None => defaultResourceNotFound
-      }
+    AppFactory.findUsernameInDefaultAccountStore(appId, username) match {
+      case Some(account) =>
+        AccountFactory.getAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName) match {
+          case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
+          case None => NotFound(Json.toJson(ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested right",
+            developerMessage = "Could not locate a right grant with the given name, for that account in that app."
+          )))
+        }
       case None => defaultResourceNotFound
     }
   }
@@ -569,20 +563,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def listOrgAccountRightsByUsername(orgId: UUID, username: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     requireAuthorization(READ_DIRECTORY)
-    val dirId = AppFactory.getDefaultAccountStore(request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val rights = AccountFactory.listAppAccountGrants(request.user.serviceAppId, account.id.asInstanceOf[UUID])
-            Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(request.user.serviceAppId, username) match {
+      case Some(account) =>
+        val rights = AccountFactory.listAppAccountGrants(request.user.serviceAppId, account.id.asInstanceOf[UUID])
+        Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+      )))
     }
   }
 
@@ -594,20 +583,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def listAppAccountRightsByUsername(appId: UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     requireAuthorization(READ_DIRECTORY)
-    val dirId = AppFactory.getDefaultAccountStore(request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val rights = AccountFactory.listAppAccountGrants(request.user.serviceAppId, account.id.asInstanceOf[UUID])
-            Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(appId, username) match {
+      case Some(account) =>
+        val rights = AccountFactory.listAppAccountGrants(request.user.serviceAppId, account.id.asInstanceOf[UUID])
+        Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+      )))
     }
   }
 
@@ -940,20 +924,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(UPDATE_APP_GRANT)
     requireAuthorization(READ_DIRECTORY)
     val patch = validateBody[Seq[PatchOp]]
-    val dirId = AppFactory.getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val grant = AccountFactory.updateAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName, patch)
-            Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(appId, username) match {
+      case Some(account) =>
+        val grant = AccountFactory.updateAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName, patch)
+        Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+      )))
     }
   }
 
@@ -968,20 +947,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(UPDATE_ORG_GRANT)
     requireAuthorization(READ_DIRECTORY)
     val patch = validateBody[Seq[PatchOp]]
-    val dirId = AppFactory.getDefaultAccountStore(request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName, patch)
-            Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(request.user.serviceAppId, username) match {
+      case Some(account) =>
+        val grant = AccountFactory.updateAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName, patch)
+        Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+      )))
     }
   }
 
@@ -1084,20 +1058,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def deleteOrgAccountRightByUsername(orgId: UUID, username: String, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     requireAuthorization(DELETE_ORG_GRANT)
-    val dirId = AppFactory.getDefaultAccountStore(request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val wasDeleted = AccountFactory.deleteAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName)
-            Ok(Json.toJson(DeleteResult(wasDeleted)))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the organization's default directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(request.user.serviceAppId, username) match {
+      case Some(account) =>
+        val wasDeleted = AccountFactory.deleteAppAccountGrant(request.user.serviceAppId, account.id.asInstanceOf[UUID], grantName)
+        Ok(Json.toJson(DeleteResult(wasDeleted)))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the organization's default directory. Make sure to use the account username."
+      )))
     }
   }
 
@@ -1109,20 +1078,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def deleteAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(DELETE_APP_GRANT)
     requireAuthorization(READ_DIRECTORY)
-    val dirId = AppFactory.getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
-          case Some(account) =>
-            val wasDeleted = AccountFactory.deleteAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName)
-            Ok(Json.toJson(DeleteResult(wasDeleted)))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the application's default directory. Make sure to use the account username."
-          )))
-        }
-      case None => defaultResourceNotFound
+    AppFactory.findUsernameInDefaultAccountStore(appId, username) match {
+      case Some(account) =>
+        val wasDeleted = AccountFactory.deleteAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName)
+        Ok(Json.toJson(DeleteResult(wasDeleted)))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the directory",
+        developerMessage = "Could not locate the requested account in the application's default directory. Make sure to use the account username."
+      )))
     }
   }
 
