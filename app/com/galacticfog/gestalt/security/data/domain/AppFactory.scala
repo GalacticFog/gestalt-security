@@ -379,9 +379,15 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     GestaltAppRepository.findAllBy(sqls"org_id=${orgId}")
   }
 
-  // TODO: implement and refactor into use
-  def findUsernameInDefaultAccountStore(appId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    ???
+  def findUsernameInDefaultAccountStore(appId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    DirectoryFactory.find(getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
+      case Some(dir) => dir.findByUsername(username)
+      case None => throw new ResourceNotFoundException(
+        resource = "",
+        message = "could not locate the default account directory for the app/org",
+        developerMessage = "Could not locate the default account directory for the application/organization."
+      )
+    }
   }
 
 }

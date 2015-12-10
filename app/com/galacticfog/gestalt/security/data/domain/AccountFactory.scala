@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.api.{GestaltRightGrant, GestaltPasswordCredential, GestaltAccountUpdate}
+import com.galacticfog.gestalt.security.api.{GestaltBasicCredsToken, GestaltRightGrant, GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
@@ -129,12 +129,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     usernameAuths.headOption orElse emailAuths.headOption
   }
 
-  def authenticate(appId: UUID, authInfo: JsValue)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+  def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val authAttempt = for {
-      username <- (authInfo \ "username").asOpt[String].toSeq
-      password <- (authInfo \ "password").asOpt[String].toSeq
-      acc <- findAppUsersByUsername(appId,username)
-      if checkPassword(account=acc, plaintext=password)
+      acc <- findAppUsersByUsername(appId,creds.username)
+      if checkPassword(account=acc, plaintext=creds.password)
     } yield acc
     authAttempt.headOption // first success is good enough
   }

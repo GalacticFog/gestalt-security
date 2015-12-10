@@ -1,14 +1,13 @@
 package controllers
 
 import java.util.UUID
-import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.io.util.PatchUpdate._
+import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
 import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
-import play.api.libs.json.{JsSuccess, JsError, JsValue, Json}
+import play.api.libs.json._
 import play.api._
 import play.api.mvc._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -16,6 +15,7 @@ import play.api.Play.current
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import OrgFactory.Rights._
+import PatchUpdate.patchOpReads
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
@@ -105,6 +105,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def appAuth(appId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(AUTHENTICATE_ACCOUNTS)
+    val creds = validateBody[GestaltBasicCredsToken]
     val app = AppFactory.findByAppId(appId)
     if (app.isEmpty) throw new UnknownAPIException(
       code = 500,
@@ -112,7 +113,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       message = "error looking up application",
       developerMessage = "The application could not be located, but the API request was authenticated. This suggests a problem with the database; please try again or contact support."
     )
-    AccountFactory.authenticate(app.get.id.asInstanceOf[UUID], request.body) match {
+    AccountFactory.authenticate(app.get.id.asInstanceOf[UUID], creds) match {
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "invalid username or password",
@@ -188,51 +189,39 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested account in the organization",
-        developerMessage = "Could not locate the requested account in the organization. Make sure to use the account ID (not the username) and that the account is a member of the organization."
+        developerMessage = "Could not locate the requested account in the organization." +
+          " Make sure to use the account ID (not the username) and that the account is a member of the organization."
       )))
     }
   }
 
   def getOrgAccountByUsername(orgId: UUID, username: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = request.user.serviceAppId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.findByUsername(username) match {
-        case Some(account) =>
-          Ok(Json.toJson[GestaltAccount](account))
-        case None => NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "could not locate requested account in the organization",
-          developerMessage = "Could not locate the requested account in the organization in the default account store associated with the org."
-        )))
-      }
+    AppFactory.findUsernameInDefaultAccountStore(request.user.serviceAppId, username) match {
+      case Some(account) =>
+        Ok(Json.toJson[GestaltAccount](account))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
-        message = "could not locate the default account directory for the org",
-        developerMessage = "Could not locate the default account directory for the organization."
+        message = "could not locate requested account in the organization",
+        developerMessage = "Could not locate the requested account in the organization in the default " +
+          "account store associated with the org."
       )))
     }
   }
 
   def getAppAccountByUsername(appId: UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(AppFactory.getDefaultAccountStore(appId = appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.findByUsername(username) match {
-        case Some(account) =>
-          Ok(Json.toJson[GestaltAccount](account))
-        case None => NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "could not locate requested account in the organization",
-          developerMessage = "Could not locate the requested account in the organization in the default account store associated with the org."
-        )))
-      }
+    AppFactory.findUsernameInDefaultAccountStore(appId, username) match {
+      case Some(account) =>
+        Ok(Json.toJson[GestaltAccount](account))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
-        message = "could not locate the default account directory for the org",
-        developerMessage = "Could not locate the default account directory for the organization."
+        message = "could not locate requested account in the organization",
+        developerMessage = "Could not locate the requested account in the organization in the default " +
+          " account store associated with the org."
       )))
     }
   }
-
 
   def getOrgGroup(orgId: UUID, groupId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     GroupFactory.getAppGroupMapping(appId = request.user.serviceAppId, groupId = groupId) match {
@@ -683,7 +672,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ))
   }
 
-  def listOrgGroupMappings(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
       GroupFactory.listAppGroupMappings(appId = request.user.serviceAppId).map { g => g: GestaltGroup }
     ))
@@ -722,7 +711,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createAccountInOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+  def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)
     val create = validateBody[GestaltAccountCreateWithRights]
     val serviceAppId = request.user.serviceAppId
@@ -1270,7 +1259,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     )))
   }
 
-  def validateBody[T](implicit request: Request[JsValue], m: reflect.Manifest[T]): T = {
+  def validateBody[T](implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): T = {
     request.body.validate[T] match {
       case s: JsSuccess[T] => s.get
       case e: JsError => throw new BadRequestException(

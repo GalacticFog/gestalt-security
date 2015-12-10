@@ -1,22 +1,21 @@
 package com.galacticfog.gestalt.security
 
-import app.GlobalWithMethodOverriding
+import play.api.{Application, GlobalSettings, Logger => log, Play}
+import scala.collection.JavaConverters._
+import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.SecurityServices
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
 import com.galacticfog.gestalt.security.data.domain.DefaultAccountStoreMappingServiceImpl
-import play.api.Play._
+import play.api._
+import org.flywaydb.core.Flyway
+import org.apache.commons.dbcp2.BasicDataSource
+import play.api.Play.current
 import play.api.libs.json.Json
+import play.api.mvc.{Result, RequestHeader}
+import scala.util.Try
 import play.api.mvc.Results._
-import play.api.mvc.{RequestHeader, Result}
-import play.api.{Application, GlobalSettings, Logger, Play}
 
-import scala.concurrent.Future
-
-/**
-  * Created by cgbaker on 12/9/15.
-  */
-// Note: this is in the default package.
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
   import com.galacticfog.gestalt.security.api.json.JsonImports._
@@ -28,12 +27,12 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   override def overrideParameter: String = "_method"
 
   override def onError(request: RequestHeader, ex: Throwable) = {
-    Logger.info("Global::onError: " + ex.getMessage)
+    log.info("Global::onError: " + ex.getMessage)
     Future.successful(handleError(request,ex))
   }
 
   override def onBadRequest(request: RequestHeader, error: String) = {
-    Logger.info("Global::onBadRequest: " + error)
+    log.info("Global::onBadRequest: " + error)
     Future.successful(BadRequest(Json.toJson(BadRequestException(
       resource = request.path,
       message = s"bad request: ${error}",
@@ -42,7 +41,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
   override def onHandlerNotFound(request: RequestHeader) = {
-    Logger.info(s"Global::onHandlerNotFound: ${request.path}")
+    log.info(s"Global::onHandlerNotFound: ${request.path}")
     Future.successful(NotFound(Json.toJson(ResourceNotFoundException(
       resource = request.path,
       message = s"resource/endpoint not found",
@@ -117,5 +116,45 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   val services = SecurityServices(
     accountStoreMappingService = new DefaultAccountStoreMappingServiceImpl
   )
+
+}
+
+object FlywayMigration {
+
+  def migrate(info: ScalikePostgresDBConnection, clean: Boolean,
+              rootUsername: String, rootPassword: String) =
+  {
+    def getDataSource(info: ScalikePostgresDBConnection) = {
+      val ds = new BasicDataSource()
+      ds.setDriverClassName(info.driver)
+      ds.setUsername(info.username)
+      ds.setPassword(info.password)
+      ds.setUrl(info.url)
+      log.info("url: " + ds.getUrl)
+      ds
+    }
+
+    val baseFlyway = new Flyway()
+    val baseDS = getDataSource(info)
+    val mlevel1 = Try {
+      baseFlyway.setDataSource(baseDS)
+      baseFlyway.setLocations("classpath:db/migration/base")
+      baseFlyway.setPlaceholders(Map(
+        "root_username" -> rootUsername,
+        "root_password" -> rootPassword
+      ).asJava)
+      if (clean) {
+        log.info("cleaning database")
+        baseFlyway.clean()
+      }
+      baseFlyway.migrate()
+    }
+    if ( ! baseDS.isClosed ) try {
+      baseDS.close()
+    } catch {
+      case e: Throwable => log.error("error closing base datasource",e)
+    }
+    log.info("Base DB migrated to level " + mlevel1)
+  }
 
 }
