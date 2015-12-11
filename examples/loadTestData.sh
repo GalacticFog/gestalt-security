@@ -14,15 +14,15 @@ rootOrgId=$(echo $AUTHRESP | jq -r '.orgId')
 adminGrpId=$(echo $AUTHRESP | jq -r '.groups | .[] | select(.name == "admins") | .id')
 
 # create galacticfog
-gfOrgId=$(echo '{"orgName": "galacticfog", "createDefaultUserGroup": false}' | http $auth $security/orgs/$rootOrgId | jq -r '.id')
+gfOrgId=$(echo '{"name": "galacticfog", "createDefaultUserGroup": false}' | http $auth $security/orgs/$rootOrgId | jq -r '.id')
 gfAppId=$(http $auth $security/orgs/$gfOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering
-gfeOrgId=$(echo '{"orgName": "engineering", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfOrgId | jq -r '.id')
+gfeOrgId=$(echo '{"name": "engineering", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfOrgId | jq -r '.id')
 gfeAppId=$(http $auth $security/orgs/$gfeOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering.core
-gfecOrgId=$(echo '{"orgName": "core", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfeOrgId | jq -r '.id')
+gfecOrgId=$(echo '{"name": "core", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfeOrgId | jq -r '.id')
 gfecAppId=$(http $auth $security/orgs/$gfecOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 

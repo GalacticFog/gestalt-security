@@ -72,14 +72,14 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           code = 500, resource = request.path, message = "unknown error parsing payload", developerMessage = e.getMessage
         )
       }
-      if (create.orgName.toLowerCase != create.orgName) throw new BadRequestException(
+      if (create.name.toLowerCase != create.name) throw new BadRequestException(
         resource = request.path,
         message = "org names must be lower case",
         developerMessage = "Org names are required to be lower case."
       )
       // create org
       val newOrg = try {
-        OrgFactory.createOrg(parentOrg = parentOrg, name = create.orgName)
+        OrgFactory.createOrg(parentOrg = parentOrg, name = create.name)
       } catch {
         case _: Throwable => throw new CreateConflictException(
           resource = request.path,
@@ -99,7 +99,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       // give admin rights to new account
       RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
       // create users group in a new directory under this org, map new group
-      if (create.createDefaultUserGroup) {
+      if (create.createDefaultUserGroup.contains(true)) {
         val newDir = DirectoryFactory.createDirectory(orgId = newOrgId, GestaltDirectoryCreate(
           name = newOrgId + "-user-dir",
           description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),

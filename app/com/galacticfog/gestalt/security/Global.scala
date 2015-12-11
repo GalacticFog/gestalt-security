@@ -18,6 +18,9 @@ import play.api.mvc.Results._
 
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
+  val DEFAULT_ROOT_USERNAME = "root"
+  val DEFAULT_ROOT_PASSWORD = "letmein"
+
   import com.galacticfog.gestalt.security.api.json.JsonImports._
 
   /**
@@ -71,8 +74,8 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     if (doMigrate) {
       val doClean: Boolean = current.configuration.getBoolean("database.clean") getOrElse false
       val doShutdown: Boolean = current.configuration.getBoolean("database.shutdownAfterMigrate") getOrElse false
-      val rootUsername = current.configuration.getString("root.username") getOrElse "root"
-      val rootPassword = current.configuration.getString("root.password") getOrElse "letmein"
+      val rootUsername = current.configuration.getString("root.username") getOrElse DEFAULT_ROOT_USERNAME
+      val rootPassword = current.configuration.getString("root.password") getOrElse DEFAULT_ROOT_PASSWORD
       log.info("Migrating databases")
       FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword)
       if (doShutdown) {

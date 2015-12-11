@@ -3,13 +3,12 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.api.{GestaltBasicCredsToken, GestaltRightGrant, GestaltPasswordCredential, GestaltAccountUpdate}
+import com.galacticfog.gestalt.security.api.{GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
 import play.api.Logger
-import play.api.libs.json.JsValue
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
