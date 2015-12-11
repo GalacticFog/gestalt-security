@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "1.2.1-SNAPSHOT"
+version := "2.0.0-SNAPSHOT"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
@@ -71,7 +71,7 @@ scalikejdbcSettings
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-io" % "1.0.4" withSources(),
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "0.2.1-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.0.0-SNAPSHOT" withSources()
 )
 
 // ----------------------------------------------------------------------------
