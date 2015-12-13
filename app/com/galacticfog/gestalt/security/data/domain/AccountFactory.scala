@@ -81,6 +81,16 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       email
     }
+    val newUsername = update.username map { username =>
+      if (UserAccountRepository.findBy(sqls"username = ${username} and dir_id = ${account.dirId}").isDefined) {
+        throw new CreateConflictException(
+          resource = s"/accounts/${account.id}",
+          message = "username already exists",
+          developerMessage = "The provided username is already present in the directory containing the account."
+        )
+      }
+      username
+    }
     val newPhoneNumber = update.phoneNumber map { pn =>
       val t = validatePhoneNumber(pn)
       t match {
@@ -103,6 +113,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
     UserAccountRepository.save(
       account.copy(
+        username = newUsername getOrElse account.username,
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
         email = newEmail orElse account.email,
