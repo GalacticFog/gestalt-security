@@ -59,9 +59,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     app <- AppFactory.findByAppId(appId)
   } yield app.orgId.asInstanceOf[UUID]
 
-  def getAccountOrg(accountId: UUID): Option[UUID] = {
+  def getEnabledAccountOrg(accountId: UUID): Option[UUID] = {
     for {
       account <- AccountFactory.findEnabled(accountId)
+      dir <- DirectoryFactory.find(account.dirId.asInstanceOf[UUID])
+    } yield dir.orgId
+  }
+
+  def getAccountOrg(accountId: UUID): Option[UUID] = {
+    for {
+      account <- AccountFactory.find(accountId)
       dir <- DirectoryFactory.find(account.dirId.asInstanceOf[UUID])
     } yield dir.orgId
   }
@@ -247,7 +254,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
@@ -261,7 +268,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     // user can update their own account
     val update = validateBody[GestaltAccountUpdate]
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) =>
         val newAccount = AccountFactory.updateAccount(account, update)
         Ok(Json.toJson[GestaltAccount](newAccount))
@@ -276,7 +283,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAccountEmail(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) =>
         Ok(account.email getOrElse "")
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -290,7 +297,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) =>
         Ok(account.phoneNumber getOrElse "")
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -304,7 +311,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def removeAccountEmail(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) =>
         val newAccount = account.copy(email = None).save()
         Ok(Json.toJson[GestaltAccount](newAccount))
@@ -319,7 +326,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def removeAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) =>
         val newAccount = account.copy(phoneNumber = None).save()
         Ok(Json.toJson[GestaltAccount](newAccount))
@@ -663,7 +670,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
-    AccountFactory.findEnabled(accountId) match {
+    AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[Seq[GestaltGroup]](
         GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId).map { g => g: GestaltGroup }
       ))
