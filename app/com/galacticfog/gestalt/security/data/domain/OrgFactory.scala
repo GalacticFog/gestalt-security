@@ -1,10 +1,9 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
-import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, CreateConflictException, BadRequestException}
-import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, GestaltOrgRepository}
+import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.data.model.{GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import play.api.Logger
 import play.api.libs.json.{Json, JsResultException, JsValue}

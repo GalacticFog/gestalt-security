@@ -1,3 +1,5 @@
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{UnauthorizedAPIException, BadRequestException}
@@ -99,6 +101,8 @@ class SDKIntegrationSpec extends PlaySpecification {
       val sync = await(GestaltOrg.syncOrgTree(None, ru, rp))
       sync.orgs     must contain(exactly(rootOrg))
       sync.accounts must contain(exactly(rootAccount))
+
+      await(GestaltOrg.syncOrgTree(Some(rootOrg.id), ru, rp)) must_== sync
     }
 
     "perform framework authorization equivalently" in {
@@ -209,6 +213,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       name = newOrgName,
       createDefaultUserGroup = Some(false)
     )))
+    lazy val newOrgApp = await(newOrg.getServiceApp())
 
     "not have root in fqon" in {
       newOrg must haveName(newOrgName)
@@ -235,6 +240,39 @@ class SDKIntegrationSpec extends PlaySpecification {
       auth.rights must not beEmpty
     }
 
+    "contain a service app" in {
+      newOrgApp.isServiceApp must beTrue
+      newOrgApp.orgId must_== newOrg.id
+    }
+
+    lazy val newOrgMappings = await(newOrgApp.listAccountStores)
+    lazy val newOrgMapping  = newOrgMappings.head
+    lazy val newOrgAdminGroup = await(GestaltGroup.getById(newOrgMapping.storeId))
+
+    "contain an account store mapping to a group in the parent directory" in {
+      newOrgMappings must haveSize(1)
+      newOrgMapping.storeType must_== com.galacticfog.gestalt.security.api.GROUP
+      newOrgAdminGroup must beSome
+
+      await(GestaltAccountStoreMapping.getById(newOrgMapping.id)) must beSome(newOrgMapping)
+    }
+
+    "list the new group as an org group" in {
+      await(newOrg.listGroups()) must contain(exactly(newOrgAdminGroup.get))
+    }
+
+    "list the root admin as an org account" in {
+      await(newOrg.listAccounts()) must contain(exactly(rootAccount))
+    }
+
+    "get the new group via the org" in {
+      newOrg.getGroupById()
+    }
+
+    "include the root admin in the new org admin group" in {
+      await(newOrgAdminGroup.get.listAccounts) must contain(rootAccount)
+    }
+
     "allow creator to delete org" in {
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
     }
@@ -244,8 +282,20 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "automatically remove admin group on deletion" in {
-      val rootGroups = await(rootOrg.listDirectories flatMap {_.head.listGroups})
-      rootGroups must haveSize(1)
+      val rootDirGroups = await(rootOrg.listDirectories flatMap {_.head.listGroups})
+      rootDirGroups must haveSize(1)
+    }
+
+  }
+
+  "Accounts" should {
+
+    "handle appropriately for non-existent lookup" in {
+      await(rootOrg.getAccountById(UUID.randomUUID)) must beNone
+    }
+
+    "not be able to delete themselves" in {
+      await(GestaltAccount.deleteAccount(rootAccount.id, ru, rp)) must throwA[BadRequestException]
     }
 
   }

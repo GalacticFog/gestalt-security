@@ -9,6 +9,8 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
 
 trait Directory {
+
+
   def findByUsername(username: String): Option[UserAccountRepository]
 
   def id: UUID
@@ -16,7 +18,12 @@ trait Directory {
   def description: Option[String]
   def orgId: UUID
 
-  def disableAccount(accountId: UUID)
+  def disableAccount(accountId: UUID): Unit
+  def deleteGroup(uuid: UUID): Boolean
+
+  def getGroupById(groupId: UUID): Option[UserGroupRepository]
+
+  def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository]
 }
 
 case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
@@ -30,6 +37,19 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   }
 
   override def findByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
+
+  override def getGroupById(groupId: UUID) = {
+    GroupFactory.find(groupId) flatMap { grp =>
+      if (grp.dirId == id) Some(grp)
+      else None
+    }
+  }
+
+  override def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository] = GroupFactory.listGroupAccounts(groupId)
+
+  override def deleteGroup(groupId: UUID): Boolean = {
+    GroupFactory.delete(groupId)
+  }
 }
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {

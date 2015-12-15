@@ -7,7 +7,23 @@ import scalikejdbc._
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
+
   override val autoSession = AutoSession
+
+  def find(groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    UserGroupRepository.find(groupId)
+  }
+
+  def delete(groupId: UUID)(implicit session: DBSession = autoSession): Boolean = {
+    find(groupId) match {
+      case Some(grp) =>
+        UserGroupRepository.destroy(grp)
+        true
+      case None =>
+        false
+    }
+  }
+
 
   def create(name: String, dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): UserGroupRepository = {
     UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg))
@@ -15,6 +31,17 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
     UserGroupRepository.findAllBy(sqls"dir_id = ${dirId}")
+  }
+
+  def listGroupAccounts(groupId: UUID)(implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
+    val (acc, axg) = (
+      UserAccountRepository.syntax("acc"),
+      GroupMembershipRepository.syntax("axg")
+      )
+    sql"""select ${acc.result.*}
+          from ${UserAccountRepository.as(acc)},${GroupMembershipRepository.as(axg)}
+          where ${axg.groupId} = ${groupId} and ${axg.accountId} = ${acc.id}
+      """.map(UserAccountRepository(acc)).list.apply()
   }
 
   def listAccountGroups(orgId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
