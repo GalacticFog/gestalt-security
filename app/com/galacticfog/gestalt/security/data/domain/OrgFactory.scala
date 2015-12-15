@@ -1,8 +1,9 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
+import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, CreateConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import play.api.Logger
@@ -12,10 +13,13 @@ import scalikejdbc._
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
+  val VALID_NAME = """^[a-z0-9]+(-[a-z0-9]+)*[a-z0-9]*$""".r
+
   object Rights {
     val SUPERUSER = "**"
 
     val CREATE_ORG = "createOrg"
+    val UPDATE_ORG = "updateOrg"
     val DELETE_ORG = "deleteOrg"
     val CREATE_ACCOUNT = "createAccount"
     val UPDATE_ACCOUNT = "updateAccount"
@@ -51,6 +55,22 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.destroy(org)
   }
 
+// ugh, what a hassle. will do this later.
+//  def updateOrg(orgId: UUID, newName: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
+//    OrgFactory.find(orgId) match {
+//      case Some(org) =>
+//        val parent = org.parent flatMap {u => OrgFactory.find(u.asInstanceOf[UUID])}
+//        val updated = org.copy(
+//          name = newName
+//        )
+//      case None => throw new ResourceNotFoundException(
+//        resource = "",
+//        message = "org does not exist",
+//        developerMessage = "An org with the given ID does not exist."
+//      )
+//    }
+//  }
+
   def find(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     GestaltOrgRepository.find(orgId)
   }
@@ -72,10 +92,10 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           code = 500, resource = request.path, message = "unknown error parsing payload", developerMessage = e.getMessage
         )
       }
-      if (create.name.toLowerCase != create.name) throw new BadRequestException(
+      if (VALID_NAME.findFirstIn(create.name).isEmpty) throw new BadRequestException(
         resource = request.path,
-        message = "org names must be lower case",
-        developerMessage = "Org names are required to be lower case."
+        message = "org name is invalid",
+        developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
       )
       // create org
       val newOrg = try {

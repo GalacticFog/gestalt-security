@@ -621,6 +621,13 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
+  def getServiceApp(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    AppFactory.findServiceAppForOrg(orgId) match {
+      case Some(app) => Ok(Json.toJson[GestaltApp](app))
+      case None => defaultResourceNotFound
+    }
+  }
+
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
@@ -687,6 +694,21 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
 
   def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+    def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+      requireAuthorization(CREATE_ORG)
+      val account = request.user.identity
+      val accountId = account.id.asInstanceOf[UUID]
+      OrgFactory.findByOrgId(parentOrgId) match {
+        case Some(parentOrg) =>
+          val newOrg = OrgFactory.createSubOrgWithAdmin(parentOrg = parentOrg, request = request)
+          Created(Json.toJson[GestaltOrg](newOrg))
+        case None => NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "parent org does not exist",
+          developerMessage = "Could not create sub-org because the parent org does not exist. Make sure to use the organization ID and not the organization name."
+        )))
+      }
+    }
     requireAuthorization(CREATE_ORG)
     val account = request.user.identity
     val accountId = account.id.asInstanceOf[UUID]
@@ -908,6 +930,13 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   ////////////////////////////////////////////////////////
   // Update methods
   ////////////////////////////////////////////////////////
+
+//  def renameOrg(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+//    requireAuthorization(UPDATE_ORG)
+//    val update = validateBody[GestaltOrgUpdate]
+//    val updatedOrg = OrgFactory.updateOrg(orgId, update.name)
+//    Ok(Json.toJson[GestaltOrg](updatedOrg))
+//  }
 
   def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_ACCOUNT_STORE)
@@ -1240,5 +1269,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       )
     }
   }
+
 
 }

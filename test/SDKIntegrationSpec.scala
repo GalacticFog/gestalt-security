@@ -1,9 +1,13 @@
 import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.api.errors.{UnauthorizedAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, OrgFactory, DirectoryFactory}
+import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import org.specs2.execute.{Results, Result}
 import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
 import play.api.libs.ws.WS
 import play.api.test._
+import com.galacticfog.gestalt.security.data.APIConversions._
 
 class SDKIntegrationSpec extends PlaySpecification {
 
@@ -48,50 +52,200 @@ class SDKIntegrationSpec extends PlaySpecification {
       server.start()
   })
 
-  "SDK client" should {
-    val client = WS.client(fakeApp)
-    implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(client, protocol = HTTP, hostname = "localhost", port = testServerPort, "", "")
+  val client = WS.client(fakeApp)
+  implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
+    wsclient = client,
+    protocol = HTTP,
+    hostname = "localhost",
+    port = testServerPort,
+    apiKey = ru,
+    apiSecret = rp
+  )
+  lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
+  lazy val rootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
+  lazy val rootAccount: GestaltAccount = rootDir.findByUsername(ru).get
+
+  "Service should" should {
 
     "return OK on /health" in {
       await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
     }
 
-    "verify fresh: syncs root with admin" in {
-      val sync = await(GestaltOrg.syncOrgTree(None, ru, rp))
-      sync.orgs     must contain(exactly(hasName("root")))
-      sync.accounts must contain(exactly(hasName("root")))
+  }
+
+  "Root org" should {
+
+    "be accessible by name" in {
+      val sdkRootMaybe = await(GestaltOrg.getByFQON("root"))
+      sdkRootMaybe must beSome(rootOrg)
     }
 
-    "get all orgs" in {
-      val orgs = await(GestaltOrg.getOrgs(ru, rp))
-      orgs must contain(exactly(hasName("root")))
+    "be accessible by id" in {
+      val sdkRootMaybe = await(GestaltOrg.getById(rootOrg.id))
+      sdkRootMaybe must beSome(rootOrg)
     }
 
-    "get root org by fqon and id" in {
-      val root1 = await(GestaltOrg.getByFQON("root", ru, rp))
-      root1 must beSome
-      val rootOrg = root1.get
-      rootOrg must haveName("root")
-      rootOrg.parent must beNone
-      rootOrg.href must_== s"/orgs/${rootOrg.id}"
-      rootOrg.children must beEmpty
-      val root2 = await(GestaltOrg.getById(rootOrg.id, ru, rp))
-      root2 must beSome(rootOrg)
-      val curOrg = await(GestaltOrg.getCurrentOrg(ru,rp))
+    "be accessible as current" in {
+      val curOrg = await(GestaltOrg.getCurrentOrg)
       curOrg must_== rootOrg
     }
 
-    "perform framework authorization" in {
+    "appear in list of all orgs" in {
+      val orgs = await(GestaltOrg.getOrgs(ru, rp))
+      orgs must contain(exactly(rootOrg))
+    }
+
+    "be syncable via root admin" in {
+      val sync = await(GestaltOrg.syncOrgTree(None, ru, rp))
+      sync.orgs     must contain(exactly(rootOrg))
+      sync.accounts must contain(exactly(rootAccount))
+    }
+
+    "perform framework authorization equivalently" in {
       // against implicit root org
       val auth1 = await(GestaltOrg.authorizeFrameworkUser(ru, rp))
       auth1 must beSome
       val ar = auth1.get
       // against explicit root org
-      val auth2 = await(GestaltOrg.authorizeFrameworkUser("root", ru, rp))
+      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, ru, rp))
       auth2 must beSome(ar)
       // against explicit org id
-      val auth3 = await(GestaltOrg.authorizeFrameworkUser(ar.orgId, ru, rp))
+      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, ru, rp))
       auth3 must beSome(ar)
+    }
+
+    "not be capable of deletion" in {
+      await(GestaltOrg.deleteOrg(rootOrg.id,ru,rp)) must throwA[BadRequestException]
+    }
+
+    "list root admin among accounts" in {
+      await(rootOrg.listAccounts) must contain(exactly(rootAccount))
+    }
+
+    "get the root admin by username" in {
+      await(rootOrg.getAccountByUsername(rootAccount.username)) must beSome(rootAccount)
+    }
+
+    "get the root account by account id" in {
+      await(rootOrg.getAccountById(rootAccount.id)) must beSome(rootAccount)
+    }
+
+  }
+
+  "Root app" should {
+
+    lazy val rootApp: GestaltApp = AppFactory.findServiceAppForOrg(rootOrg.id).get
+    lazy val appAuth = await(GestaltApp.authorizeUser(rootApp.id, GestaltBasicCredsToken(ru,rp))).get
+
+    "be accessible from root org endpoint" in {
+      await(rootOrg.getServiceApp) must_== rootApp
+    }
+
+    "show up in list of root org apps" in {
+      val apps = await(rootOrg.listApps)
+      apps must contain(exactly(rootApp))
+    }
+
+    "be accessible by id" in {
+      await(GestaltApp.getById(rootApp.id)) must_== Some(rootApp)
+    }
+
+    "returns same rights as auth" in {
+      await(GestaltApp.listGrants(rootApp.id, "root") ) must containTheSameElementsAs(appAuth.rights)
+      await(GestaltApp.listGrants(rootApp.id, appAuth.account.id)) must containTheSameElementsAs(appAuth.rights)
+    }
+
+    "returns the same accounts as the root org" in {
+      await(rootApp.listAccounts) must containTheSameElementsAs(await(rootOrg.listAccounts))
+    }
+
+    "not be capable of deletion" in {
+      await(GestaltApp.deleteApp(rootApp.id, ru, rp)) must throwA[BadRequestException]
+    }
+
+    "authenticate equivalently to framework" in {
+      appAuth must_== await(GestaltOrg.authorizeFrameworkUser(ru, rp)).get
+    }
+
+    "get the root user by username" in {
+      await(rootApp.getAccountByUsername(rootAccount.username)) must beSome(rootAccount)
+    }
+
+  }
+
+  "Org naming constraints" should {
+
+    "prohibit a mixed case name" in {
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "hasAcapitalletter")
+      await(failure) must throwA[BadRequestException]
+    }
+
+    "prohibit a name with a space" in {
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "has space")
+      await(failure) must throwA[BadRequestException]
+    }
+
+    "prohibit a name with preceding dash" in {
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "-good-but-for-the-dash")
+      await(failure) must throwA[BadRequestException]
+    }
+
+    "prohibit a name with a trailing dash" in {
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for-the-dash-")
+      await(failure) must throwA[BadRequestException]
+    }
+
+    "prohibit a name with consecutive dash" in {
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for--the-dash")
+      await(failure) must throwA[BadRequestException]
+    }
+
+  }
+
+  "New Org Without Directory" should {
+
+    lazy val newOrgName = "neworgnodir"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = Some(false)
+    )))
+
+    "not have root in fqon" in {
+      newOrg must haveName(newOrgName)
+      newOrg.fqon must_== newOrgName
+    }
+
+    "not contain a new directory" in {
+      val orgDirs = await(newOrg.listDirectories(ru, rp))
+      orgDirs must beEmpty
+      val rootDirs = await(rootOrg.listDirectories(ru, rp))
+      rootDirs must haveSize(1) // no new dirs
+      val dir = rootDirs.head
+      val groups = await(dir.listGroups)
+      groups must haveSize(2) // dir has a new group
+    }
+
+    "allow creator to authenticate by name" in {
+      val authAttempt = await(GestaltOrg.authorizeFrameworkUser(newOrg.fqon, username = ru, password = rp))
+      authAttempt must beSome
+      val auth = authAttempt.get
+      auth.account must_== rootAccount
+      auth.groups must haveSize(2)
+      auth.orgId must_== newOrg.id
+      auth.rights must not beEmpty
+    }
+
+    "allow creator to delete org" in {
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+    "not exist after deletion" in {
+      await(GestaltOrg.getByFQON(newOrgName)) must throwA[UnauthorizedAPIException]
+    }
+
+    "automatically remove admin group on deletion" in {
+      val rootGroups = await(rootOrg.listDirectories flatMap {_.head.listGroups})
+      rootGroups must haveSize(1)
     }
 
   }

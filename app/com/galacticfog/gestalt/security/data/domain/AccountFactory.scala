@@ -19,6 +19,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
+
   def validatePhoneNumber(phoneNumber: String): Try[String] = {
     Try {
       val stripped = phoneNumber.replaceAll("[- ().]","")

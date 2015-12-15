@@ -14,6 +14,7 @@ GET           /orgs/current                                             controll
 GET           /orgs/:orgId                                              controllers.RESTAPIController.getOrgById(orgId: java.util.UUID)
 DELETE        /orgs/:orgId                                              controllers.RESTAPIController.deleteOrgById(orgId: java.util.UUID)
 POST          /orgs/:orgId                                              controllers.RESTAPIController.createOrg(orgId: java.util.UUID)
+#PUT           /orgs/:orgId                                              controllers.RESTAPIController.renameOrg(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/orgs                                         controllers.RESTAPIController.listOrgTree(orgId: java.util.UUID)
 GET           /orgs/:orgId/sync                                         controllers.RESTAPIController.subOrgSync(orgId: java.util.UUID)
@@ -23,6 +24,7 @@ POST          /orgs/:orgId/directories                                  controll
 #
 POST          /orgs/:orgId/apps                                         controllers.RESTAPIController.createOrgApp(orgId: java.util.UUID)
 GET           /orgs/:orgId/apps                                         controllers.RESTAPIController.listOrgApps(orgId: java.util.UUID)
+GET           /orgs/:orgId/serviceApp                                   controllers.RESTAPIController.getServiceApp(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.getOrgAccountStores(orgId: java.util.UUID)
 POST          /orgs/:orgId/accountStores                                controllers.RESTAPIController.createOrgAccountStore(orgId: java.util.UUID)
