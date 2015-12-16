@@ -212,6 +212,21 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def getOrgGroupByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    requireAuthorization(READ_DIRECTORY)
+    GroupFactory.listAppGroupMappings(appId = request.user.serviceAppId).map { g => g: GestaltGroup }
+    AppFactory.findGroupNameInDefaultGroupStore(request.user.serviceAppId, groupName) match {
+      case Some(group) =>
+        Ok(Json.toJson[GestaltGroup](group))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested group in the organization",
+        developerMessage = "Could not locate the requested group in the organization in the default " +
+          "group store associated with the org."
+      )))
+    }
+  }
+
   def getAppAccountByUsername(appId: UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     AppFactory.findUsernameInDefaultAccountStore(appId, username) match {

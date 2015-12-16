@@ -65,7 +65,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   )
   lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
   lazy val rootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
-  lazy val rootAccount: GestaltAccount = rootDir.findByUsername(ru).get
+  lazy val rootAccount: GestaltAccount = rootDir.lookupAccountByUsername(ru).get
 
   "Service should" should {
 
@@ -265,8 +265,22 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.listAccounts()) must contain(exactly(rootAccount))
     }
 
-    "get the new group via the org" in {
-      newOrg.getGroupById()
+    "grant rights to the root admin via the new org admin group" in {
+      val accountRights = await(newOrg.listAccountGrants(rootAccount.id))
+      val groupRights   = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
+      accountRights must containTheSameElementsAs(groupRights)
+    }
+
+    "be unable to get the root admin by name via the org because there is no default account store" in {
+      await(newOrg.getAccountByUsername(rootAccount.username)) must throwA[BadRequestException](".*does not have a default account store.*")
+    }
+
+    "get the new group by id via the org" in {
+      await(newOrg.getGroupById(newOrgAdminGroup.get.id)) must beSome(newOrgAdminGroup.get)
+    }
+
+    "be unable to get the new group by name via the org because there is no default group store" in {
+      await(newOrg.getGroupByName(newOrgAdminGroup.get.name)) must throwA[BadRequestException](".*does not have a default group store.*")
     }
 
     "include the root admin in the new org admin group" in {

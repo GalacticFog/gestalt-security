@@ -186,7 +186,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   }
 
   def listAppGroupGrants(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
-    RightGrantFactory.listAccountRights(appId, groupId)
+    RightGrantFactory.listGroupRights(appId, groupId)
   }
 
   def getAppAccountGrant(appId: UUID, accountId: UUID, grantName: String)(implicit session: DBSession = autoSession): Option[RightGrantRepository] = listAppAccountGrants(appId, accountId) find (_.grantName == grantName)

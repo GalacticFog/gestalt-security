@@ -14,6 +14,7 @@ import scala.util.matching.Regex
 
 object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
+
   override val autoSession = AutoSession
 
   def delete(app: GestaltAppRepository)(implicit session: DBSession = autoSession) = {
@@ -48,17 +49,30 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )
   }
 
-  def getDefaultGroupStore(appId: UUID)(implicit session: DBSession = autoSession): Option[GestaltDirectoryRepository] = {
-    AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}") flatMap { asm =>
-      asm.storeType match {
+  def getDefaultGroupStore(appId: UUID)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
+    AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}") match {
+      case None => throw new BadRequestException(
+        resource = "",
+        message = "specified app does not have a default group store",
+        developerMessage = "Specified app does not have a default group store. Please provide one or create the group directly in the desired directory."
+      )
+      case Some(asm) => asm.storeType match {
         case "GROUP" =>
           throw new BadRequestException(
-            resource = s"/apps/${appId}",
+            resource = "",
             message = "app is configured with an invalid default group store",
             developerMessage = "App is configured with an invalid default group store. The store corresponds to a group, which cannot be used to store groups. The default group store for the app should be removed or changed to correspond to a directory."
           )
         case "DIRECTORY" =>
-          GestaltDirectoryRepository.find(asm.accountStoreId)
+          GestaltDirectoryRepository.find(asm.accountStoreId) match {
+            case None => throw new UnknownAPIException(
+              code = 500,
+              resource = "",
+              message = "could not locate directory default group store",
+              developerMessage = "Could not load the directory assigned as the default group store for the requested org. This likely indicates an error in the database."
+            )
+            case Some(dir) => dir
+          }
       }
     }
   }
@@ -306,14 +320,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           developerMessage = "Could not create group in non-existent application. If this was created as a result of an attempt to create a group in an org, it suggests that the org is misconfigured."
         )
       }
-      val dirId = getDefaultGroupStore(appId) match {
-        case Some(dir) => dir.id.asInstanceOf[UUID]
-        case None => throw new BadRequestException(
-          resource = s"/apps/${appId}",
-          message = "specified app does not have a default group store",
-          developerMessage = "Specified app does not have a default group store. Please provide one or create the group directly in the desired directory."
-        )
-      }
+      val dirId = getDefaultGroupStore(appId).id.asInstanceOf[UUID]
       if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
         throw new CreateConflictException(
           resource = s"/apps/${appId}",
@@ -381,7 +388,18 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def findUsernameInDefaultAccountStore(appId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     DirectoryFactory.find(getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.findByUsername(username)
+      case Some(dir) => dir.lookupAccountByUsername(username)
+      case None => throw new ResourceNotFoundException(
+        resource = "",
+        message = "could not locate the default account directory for the app/org",
+        developerMessage = "Could not locate the default account directory for the application/organization."
+      )
+    }
+  }
+
+  def findGroupNameInDefaultGroupStore(appId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    DirectoryFactory.find(getDefaultGroupStore(appId).id.asInstanceOf[UUID]) match {
+      case Some(dir) => dir.lookupGroupByName(groupName)
       case None => throw new ResourceNotFoundException(
         resource = "",
         message = "could not locate the default account directory for the app/org",

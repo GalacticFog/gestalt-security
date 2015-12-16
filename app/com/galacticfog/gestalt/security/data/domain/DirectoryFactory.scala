@@ -10,8 +10,8 @@ import com.galacticfog.gestalt.security.data.model._
 
 trait Directory {
 
-
-  def findByUsername(username: String): Option[UserAccountRepository]
+  def lookupAccountByUsername(username: String): Option[UserAccountRepository]
+  def lookupGroupByName(groupName: String): Option[UserGroupRepository]
 
   def id: UUID
   def name: String
@@ -36,7 +36,9 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     AccountFactory.disableAccount(accountId)
   }
 
-  override def findByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
+  override def lookupAccountByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
+
+  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = GroupFactory.directoryLookup(id, groupName)
 
   override def getGroupById(groupId: UUID) = {
     GroupFactory.find(groupId) flatMap { grp =>
@@ -50,6 +52,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   override def deleteGroup(groupId: UUID): Boolean = {
     GroupFactory.delete(groupId)
   }
+
 }
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
