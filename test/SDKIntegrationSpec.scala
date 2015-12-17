@@ -155,8 +155,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "returns same rights as auth" in {
-      await(GestaltApp.listGrants(rootApp.id, "root") ) must containTheSameElementsAs(appAuth.rights)
-      await(GestaltApp.listGrants(rootApp.id, appAuth.account.id)) must containTheSameElementsAs(appAuth.rights)
+      await(GestaltApp.listAccountGrantsByUsername(rootApp.id, "root") ) must containTheSameElementsAs(appAuth.rights)
+      await(GestaltApp.listAccountGrants(rootApp.id, appAuth.account.id)) must containTheSameElementsAs(appAuth.rights)
     }
 
     "returns the same accounts as the root org" in {
@@ -257,8 +257,18 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(GestaltAccountStoreMapping.getById(newOrgMapping.id)) must beSome(newOrgMapping)
     }
 
+    "list equivalent org and service app mappings" in {
+      await(newOrgApp.listAccountStores()) must containTheSameElementsAs(newOrgMappings)
+    }
+
     "list the new group as an org group" in {
       await(newOrg.listGroups()) must contain(exactly(newOrgAdminGroup.get))
+    }
+
+    "list equivalent org and service app groups" in {
+      val fromOrg = await(newOrg.listGroups())
+      val fromApp = await(newOrgApp.listGroups())
+      fromOrg must containTheSameElementsAs(fromApp)
     }
 
     "list the root admin as an org account" in {
@@ -269,6 +279,18 @@ class SDKIntegrationSpec extends PlaySpecification {
       val accountRights = await(newOrg.listAccountGrants(rootAccount.id))
       val groupRights   = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
       accountRights must containTheSameElementsAs(groupRights)
+    }
+
+    "list equivalent account rights from service app and org" in {
+      val fromOrg = await(newOrg.listAccountGrants(rootAccount.id))
+      val fromApp = await(newOrgApp.listAccountGrants(rootAccount.id))
+      fromOrg must containTheSameElementsAs(fromApp)
+    }
+
+    "list equivalent group rights from service app and org" in {
+      val fromOrg = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
+      val fromApp = await(newOrgApp.listGroupGrants(newOrgAdminGroup.get.id))
+      fromOrg must containTheSameElementsAs(fromApp)
     }
 
     "be unable to get the root admin by name via the org because there is no default account store" in {
@@ -286,6 +308,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     "include the root admin in the new org admin group" in {
       await(newOrgAdminGroup.get.listAccounts) must contain(rootAccount)
     }
+
+    // TODO: test manual tear-down and the expected side-effects
 
     "allow creator to delete org" in {
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue

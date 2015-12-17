@@ -942,20 +942,26 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Update methods
   ////////////////////////////////////////////////////////
 
-//  def renameOrg(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
-//    requireAuthorization(UPDATE_ORG)
-//    val update = validateBody[GestaltOrgUpdate]
-//    val updatedOrg = OrgFactory.updateOrg(orgId, update.name)
-//    Ok(Json.toJson[GestaltOrg](updatedOrg))
-//  }
-
   def updateAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
     // user can update their own account
-    val update = validateBody[GestaltAccountUpdate]
+    val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[GestaltAccountUpdate] match {
+      case s: JsSuccess[GestaltAccountUpdate] => Left(s.get)
+      case _ => request.body.validate[Seq[PatchOp]] match {
+        case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
+        case _ => throw new BadRequestException(
+          resource = request.path,
+          message = "invalid payload",
+          developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object GestaltAccountUpdate or an array of PatchOp objects"
+        )
+      }
+    }
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
     AccountFactory.find(accountId) match {
       case Some(account) =>
-        val newAccount = AccountFactory.updateAccount(account, update)
+        val newAccount = payload.fold(
+          update => AccountFactory.updateAccountSDK(account, update),
+          patches => AccountFactory.updateAccount(account, patches)
+        )
         Ok(Json.toJson[GestaltAccount](newAccount))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,

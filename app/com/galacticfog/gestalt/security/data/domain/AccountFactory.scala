@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.api.{GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
+import com.galacticfog.gestalt.security.api.{GestaltAccountCredential, GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
 import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
@@ -69,7 +69,39 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def updateAccount(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
+  def updateAccount(account: UserAccountRepository, patches: Seq[PatchOp])
+                   (implicit session: DBSession = autoSession): UserAccountRepository = {
+    // TODO: need to check for conflicts
+    // TODO: conflict check needs to be blocking
+    val patchedAccount = patches.foldLeft(account)((acc, patch) => {
+      patch.copy(op = patch.op.toLowerCase) match {
+        case PatchOp("replace", "/username",value)     => acc.copy(username = value.as[String])
+        case PatchOp("replace", "/firstName",value)    => acc.copy(firstName = value.as[String])
+        case PatchOp("replace", "/lastName",value)     => acc.copy(lastName = value.as[String])
+        case PatchOp("replace", "/disabled", value)    => acc.copy(disabled = value.as[Boolean])
+        case PatchOp("replace", "/password", value)    => {
+          import com.galacticfog.gestalt.security.api.json.JsonImports._
+          val newpass = BCrypt.hashpw(value.as[GestaltAccountCredential].asInstanceOf[GestaltPasswordCredential].password, BCrypt.gensalt())
+          acc.copy(hashMethod = "bcrypt", secret = newpass)
+        }
+        case PatchOp("remove",  "/email", _)           => acc.copy(email = None)
+        case PatchOp("add",     "/email", value)       => acc.copy(email = Some(value.as[String]))
+        case PatchOp("replace", "/email", value)       => acc.copy(email = Some(value.as[String]))
+        case PatchOp("remove",  "/phoneNumber", _)     => acc.copy(phoneNumber = None)
+        case PatchOp("add",     "/phoneNumber", value) => acc.copy(phoneNumber = Some(value.as[String]))
+        case PatchOp("replace", "/phoneNumber", value) => acc.copy(phoneNumber = Some(value.as[String]))
+        case _ => throw new BadRequestException(
+          resource = "",
+          message = "bad PATCH payload for updating account store",
+          developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."
+        )
+      }
+    })
+    patchedAccount.save()
+  }
+
+  def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
+    // TODO: conflict check needs to be blocking
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
     val newEmail = update.email map { email =>

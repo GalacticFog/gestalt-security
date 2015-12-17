@@ -14,7 +14,6 @@ GET           /orgs/current                                             controll
 GET           /orgs/:orgId                                              controllers.RESTAPIController.getOrgById(orgId: java.util.UUID)
 DELETE        /orgs/:orgId                                              controllers.RESTAPIController.deleteOrgById(orgId: java.util.UUID)
 POST          /orgs/:orgId                                              controllers.RESTAPIController.createOrg(orgId: java.util.UUID)
-#PUT           /orgs/:orgId                                              controllers.RESTAPIController.renameOrg(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/orgs                                         controllers.RESTAPIController.listOrgTree(orgId: java.util.UUID)
 GET           /orgs/:orgId/sync                                         controllers.RESTAPIController.subOrgSync(orgId: java.util.UUID)
