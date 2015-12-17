@@ -1,5 +1,6 @@
 package com.galacticfog.gestalt.security
 
+import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
@@ -30,7 +31,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   override def overrideParameter: String = "_method"
 
   override def onError(request: RequestHeader, ex: Throwable) = {
-    log.info("Global::onError: " + ex.getMessage)
+    log.error("Global::onError", ex)
     Future.successful(handleError(request,ex))
   }
 
@@ -102,6 +103,14 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case _ => request.path
     }
     e.getCause match {
+      case sql: PSQLException =>
+        log.error("caught psql error", sql)
+        throw new UnknownAPIException(
+          code = 500,
+          resource = "",
+          message = s"PSQL error ${sql.getSQLState}",
+          developerMessage = sql.getServerErrorMessage.getMessage
+        )
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
       case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
       case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
@@ -109,7 +118,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case conflict: CreateConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
       case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
       case nope: Throwable =>
-        nope.printStackTrace()
+        log.error("caught unexpected error", nope)
         InternalServerError(Json.toJson(UnknownAPIException(
         code = 500, resource = request.path, message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
       )))

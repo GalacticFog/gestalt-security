@@ -4,10 +4,11 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.{GestaltAccountCredential, GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
-import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, BadRequestException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
+import org.postgresql.util.PSQLException
 import play.api.Logger
 import play.api.mvc.RequestHeader
 import scalikejdbc._
@@ -19,11 +20,13 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
+  def canonicalE164(phoneNumber: String): String = {
+    phoneNumber.replaceAll("[- ().]","")
+  }
 
   def validatePhoneNumber(phoneNumber: String): Try[String] = {
     Try {
-      val stripped = phoneNumber.replaceAll("[- ().]","")
-      E164_PHONE_NUMBER.findFirstIn(stripped) match {
+      E164_PHONE_NUMBER.findFirstIn(canonicalE164(phoneNumber)) match {
         case Some(validNumber) => validNumber
         case None => throw new BadRequestException(
           resource = "",
@@ -71,8 +74,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def updateAccount(account: UserAccountRepository, patches: Seq[PatchOp])
                    (implicit session: DBSession = autoSession): UserAccountRepository = {
-    // TODO: need to check for conflicts
-    // TODO: conflict check needs to be blocking
     val patchedAccount = patches.foldLeft(account)((acc, patch) => {
       patch.copy(op = patch.op.toLowerCase) match {
         case PatchOp("replace", "/username",value)     => acc.copy(username = value.as[String])
@@ -97,11 +98,29 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         )
       }
     })
-    patchedAccount.save()
+    try {
+      patchedAccount.copy(
+        phoneNumber = patchedAccount.phoneNumber map { canonicalE164 }
+      ).save()
+    } catch {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "org_parent_name_key" => throw new CreateConflictException(
+            resource = "",
+            message = "org name already exists in the parent org",
+            developerMessage = "The parent org already has a sub-org with the requested name. Pick a new name or a different parent."
+          )
+          case "account_phone_number_check" => throw new BadRequestException(
+            resource = "",
+            message = "phone number was not properly formatted",
+            developerMessage = "The provided phone number must be formatted according to E.164."
+          )
+        }
+      case t: Throwable => throw t
+    }
   }
 
   def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
-    // TODO: conflict check needs to be blocking
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
     val newEmail = update.email map { email =>

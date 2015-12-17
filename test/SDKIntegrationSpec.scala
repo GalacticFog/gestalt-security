@@ -2,14 +2,17 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{UnauthorizedAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, OrgFactory, DirectoryFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import org.specs2.execute.{Results, Result}
 import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
+import org.specs2.specification.Fragments
+import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
 import com.galacticfog.gestalt.security.data.APIConversions._
+import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 class SDKIntegrationSpec extends PlaySpecification {
 
@@ -45,11 +48,9 @@ class SDKIntegrationSpec extends PlaySpecification {
   ))
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
 
-
   stopOnFail
   sequential
 
-  textFragment("Begin application and migrate database")
   step({
       server.start()
   })
@@ -64,10 +65,11 @@ class SDKIntegrationSpec extends PlaySpecification {
     apiSecret = rp
   )
   lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
-  lazy val rootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
-  lazy val rootAccount: GestaltAccount = rootDir.lookupAccountByUsername(ru).get
+  lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
+  lazy val daoRootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
+  lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
 
-  "Service should" should {
+  "Service" should {
 
     "return OK on /health" in {
       await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
@@ -245,6 +247,13 @@ class SDKIntegrationSpec extends PlaySpecification {
       newOrgApp.orgId must_== newOrg.id
     }
 
+    "be unable to create another org with the same name" in {
+      await(rootOrg.createSubOrg(GestaltOrgCreate(
+        name = newOrgName,
+        createDefaultUserGroup = Some(false)
+      ))) must throwA[CreateConflictException](".*name already exists.*")
+    }
+
     lazy val newOrgMappings = await(newOrgApp.listAccountStores)
     lazy val newOrgMapping  = newOrgMappings.head
     lazy val newOrgAdminGroup = await(GestaltGroup.getById(newOrgMapping.storeId))
@@ -326,6 +335,15 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
+  lazy val testAccount = await(rootDir.createAccount(GestaltAccountCreate(
+    username = "test",
+    firstName = "test",
+    lastName = "user",
+    email = "test@root",
+    phoneNumber = "+1.555.555.5555",
+    credential = GestaltPasswordCredential("letmein")
+  )))
+
   "Accounts" should {
 
     "handle appropriately for non-existent lookup" in {
@@ -334,6 +352,70 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "not be able to delete themselves" in {
       await(GestaltAccount.deleteAccount(rootAccount.id, ru, rp)) must throwA[BadRequestException]
+    }
+
+    "be updated with an email address" in {
+      val updatedAccount = await(rootAccount.update(
+        'email -> Json.toJson("root@root")
+      ))
+      updatedAccount.email must_== "root@root"
+    }
+
+    "be updated with a phone number" in {
+      val updatedAccount = await(rootAccount.update(
+        'phoneNumber -> Json.toJson("+1.505.867.5309")
+      ))
+      updatedAccount.phoneNumber must_== "+15058675309"
+    }
+
+    "reject an improperly formatted phone number" in {
+      await(rootAccount.update(
+        'phoneNumber -> Json.toJson("867.5309")
+      )) must throwA[BadRequestException]("wrong message")
+    }
+
+//    "throw on update for username conflict" in {
+//    }
+
+    "throw on create for username conflict" in {
+      await(rootDir.createAccount(GestaltAccountCreate(
+        username = testAccount.username,
+        firstName = "new",
+        lastName = "account",
+        email = "root@root",
+        phoneNumber = "",
+        credential = GestaltPasswordCredential("letmein"))
+      )) must throwA[CreateConflictException]("wrong message")
+    }
+
+//    "throw on update for email conflict" in {
+//
+//    }
+
+    "throw on create for email conflict" in {
+      await(rootDir.createAccount(GestaltAccountCreate(
+        username = "newAccount",
+        firstName = "new",
+        lastName = "account",
+        email = testAccount.email,
+        phoneNumber = "",
+        credential = GestaltPasswordCredential("letmein"))
+      )) must throwA[CreateConflictException]("wrong message")
+    }
+
+//    "throw on update for phone number conflict" in {
+//
+//    }
+
+    "throw on create for phone number conflict" in {
+      await(rootDir.createAccount(GestaltAccountCreate(
+        username = "newAccount",
+        firstName = "new",
+        lastName = "account",
+        email = "newaccount@root",
+        phoneNumber = testAccount.phoneNumber,
+        credential = GestaltPasswordCredential("letmein"))
+      )) must throwA[CreateConflictException]("wrong message")
     }
 
   }

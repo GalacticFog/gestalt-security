@@ -721,18 +721,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ORG)
-    val account = request.user.identity
-    val accountId = account.id.asInstanceOf[UUID]
-    OrgFactory.findByOrgId(parentOrgId) match {
-      case Some(parentOrg) =>
-        val newOrg = OrgFactory.createSubOrgWithAdmin(parentOrg = parentOrg, request = request)
-        Created(Json.toJson[GestaltOrg](newOrg))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "parent org does not exist",
-        developerMessage = "Could not create sub-org because the parent org does not exist. Make sure to use the organization ID and not the organization name."
-      )))
-    }
+    val newOrg = OrgFactory.createSubOrgWithAdmin(
+      parentOrgId = parentOrgId,
+      creator = request.user.identity,
+      create = validateBody[GestaltOrgCreate]
+    )
+    Created(Json.toJson[GestaltOrg](newOrg))
   }
 
   def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
@@ -944,10 +938,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def updateAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
     // user can update their own account
-    val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[GestaltAccountUpdate] match {
-      case s: JsSuccess[GestaltAccountUpdate] => Left(s.get)
-      case _ => request.body.validate[Seq[PatchOp]] match {
-        case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
+    val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
+      case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
+      case _ => request.body.validate[GestaltAccountUpdate] match {
+        case s: JsSuccess[GestaltAccountUpdate] => Left(s.get)
         case _ => throw new BadRequestException(
           resource = request.path,
           message = "invalid payload",

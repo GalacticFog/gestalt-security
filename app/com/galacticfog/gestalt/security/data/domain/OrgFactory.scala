@@ -2,9 +2,10 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException}
-import com.galacticfog.gestalt.security.data.model.{GestaltOrgRepository}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, CreateConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
+import org.postgresql.util.PSQLException
 import play.api.Logger
 import play.api.libs.json.{Json, JsResultException, JsValue}
 import play.api.mvc.Security
@@ -74,46 +75,23 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.find(orgId)
   }
 
-  def createSubOrgWithAdmin(parentOrg: GestaltOrgRepository, request: Security.AuthenticatedRequest[JsValue,AccountWithOrgContext])(implicit session: DBSession = autoSession): GestaltOrgRepository = {
-    import com.galacticfog.gestalt.security.api.json.JsonImports._
+  def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     DB localTx { implicit session =>
-      val account = request.user.identity
-      val accountId = account.id.asInstanceOf[UUID]
-      val create = try {
-        request.body.as[GestaltOrgCreate]
-      } catch {
-        case parseError: JsResultException => throw new BadRequestException(
-          resource = request.path,
-          message = "invalid payload",
-          developerMessage = "Payload could not be parsed; was expecting JSON representation of GestaltOrgCreate"
-        )
-        case e: Throwable => throw new UnknownAPIException(
-          code = 500, resource = request.path, message = "unknown error parsing payload", developerMessage = e.getMessage
-        )
-      }
       if (VALID_NAME.findFirstIn(create.name).isEmpty) throw new BadRequestException(
-        resource = request.path,
+        resource = "",
         message = "org name is invalid",
         developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
       )
       // create org
-      val newOrg = try {
-        OrgFactory.createOrg(parentOrg = parentOrg, name = create.name)
-      } catch {
-        case _: Throwable => throw new CreateConflictException(
-          resource = request.path,
-          message = "error creating new sub org",
-          developerMessage = "Error creating new sub org. This is most likely a conflict with an existing org of the same name."
-        )
-      }
+      val newOrg = createOrg(parentOrgId = parentOrgId, name = create.name)
       val newOrgId = newOrg.id.asInstanceOf[UUID]
       // create system app
       val newApp = AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
       val newAppId = newApp.id.asInstanceOf[UUID]
       // create admins group, add user
-      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = account.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
+      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = creator.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
       val adminGroupId = adminGroup.id.asInstanceOf[UUID]
-      GroupFactory.addAccountToGroup(accountId = accountId, groupId = adminGroupId)
+      GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
       AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
       // give admin rights to new account
       RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
@@ -138,16 +116,29 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.findBy(sqls"parent is null")
   }
 
-  def createOrg(parentOrg: GestaltOrgRepository, name: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
-      if (name.contains('.')) throw new BadRequestException(resource = s"/orgs/${parentOrg.id}", message = "org names cannot contain periods", developerMessage = "Org names cannot contain periods.")
-      val newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
+  def createOrg(parentOrgId: UUID, name: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
+    val parentOrg = OrgFactory.find(parentOrgId) getOrElse {
+      throw new ResourceNotFoundException(resource = "", message = "could not locate parent org", "Could not find the parent org while attempting to create a sub-org.")
+    }
+    val newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
+    try {
       GestaltOrgRepository.create(
         id = UUID.randomUUID(),
         name = name,
         fqon = newfqon,
         parent = Some(parentOrg.id)
       )
+    } catch {
+      case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "org_parent_name_key") =>
+        val v = t.getServerErrorMessage
+        throw new CreateConflictException(
+          resource = "",
+          message = "org name already exists in the parent org",
+          developerMessage = "The parent org already has a sub-org with the requested name. Pick a new name or a different parent."
+        )
+      case t: Throwable => throw t
     }
+  }
 
   def findByFQON(fqon: String)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     Logger.info("looking for org with fqon = " + fqon)
