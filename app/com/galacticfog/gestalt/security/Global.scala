@@ -104,11 +104,11 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     }
     e.getCause match {
       case sql: PSQLException =>
-        log.error("caught psql error", sql)
+        log.error(s"caught psql error with state ${sql.getSQLState}", sql)
         throw new UnknownAPIException(
           code = 500,
           resource = "",
-          message = s"PSQL error ${sql.getSQLState}",
+          message = s"PSQL error ${sql.getSQLState}, ${sql.getErrorCode}",
           developerMessage = sql.getServerErrorMessage.getMessage
         )
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))

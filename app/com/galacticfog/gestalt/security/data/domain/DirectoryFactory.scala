@@ -128,30 +128,12 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         developerMessage = "Could not create account in non-existent directory. If this error was encountered during an attempt to create an account in an org, it suggests that the org is misconfigured."
       )
     }
-    if (UserAccountRepository.findBy(sqls"username = ${create.username} and dir_id = ${dirId}").isDefined) {
-      throw new CreateConflictException(
-        resource = s"/directories/${dirId}/accounts",
-        message = "username already exists in directory",
-        developerMessage = "The directory already contains an account with the specified username."
-      )
-    }
-    val email = if (! create.email.isEmpty) {
-      if (UserAccountRepository.findBy(sqls"phone_number = ${create.email} and dir_id = ${dirId}").isDefined) {
-        throw new CreateConflictException(
-          resource = s"/directories/${dirId}",
-          message = "email address already exists",
-          developerMessage = "The directory already contains an account with the specified email address."
-        )
-      }
-      Some(create.email)
-    } else None
     val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
-    UserAccountRepository.create(
-      id = UUID.randomUUID(),
+    AccountFactory.createAccount(
       dirId = dirId,
       username = create.username,
-      email = email,
-      phoneNumber = if (create.phoneNumber.isEmpty) None else Some(create.phoneNumber),
+      email = if (create.email.trim.isEmpty) None else Some(create.email),
+      phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
       firstName = create.firstName,
       lastName = create.lastName,
       hashMethod = "bcrypt",

@@ -68,6 +68,8 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
   lazy val daoRootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
   lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
+  val rootPhone = "+1.505.867.5309"
+  val rootEmail = "root@root"
 
   "Service" should {
 
@@ -356,26 +358,40 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "be updated with an email address" in {
       val updatedAccount = await(rootAccount.update(
-        'email -> Json.toJson("root@root")
+        'email -> Json.toJson(rootEmail)
       ))
-      updatedAccount.email must_== "root@root"
+      updatedAccount.email must_== rootEmail
     }
 
     "be updated with a phone number" in {
       val updatedAccount = await(rootAccount.update(
-        'phoneNumber -> Json.toJson("+1.505.867.5309")
+        'phoneNumber -> Json.toJson(rootPhone)
       ))
       updatedAccount.phoneNumber must_== "+15058675309"
     }
 
-    "reject an improperly formatted phone number" in {
-      await(rootAccount.update(
-        'phoneNumber -> Json.toJson("867.5309")
-      )) must throwA[BadRequestException]("wrong message")
+    "reject an improperly formatted phone number on create" in {
+      await(rootDir.createAccount(GestaltAccountCreate(
+        username = "accountWithBadEmail",
+        firstName = "bad",
+        lastName = "account",
+        email = "",
+        phoneNumber = "867.5309",
+        credential = GestaltPasswordCredential("letmein"))
+      )) must throwA[BadRequestException](".*phone number was not properly formatted.*")
     }
 
-//    "throw on update for username conflict" in {
-//    }
+    "reject an improperly formatted phone number on update" in {
+      await(rootAccount.update(
+        'phoneNumber -> Json.toJson("867.5309")
+      )) must throwA[BadRequestException](".*phone number was not properly formatted.*")
+    }
+
+    "throw on update for username conflict" in {
+      await(testAccount.update(
+        'username -> Json.toJson(rootAccount.username)
+      )) must throwA[CreateConflictException](".*username already exists.*")
+    }
 
     "throw on create for username conflict" in {
       await(rootDir.createAccount(GestaltAccountCreate(
@@ -385,12 +401,14 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = "root@root",
         phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException]("wrong message")
+      )) must throwA[CreateConflictException](".*username already exists.*")
     }
 
-//    "throw on update for email conflict" in {
-//
-//    }
+    "throw on update for email conflict" in {
+      await(testAccount.update(
+        'email -> Json.toJson(rootEmail)
+      )) must throwA[CreateConflictException](".*email address already exists.*")
+    }
 
     "throw on create for email conflict" in {
       await(rootDir.createAccount(GestaltAccountCreate(
@@ -400,12 +418,14 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = testAccount.email,
         phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException]("wrong message")
+      )) must throwA[CreateConflictException](".*email address already exists.*")
     }
 
-//    "throw on update for phone number conflict" in {
-//
-//    }
+    "throw on update for phone number conflict" in {
+      await(testAccount.update(
+        'phoneNumber -> Json.toJson(rootPhone)
+      )) must throwA[CreateConflictException](".*phone number already exists.*")
+    }
 
     "throw on create for phone number conflict" in {
       await(rootDir.createAccount(GestaltAccountCreate(
@@ -415,7 +435,14 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = "newaccount@root",
         phoneNumber = testAccount.phoneNumber,
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException]("wrong message")
+      )) must throwA[CreateConflictException](".*phone number already exists.*")
+    }
+
+    "be updated with a new username" in {
+      val updated = await(testAccount.update(
+        'username -> Json.toJson("newUsername")
+      ))
+      updated.username must_== "newUsername"
     }
 
   }

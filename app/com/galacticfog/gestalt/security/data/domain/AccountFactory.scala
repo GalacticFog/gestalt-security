@@ -72,6 +72,62 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
+
+
+  def createAccount(dirId: UUID,
+                    username: String,
+                    email: Option[String] = None,
+                    phoneNumber: Option[String] = None,
+                    firstName: String,
+                    lastName: String,
+                    hashMethod: String,
+                    salt: String,
+                    secret: String,
+                    disabled: Boolean)
+                   (implicit session: DBSession = autoSession): UserAccountRepository =
+  {
+    try {
+      UserAccountRepository.create(
+        id = UUID.randomUUID(),
+        dirId = dirId,
+        username = username,
+        email = email,
+        phoneNumber = phoneNumber map canonicalE164,
+        firstName = firstName,
+        lastName = lastName,
+        hashMethod = hashMethod,
+        salt = salt,
+        secret = secret,
+        disabled = disabled
+      )
+    } catch {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "account_phone_number_check" => throw new BadRequestException(
+            resource = "",
+            message = "phone number was not properly formatted",
+            developerMessage = "The provided phone number must be formatted according to E.164."
+          )
+          case "account_dir_id_username_key" => throw new CreateConflictException(
+            resource = "",
+            message = "username already exists in directory",
+            developerMessage = "An account with the specified username already exists in the specified directory."
+          )
+          case "account_dir_id_email_key" => throw new CreateConflictException(
+            resource = "",
+            message = "email address already exists in directory",
+            developerMessage = "An account with the specified email address already exists in the specified directory."
+          )
+          case "account_dir_id_phone_number_key" => throw new CreateConflictException(
+            resource = "",
+            message = "phone number already exists in directory",
+            developerMessage = "An account with the specified phone number already exists in the specified directory."
+          )
+          case _ => throw t
+        }
+    }
+  }
+
   def updateAccount(account: UserAccountRepository, patches: Seq[PatchOp])
                    (implicit session: DBSession = autoSession): UserAccountRepository = {
     val patchedAccount = patches.foldLeft(account)((acc, patch) => {
@@ -100,23 +156,33 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     })
     try {
       patchedAccount.copy(
-        phoneNumber = patchedAccount.phoneNumber map { canonicalE164 }
+        phoneNumber = patchedAccount.phoneNumber map canonicalE164
       ).save()
     } catch {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
         t.getServerErrorMessage.getConstraint match {
-          case "org_parent_name_key" => throw new CreateConflictException(
-            resource = "",
-            message = "org name already exists in the parent org",
-            developerMessage = "The parent org already has a sub-org with the requested name. Pick a new name or a different parent."
-          )
           case "account_phone_number_check" => throw new BadRequestException(
             resource = "",
             message = "phone number was not properly formatted",
             developerMessage = "The provided phone number must be formatted according to E.164."
           )
+          case "account_dir_id_username_key" => throw new CreateConflictException(
+            resource = "",
+            message = "username already exists in directory",
+            developerMessage = "An account with the specified username already exists in the specified directory."
+          )
+          case "account_dir_id_email_key" => throw new CreateConflictException(
+            resource = "",
+            message = "email address already exists in directory",
+            developerMessage = "An account with the specified email address already exists in the specified directory."
+          )
+          case "account_dir_id_phone_number_key" => throw new CreateConflictException(
+            resource = "",
+            message = "phone number already exists in directory",
+            developerMessage = "An account with the specified phone number already exists in the specified directory."
+          )
+          case _ => throw t
         }
-      case t: Throwable => throw t
     }
   }
 

@@ -271,8 +271,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         }
         Some(newNumber)
       } else None
-      val newUser = UserAccountRepository.create(
-        id = UUID.randomUUID(),
+      val newUser = AccountFactory.createAccount(
         dirId = dirId,
         username = create.username,
         email = email,
