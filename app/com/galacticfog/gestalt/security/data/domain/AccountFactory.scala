@@ -72,8 +72,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-
-
   def createAccount(dirId: UUID,
                     username: String,
                     email: Option[String] = None,

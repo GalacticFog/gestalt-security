@@ -97,7 +97,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "appear in list of all orgs" in {
-      val orgs = await(GestaltOrg.getOrgs(ru, rp))
+      val orgs = await(GestaltOrg.listOrgs(ru, rp))
       orgs must contain(exactly(rootOrg))
     }
 
@@ -138,6 +138,12 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(rootOrg.getAccountById(rootAccount.id)) must beSome(rootAccount)
     }
 
+  }
+
+  "Root dir" should {
+    "contain the root account" in {
+      await(rootDir.listAccounts()) must containTheSameElementsAs(Seq(rootAccount))
+    }
   }
 
   "Root app" should {
@@ -224,6 +230,14 @@ class SDKIntegrationSpec extends PlaySpecification {
       newOrg.fqon must_== newOrgName
     }
 
+    "show up in the root org tree" in {
+      await(rootOrg.listOrgs()) must containTheSameElementsAs(Seq(await(GestaltOrg.getById(rootOrg.id)).get,newOrg))
+    }
+
+    "be alone in its own org tree" in {
+      await(newOrg.listOrgs()) must containTheSameElementsAs(Seq(newOrg))
+    }
+
     "not contain a new directory" in {
       val orgDirs = await(newOrg.listDirectories(ru, rp))
       orgDirs must beEmpty
@@ -268,6 +282,12 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(GestaltAccountStoreMapping.getById(newOrgMapping.id)) must beSome(newOrgMapping)
     }
 
+    "result in a new group membership for the creating account" in {
+      val rootGroups = await(rootAccount.listGroupMemberships())
+      rootGroups must contain(newOrgAdminGroup.get)
+      rootGroups must haveSize(2)
+    }
+
     "list equivalent org and service app mappings" in {
       await(newOrgApp.listAccountStores()) must containTheSameElementsAs(newOrgMappings)
     }
@@ -286,7 +306,11 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.listAccounts()) must contain(exactly(rootAccount))
     }
 
-    "grant rights to the root admin via the new org admin group" in {
+    "get the groups for the root admin" in {
+      await(rootAccount.listGroupMemberships()) must containTheSameElementsAs(await(rootDir.listGroups()))
+    }
+
+    "verify right grants to the root admin via the new org admin group" in {
       val accountRights = await(newOrg.listAccountGrants(rootAccount.id))
       val groupRights   = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
       accountRights must containTheSameElementsAs(groupRights)
@@ -312,6 +336,10 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.getGroupById(newOrgAdminGroup.get.id)) must beSome(newOrgAdminGroup.get)
     }
 
+    "get the new group by the name in the directory" in {
+      await(rootDir.getGroupByName(newOrgAdminGroup.get.name)) must beSome(newOrgAdminGroup.get)
+    }
+
     "be unable to get the new group by name via the org because there is no default group store" in {
       await(newOrg.getGroupByName(newOrgAdminGroup.get.name)) must throwA[BadRequestException](".*does not have a default group store.*")
     }
@@ -319,8 +347,6 @@ class SDKIntegrationSpec extends PlaySpecification {
     "include the root admin in the new org admin group" in {
       await(newOrgAdminGroup.get.listAccounts) must contain(rootAccount)
     }
-
-    // TODO: test manual tear-down and the expected side-effects
 
     "allow creator to delete org" in {
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
@@ -348,6 +374,14 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   "Accounts" should {
 
+    "be listed in dirs by username" in {
+      await(rootDir.getAccountByUsername(testAccount.username)) must beSome(testAccount)
+    }
+
+    "be listed among directory account listing" in {
+      await(rootDir.listAccounts()) must containTheSameElementsAs(Seq(await(GestaltAccount.getById(rootAccount.id)).get,testAccount))
+    }
+
     "handle appropriately for non-existent lookup" in {
       await(rootOrg.getAccountById(UUID.randomUUID)) must beNone
     }
@@ -361,6 +395,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         'email -> Json.toJson(rootEmail)
       ))
       updatedAccount.email must_== rootEmail
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
     "be updated with a phone number" in {
@@ -368,6 +403,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         'phoneNumber -> Json.toJson(rootPhone)
       ))
       updatedAccount.phoneNumber must_== "+15058675309"
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
     "reject an improperly formatted phone number on create" in {
@@ -445,6 +481,42 @@ class SDKIntegrationSpec extends PlaySpecification {
       updated.username must_== "newUsername"
     }
 
+    "allow email removal" in {
+      val updatedAccount = await(testAccount.deregisterEmail())
+      updatedAccount.email must_== ""
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
+    }
+
+    "allow phone number removal" in {
+      val updatedAccount = await(testAccount.deregisterPhoneNumber())
+      updatedAccount.phoneNumber must_== ""
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
+    }
+
+  }
+
+  lazy val testGroup2 = await(rootDir.getGroupByName("testGroup2")).get
+  lazy val testUser2 = await(rootDir.getAccountByUsername("testAccount2")).get
+
+  "Directory" should {
+    "allow a new group to be created" in {
+      await(rootDir.createGroup(GestaltGroupCreate("testGroup2"))) must haveName("testGroup2")
+    }
+
+    "allow a new user to be created in the group" in {
+      await(rootDir.createAccount(GestaltAccountCreate(
+        username = "testAccount2",
+        firstName = "test",
+        lastName = "account2",
+        email = "", phoneNumber = "",
+        groups = Some(Seq(testGroup2.id)),
+        credential = GestaltPasswordCredential(password = "letmein")
+      ))) must haveName("testAccount2")
+    }
+
+    "list the group in the account memberships" in {
+      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
+    }
   }
 
 }

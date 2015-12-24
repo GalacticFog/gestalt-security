@@ -44,7 +44,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       """.map(UserAccountRepository(acc)).list.apply()
   }
 
-  def listAccountGroups(orgId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
+  def listAccountGroups(accountId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
     val (grp, axg) = (
       UserGroupRepository.syntax("grp"),
       GroupMembershipRepository.syntax("axg")

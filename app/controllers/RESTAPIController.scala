@@ -20,8 +20,6 @@ import PatchUpdate.patchOpReads
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
-case class SecurityControllerInitializationError(msg: String) extends RuntimeException(msg)
-
 object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   val services = Global.services
@@ -84,7 +82,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def orgAuthByUUID(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
     val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => g: GestaltGroup }, rights = rights map { r => r: GestaltRightGrant }, orgId = request.user.orgId)
     Ok(Json.toJson(ar))
@@ -92,7 +90,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def orgAuthByFQON(fqon: String) = AuthenticatedAction(fqonToOrgUUID(fqon)) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
     val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => g: GestaltGroup }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId)
     Ok(Json.toJson(ar))
@@ -100,7 +98,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def apiAuth() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId)
+    val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
     val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => g: GestaltGroup }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId)
     Ok(Json.toJson(ar))
@@ -125,7 +123,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       case Some(account) =>
         val accountId = account.id.asInstanceOf[UUID]
         val rights = RightGrantFactory.listAccountRights(appId = appId, accountId = accountId)
-        val groups = GroupFactory.listAccountGroups(orgId = app.get.orgId.asInstanceOf[UUID], accountId = accountId)
+        val groups = GroupFactory.listAccountGroups(accountId = accountId)
         Ok(Json.toJson[GestaltAuthResponse](GestaltAuthResponse(
           account,
           groups map { g => g: GestaltGroup },
@@ -705,7 +703,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
     AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[Seq[GestaltGroup]](
-        GroupFactory.listAccountGroups(orgId = request.user.orgId, accountId = accountId).map { g => g: GestaltGroup }
+        GroupFactory.listAccountGroups(accountId = accountId).map { g => g: GestaltGroup }
       ))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,

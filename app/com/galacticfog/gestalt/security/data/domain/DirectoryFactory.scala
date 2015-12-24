@@ -9,6 +9,12 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
 
 trait Directory {
+  def createAccount(username: String,
+                    firstName: String,
+                    lastName: String,
+                    email: Option[String],
+                    phoneNumber: Option[String],
+                    cred: GestaltPasswordCredential): UserAccountRepository
 
   def lookupAccountByUsername(username: String): Option[UserAccountRepository]
   def lookupGroupByName(groupName: String): Option[UserGroupRepository]
@@ -53,6 +59,20 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     GroupFactory.delete(groupId)
   }
 
+  override def createAccount(username: String, firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): UserAccountRepository = {
+    AccountFactory.createAccount(
+      dirId = id,
+      username = username,
+      firstName = firstName,
+      lastName = lastName,
+      email = email,
+      phoneNumber = phoneNumber,
+      hashMethod = "bcrypt",
+      salt = "",
+      secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
+      disabled = true
+    )
+  }
 }
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
@@ -121,26 +141,32 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): UserAccountRepository = {
-    if (GestaltDirectoryRepository.find(dirId).isEmpty) {
-      throw new ResourceNotFoundException(
+    DirectoryFactory.find(dirId) match {
+      case None => throw new ResourceNotFoundException(
         resource = s"/directories/${dirId}",
         message = "could not create account in non-existent directory",
         developerMessage = "Could not create account in non-existent directory. If this error was encountered during an attempt to create an account in an org, it suggests that the org is misconfigured."
       )
+      case Some(dir) =>
+        DB localTx { implicit session =>
+          val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
+          val newAccount = dir.createAccount(
+            username = create.username,
+            email = if (create.email.trim.isEmpty) None else Some(create.email),
+            phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
+            firstName = create.firstName,
+            lastName = create.lastName,
+            cred = cred
+          )
+          create.groups.toSeq.flatten foreach {
+            grpId => GroupMembershipRepository.create(
+              accountId = newAccount.id.asInstanceOf[UUID],
+              groupId = grpId
+            )
+          }
+          newAccount
+        }
     }
-    val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
-    AccountFactory.createAccount(
-      dirId = dirId,
-      username = create.username,
-      email = if (create.email.trim.isEmpty) None else Some(create.email),
-      phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
-      firstName = create.firstName,
-      lastName = create.lastName,
-      hashMethod = "bcrypt",
-      secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
-      salt = "",
-      disabled = false
-    )
   }
 
   def createGroupInDir(dirId: UUID, create: GestaltGroupCreate)(implicit session: DBSession = autoSession): UserGroupRepository = {
