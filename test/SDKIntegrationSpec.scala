@@ -499,6 +499,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val testUser2 = await(rootDir.getAccountByUsername("testAccount2")).get
 
   "Directory" should {
+
     "allow a new group to be created" in {
       await(rootDir.createGroup(GestaltGroupCreate("testGroup2"))) must haveName("testGroup2")
     }
@@ -517,6 +518,27 @@ class SDKIntegrationSpec extends PlaySpecification {
     "list the group in the account memberships" in {
       await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
     }
+
+    // TODO: do something with this account, by adding it to an org, preferably via a group
+
+    "process group deletion" in {
+      await(GestaltGroup.deleteGroup(testGroup2.id, ru, rp)) must beTrue
+      await(GestaltGroup.getById(testGroup2.id)) must throwA[UnauthorizedAPIException]
+      await(rootDir.getGroupByName("testGroup2")) must beNone
+      await(testUser2.listGroupMemberships()) must beEmpty
+    }
+
+    "process account deletion" in {
+      await(GestaltAccount.deleteAccount(testUser2.id, ru, rp)) must beTrue
+      await(GestaltAccount.getById(testUser2.id)) must beSome(testUser2)
+      await(rootDir.getAccountByUsername("testAccount2")) must beSome(testUser2)
+    }
+
+    // TODO: this requires an app or org to test against, which worked before
+//    "disable account for auth" in {
+//
+//    }
+
   }
 
 }

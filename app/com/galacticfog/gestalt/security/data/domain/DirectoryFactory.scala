@@ -70,7 +70,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
       hashMethod = "bcrypt",
       salt = "",
       secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
-      disabled = true
+      disabled = false
     )
   }
 }
