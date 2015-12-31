@@ -32,7 +32,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
   override def onError(request: RequestHeader, ex: Throwable) = {
     log.error("Global::onError", ex)
-    Future.successful(handleError(request,ex))
+    Future.successful(handleError(request,ex.getCause))
   }
 
   override def onBadRequest(request: RequestHeader, error: String) = {
@@ -96,13 +96,13 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
 
-  private def handleError(request: RequestHeader, e: Throwable): Result = {
+  def handleError(request: RequestHeader, e: Throwable): Result = {
     val resource = e.getCause match {
       case sre: SecurityRESTException if !sre.resource.isEmpty =>
         sre.resource
       case _ => request.path
     }
-    e.getCause match {
+    e match {
       case sql: PSQLException =>
         log.error(s"caught psql error with state ${sql.getSQLState}", sql)
         throw new UnknownAPIException(

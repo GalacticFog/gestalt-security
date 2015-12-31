@@ -8,6 +8,8 @@ import scalikejdbc._
 import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
 
+import scala.util.{Success, Failure, Try}
+
 trait Directory {
   def createAccount(username: String,
                     firstName: String,
@@ -99,45 +101,48 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     GestaltDirectoryRepository.findAll map {d => d:Directory}
   }
 
-  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Directory = {
-    if (GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}").isDefined) {
-      throw new CreateConflictException(
+  // TODO: omg, refactor this
+  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
+    GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}") match {
+      case Some(_) => Failure(CreateConflictException(
         resource = s"/orgs/${orgId}/directories",
         message = "directory with specified name already exists in org",
         developerMessage = "The org already contains a directory with the specified name."
-      )
-    }
-    val directoryType = {
-      create.config flatMap {c => (c \ "directoryType").asOpt[String]} match {
-        case None =>
-          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER('INTERNAL')") match {
-            case None => throw new UnknownAPIException(
-              code = 500,
-              resource = s"/orgs/${orgId}/directories",
-              message = "default directory type INTERNAL not found",
-              developerMessage = "A directory type not specified during directory create request, and the default directory type was not available."
-            )
-            case Some(dirType) => dirType.name.toUpperCase
+      ))
+      case None =>
+        {
+          create.config flatMap {c => (c \ "directoryType").asOpt[String]} match {
+            case None =>
+              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER('INTERNAL')") match {
+                case None => Failure(UnknownAPIException(
+                  code = 500,
+                  resource = s"/orgs/${orgId}/directories",
+                  message = "default directory type INTERNAL not found",
+                  developerMessage = "A directory type not specified during directory create request, and the default directory type was not available."
+                ))
+                case Some(dirType) => Success(dirType.name.toUpperCase)
+              }
+            case Some(createType) =>
+              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${createType})") match {
+                case None => Failure(BadRequestException(
+                  resource = s"/orgs/${orgId}/directories",
+                  message = "directory type not valid",
+                  developerMessage = "During directory creation, the requested directory type was not valid."
+                ))
+                case Some(dirType) => Success(dirType.name.toUpperCase)
+              }
           }
-        case Some(createType) =>
-          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${createType})") match {
-            case None => throw new BadRequestException(
-              resource = s"/orgs/${orgId}/directories",
-              message = "directory type not valid",
-              developerMessage = "During directory creation, the requested directory type was not valid."
-            )
-            case Some(dirType) => dirType.name.toUpperCase
-          }
-      }
+        } map { directoryType =>
+          GestaltDirectoryRepository.create(
+            id = UUID.randomUUID(),
+            orgId = orgId,
+            name = create.name,
+            description = create.description,
+            config = create.config map {_.toString},
+            directoryType = directoryType
+          )
+        }
     }
-    GestaltDirectoryRepository.create(
-      id = UUID.randomUUID(),
-      orgId = orgId,
-      name = create.name,
-      description = create.description,
-      config = create.config map {_.toString},
-      directoryType = directoryType
-    )
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): UserAccountRepository = {

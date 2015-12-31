@@ -1,9 +1,13 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
+import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.model._
+import play.api.libs.json.JsResult
 import scalikejdbc._
+
+import scala.util.{Failure, Try}
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
@@ -25,8 +29,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   }
 
 
-  def create(name: String, dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): UserGroupRepository = {
-    UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg))
+  def create(name: String, dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    Try(UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg)))
   }
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
@@ -55,28 +59,68 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       """.map(UserGroupRepository(grp)).list.apply()
   }
 
-  def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): GroupMembershipRepository = {
+  def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Unit = {
     UserGroupRepository.find(groupId) match {
       case None => throw new BadRequestException(
         resource = s"/groups/${groupId}",
-        message = "cannot add account to non-existent group",
-        developerMessage = "Cannot add account to non-existent group. Verify that the correct group ID was provided."
+        message = "cannot remove account to non-existent group",
+        developerMessage = "Cannot remove account from non-existent group. Verify that the correct group ID was provided."
       )
       case Some(group) => UserAccountRepository.find(accountId) match {
         case None => throw new BadRequestException(
           resource = s"/accounts/${groupId}",
-          message = "cannot add non-existent account to group",
-          developerMessage = "Cannot add non-existent account to group. Verify that the correct account ID was provided."
+          message = "cannot remove non-existent account from group",
+          developerMessage = "Cannot remove non-existent account from group. Verify that the correct account ID was provided."
         )
         case Some(account) => if (group.dirId.asInstanceOf[UUID] != account.dirId.asInstanceOf[UUID]) throw new BadRequestException(
           resource = s"/groups/${groupId}",
           message = "account and group were not in the same directory",
-          developerMessage = "Account and group were not in the same directory. Adding an account to a group requires that they are contained in the same directory."
+          developerMessage = "Account and group were not in the same directory. Removing an account from a group requires that they are contained in the same directory."
         )
-        GroupMembershipRepository.create(
+          GroupMembershipRepository.destroy(GroupMembershipRepository(
+            accountId = accountId,
+            groupId = groupId
+          ))
+      }
+    }
+  }
+
+  def updateGroupMembership(groupId: UUID, payload: Seq[PatchOp])(implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
+    DB localTx { implicit session =>
+      payload foreach {
+        p =>
+          val accountId = p.value.as[UUID]
+          p.op.toLowerCase match {
+          case "add" => addAccountToGroup(groupId, accountId)
+          case "remove" => removeAccountFromGroup(groupId, accountId)
+        }
+      }
+      listGroupAccounts(groupId)
+    }
+  }
+
+  def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Try[GroupMembershipRepository] = {
+    UserGroupRepository.find(groupId) match {
+      case None => Failure(BadRequestException(
+        resource = s"/groups/${groupId}",
+        message = "cannot add account to non-existent group",
+        developerMessage = "Cannot add account to non-existent group. Verify that the correct group ID was provided."
+      ))
+      case Some(group) => UserAccountRepository.find(accountId) match {
+        case None => Failure(BadRequestException(
+          resource = s"/accounts/${groupId}",
+          message = "cannot add non-existent account to group",
+          developerMessage = "Cannot add non-existent account to group. Verify that the correct account ID was provided."
+        ))
+        case Some(account) => if (group.dirId.asInstanceOf[UUID] != account.dirId.asInstanceOf[UUID]) Failure(BadRequestException(
+          resource = s"/groups/${groupId}",
+          message = "account and group were not in the same directory",
+          developerMessage = "Account and group were not in the same directory. Adding an account to a group requires that they are contained in the same directory."
+        ))
+        Try(GroupMembershipRepository.create(
           accountId = accountId,
           groupId = groupId
-        )
+        ))
       }
     }
   }

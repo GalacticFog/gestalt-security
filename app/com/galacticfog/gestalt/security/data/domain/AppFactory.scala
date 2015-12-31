@@ -9,7 +9,7 @@ import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
 import scalikejdbc._
 
-import scala.util.{Success, Failure}
+import scala.util.{Try, Success, Failure}
 import scala.util.matching.Regex
 
 object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
@@ -25,28 +25,28 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     GestaltAppRepository.find(appId)
   }
 
-  def create(orgId: UUID, name: String, isServiceOrg: Boolean)(implicit session: DBSession = autoSession) = {
-    GestaltAppRepository.create(
+  def create(orgId: UUID, name: String, isServiceOrg: Boolean)(implicit session: DBSession = autoSession): Try[GestaltAppRepository] = {
+    Try(GestaltAppRepository.create(
       id = UUID.randomUUID(),
       name = name,
       orgId = orgId,
       serviceOrgId = if (isServiceOrg) Some(orgId) else None
-    )
+    ))
   }
 
   def listAccountStoreMappings(appId: UUID)(implicit session: DBSession = autoSession): Seq[AccountStoreMappingRepository] = {
     AccountStoreMappingRepository.findAllBy(sqls"app_id = ${appId}")
   }
 
-  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
-    AccountStoreMappingRepository.create(
+  def mapGroupToApp(appId: UUID, groupId: UUID, defaultAccountStore: Boolean)(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    Try(AccountStoreMappingRepository.create(
       id = UUID.randomUUID,
       appId = appId,
       storeType = "GROUP",
       accountStoreId = groupId,
       defaultAccountStore = if (defaultAccountStore) Some(appId) else None,
       defaultGroupStore = None
-    )
+    ))
   }
 
   def getDefaultGroupStore(appId: UUID)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {

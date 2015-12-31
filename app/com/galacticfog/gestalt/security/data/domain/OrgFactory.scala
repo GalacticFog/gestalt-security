@@ -11,9 +11,22 @@ import play.api.libs.json.{Json, JsResultException, JsValue}
 import play.api.mvc.Security
 import scalikejdbc._
 
+import scala.util.{Success, Try, Failure}
+
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
   val VALID_NAME = """^[a-z0-9]+(-[a-z0-9]+)*[a-z0-9]*$""".r
+
+  def validateOrgName(name: String): Try[String] = {
+    VALID_NAME.findFirstIn(name) match {
+      case None => Failure(BadRequestException(
+        resource = "",
+        message = "org name is invalid",
+        developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
+      ))
+      case Some(validName) => Success(validName)
+    }
+  }
 
   object Rights {
     val SUPERUSER = "**"
@@ -26,6 +39,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val DELETE_ACCOUNT = "deleteAccount"
     val CREATE_GROUP = "createGroup"
     val DELETE_GROUP = "deleteGroup"
+    val UPDATE_GROUP = "updateGroup"
     val CREATE_DIRECTORY = "createDirectory"
     val DELETE_DIRECTORY = "deleteDirectory"
     val READ_DIRECTORY = "readDirectory"
@@ -75,68 +89,77 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.find(orgId)
   }
 
-  def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
-    DB localTx { implicit session =>
-      if (VALID_NAME.findFirstIn(create.name).isEmpty) throw new BadRequestException(
-        resource = "",
-        message = "org name is invalid",
-        developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
-      )
+  def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
+    Try(DB localTx { implicit session =>
       // create org
-      val newOrg = createOrg(parentOrgId = parentOrgId, name = create.name)
-      val newOrgId = newOrg.id.asInstanceOf[UUID]
-      // create system app
-      val newApp = AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
-      val newAppId = newApp.id.asInstanceOf[UUID]
-      // create admins group, add user
-      val adminGroup = GroupFactory.create(name = newOrgId + "-admins", dirId = creator.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
-      val adminGroupId = adminGroup.id.asInstanceOf[UUID]
-      GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
-      AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
-      // give admin rights to new account
-      RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
+      val newOrgAndAppIdTry = for {
+        newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name)
+        newOrgId = newOrg.id.asInstanceOf[UUID]
+        // create system app
+        newApp <- AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
+        newAppId = newApp.id.asInstanceOf[UUID]
+        // create admins group, add user
+        adminGroup <- GroupFactory.create(name = newOrgId + "-admins", dirId = creator.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
+        adminGroupId = adminGroup.id.asInstanceOf[UUID]
+        _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
+        _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
+        // give admin rights to new account
+        _ <- RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
+      } yield (newOrg,newAppId)
       // create users group in a new directory under this org, map new group
       if (create.createDefaultUserGroup.contains(true)) {
-        val newDir = DirectoryFactory.createDirectory(orgId = newOrgId, GestaltDirectoryCreate(
-          name = newOrgId + "-user-dir",
-          description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
-          config = Some(Json.obj(
-            "directoryType" -> "INTERNAL"
+        for {
+          (newOrg,newAppId) <- newOrgAndAppIdTry
+          newOrgId = newOrg.id.asInstanceOf[UUID]
+          newDir <- DirectoryFactory.createDirectory(
+            orgId = newOrgId,
+            create = GestaltDirectoryCreate(
+              name = newOrgId + "-user-dir",
+              description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
+              config = Some(Json.obj(
+                "directoryType" -> "INTERNAL"
+              ))
+            )
           )
-        )))
-        val usersGroup = GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)
-        val usersGroupId = usersGroup.id.asInstanceOf[UUID]
-        AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
+          usersGroup <- GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)
+          usersGroupId = usersGroup.id.asInstanceOf[UUID]
+          _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
+        } yield usersGroupId
       }
-      newOrg
-    }
+      // TODO: there's got to be a better way to unroll the transaction than to let it catch any generated exception
+      newOrgAndAppIdTry.get._1
+    })
   }
 
   def getRootOrg()(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
     GestaltOrgRepository.findBy(sqls"parent is null")
   }
 
-  def createOrg(parentOrgId: UUID, name: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
-    val parentOrg = OrgFactory.find(parentOrgId) getOrElse {
-      throw new ResourceNotFoundException(resource = "", message = "could not locate parent org", "Could not find the parent org while attempting to create a sub-org.")
-    }
-    val newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
-    try {
-      GestaltOrgRepository.create(
-        id = UUID.randomUUID(),
-        name = name,
-        fqon = newfqon,
-        parent = Some(parentOrg.id)
-      )
-    } catch {
+  def createOrg(parentOrgId: UUID, name: String)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
+    val newOrg = for {
+      validName <- validateOrgName(name)
+      parentOrg <- OrgFactory.find(parentOrgId) match {
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate parent org",
+          developerMessage = "Could not find the parent org while attempting to create a sub-org."))
+        case Some(org) => Success(org)
+      }
+      newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
+    } yield GestaltOrgRepository.create(
+      id = UUID.randomUUID(),
+      name = name,
+      fqon = newfqon,
+      parent = Some(parentOrg.id)
+    )
+    newOrg recoverWith {
       case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "org_parent_name_key") =>
         val v = t.getServerErrorMessage
-        throw new CreateConflictException(
+        Failure(CreateConflictException(
           resource = "",
           message = "org name already exists in the parent org",
           developerMessage = "The parent org already has a sub-org with the requested name. Pick a new name or a different parent."
-        )
-      case t: Throwable => throw t
+        ))
     }
   }
 

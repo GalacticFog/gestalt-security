@@ -15,7 +15,7 @@ import play.api.Play.current
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import OrgFactory.Rights._
-import PatchUpdate.patchOpReads
+import PatchUpdate._
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
@@ -28,6 +28,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Methods for extracting orgId for authentication from context
   ////////////////////////////////////////////////////////////////
 
+  def rootOrg: Option[UUID] = OrgFactory.getRootOrg() map {
+    _.id.asInstanceOf[UUID]
+  }
+
   def rootFromCredentials(requestHeader: RequestHeader): Option[UUID] = {
     val keyRoot = for {
       authToken <- GestaltHeaderAuthentication.extractAuthToken(requestHeader)
@@ -37,10 +41,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def fqonToOrgUUID(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {
-    _.id.asInstanceOf[UUID]
-  }
-
-  def rootOrg: Option[UUID] = OrgFactory.getRootOrg() map {
     _.id.asInstanceOf[UUID]
   }
 
@@ -717,14 +717,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Create methods
   ////////////////////////////////////////////////////////
 
-  def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ORG)
-    val newOrg = OrgFactory.createSubOrgWithAdmin(
-      parentOrgId = parentOrgId,
-      creator = request.user.identity,
-      create = validateBody[GestaltOrgCreate]
-    )
-    Created(Json.toJson[GestaltOrg](newOrg))
+  case class TryRenderer[B](status: RESTAPIController.Status) {
+    def apply[A](bodyTry: Try[A])
+                (implicit request: RequestHeader,
+                 tjs : play.api.libs.json.Writes[B],
+                 c: A => B) = bodyTry match {
+      case Success(body) =>
+        status(Json.toJson(body: B))
+      case Failure(e) =>
+        Global.handleError(request, e)
+    }
   }
 
   def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
@@ -781,16 +783,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     OrgFactory.findByOrgId(orgId) match {
       case Some(org) =>
         Future {
-          val newApp = try {
-            AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
-          } catch {
-            case _: Throwable => throw new CreateConflictException(
-              resource = request.path,
-              message = "error creating new app",
-              developerMessage = "Error creating new app. Most likely a conflict with an existing app of the same name in the org."
-            )
-          }
-          Created(Json.toJson[GestaltApp](newApp))
+          val newApp = AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
+          renderTry[GestaltApp](Created)(newApp)
         }
       case None => Future {
         NotFound(Json.toJson(ResourceNotFoundException(
@@ -808,7 +802,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     OrgFactory.findByOrgId(orgId) match {
       case Some(parentOrg) =>
         val newDir = DirectoryFactory.createDirectory(orgId = parentOrg.id.asInstanceOf[UUID], create)
-        Created(Json.toJson[GestaltDirectory](newDir))
+        renderTry[GestaltDirectory](Created)(newDir)
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "parent org does not exist",
@@ -913,14 +907,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(CREATE_ORG_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToGroup(request.user.serviceAppId, groupId, Seq(grant))
-    Ok(Json.toJson[GestaltRightGrant](newGrants.head))
+    renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
   }
 
   def createAppGroupRight(appId: UUID, groupId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToGroup(appId, groupId, Seq(grant))
-    Ok(Json.toJson[GestaltRightGrant](newGrants.head))
+    renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
   }
 
   def createAppAccountRight(appId: UUID, accountId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
@@ -934,8 +928,22 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Update methods
   ////////////////////////////////////////////////////////
 
+  def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(getGroupOrg(groupId))(parse.json) { implicit request =>
+    val payload = validateBody[Seq[PatchOp]]
+    requireAuthorization(UPDATE_GROUP)
+    GroupFactory.find(groupId) match {
+      case Some(group) =>
+        val newMembers = GroupFactory.updateGroupMembership(groupId, payload)
+        Ok(Json.toJson[Seq[GestaltAccount]](newMembers map {a => a: GestaltAccount}))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested group",
+        developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
+      )))
+    }
+  }
+
   def updateAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
-    // user can update their own account
     val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
       case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
       case _ => request.body.validate[GestaltAccountUpdate] match {
@@ -947,6 +955,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         )
       }
     }
+    // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
     AccountFactory.find(accountId) match {
       case Some(account) =>
@@ -1308,6 +1317,19 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       developerMessage = "Resource not found."
     )))
   }
+
+  def renderTry[B](status: RESTAPIController.Status) = TryRenderer[B](status)
+
+  def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
+    requireAuthorization(CREATE_ORG)
+    val newOrg = OrgFactory.createSubOrgWithAdmin(
+      parentOrgId = parentOrgId,
+      creator = request.user.identity,
+      create = validateBody[GestaltOrgCreate]
+    )
+    renderTry[GestaltOrg](Created)(newOrg)
+  }
+
 
   def validateBody[T](implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): T = {
     request.body.validate[T] match {

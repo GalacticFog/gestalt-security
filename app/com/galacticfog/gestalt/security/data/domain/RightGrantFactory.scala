@@ -7,14 +7,27 @@ import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, UserGr
 import play.api.Logger
 import scalikejdbc._
 
+import scala.util.Try
+
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
   override val autoSession = AutoSession
 
-  def addRightsToGroup(appId: UUID, groupId: UUID, rights: Seq[GestaltGrantCreate])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
-    rights map {
-      grant => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, groupId = Some(groupId), grantName = grant.grantName, grantValue = grant.grantValue)
+  def addRightsToGroup(appId: UUID,
+                       groupId: UUID,
+                       rights: Seq[GestaltGrantCreate])
+                      (implicit session: DBSession = autoSession): Try[Seq[RightGrantRepository]] =
+  {
+    val f: Seq[Try[RightGrantRepository]] = rights map {
+      grant => Try(RightGrantRepository.create(
+        grantId = UUID.randomUUID,
+        appId = appId,
+        groupId = Some(groupId),
+        grantName = grant.grantName,
+        grantValue = grant.grantValue
+      ))
     }
+    Try ( f.map {_.get} )
   }
 
   def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[GestaltGrantCreate])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {

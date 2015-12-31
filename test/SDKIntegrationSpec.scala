@@ -519,13 +519,22 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
     }
 
-    // TODO: do something with this account, by adding it to an org, preferably via a group
+    "allow accounts to be added to groups after creation" in {
+      val testGroup3 = await(rootDir.createGroup(GestaltGroupCreate("testGroup3")))
+      val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id)))
+      newMemberships must contain(exactly(testUser2))
+      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
+    }
+
+//    "allow account to authenticate against an org via a manually added group" in {
+//
+//    }
 
     "process group deletion" in {
       await(GestaltGroup.deleteGroup(testGroup2.id, ru, rp)) must beTrue
       await(GestaltGroup.getById(testGroup2.id)) must throwA[UnauthorizedAPIException]
       await(rootDir.getGroupByName("testGroup2")) must beNone
-      await(testUser2.listGroupMemberships()) must beEmpty
+      await(testUser2.listGroupMemberships()) must not contain(hasName("testGroup2"))
     }
 
     "process account deletion" in {
