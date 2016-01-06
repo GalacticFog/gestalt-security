@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.{GestaltAccountCredential, GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, CreateConflictException, BadRequestException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, ConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
@@ -82,9 +82,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
                     salt: String,
                     secret: String,
                     disabled: Boolean)
-                   (implicit session: DBSession = autoSession): UserAccountRepository =
+                   (implicit session: DBSession = autoSession): Try[UserAccountRepository] =
   {
-    try {
+    Try {
       UserAccountRepository.create(
         id = UUID.randomUUID(),
         dirId = dirId,
@@ -98,36 +98,75 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         secret = secret,
         disabled = disabled
       )
-    } catch {
+    } recoverWith {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
         t.getServerErrorMessage.getConstraint match {
-          case "account_phone_number_check" => throw new BadRequestException(
+          case "account_phone_number_check" => Failure(BadRequestException(
             resource = "",
             message = "phone number was not properly formatted",
             developerMessage = "The provided phone number must be formatted according to E.164."
-          )
-          case "account_dir_id_username_key" => throw new CreateConflictException(
+          ))
+          case "account_dir_id_username_key" => Failure(ConflictException(
             resource = "",
             message = "username already exists in directory",
             developerMessage = "An account with the specified username already exists in the specified directory."
-          )
-          case "account_dir_id_email_key" => throw new CreateConflictException(
+          ))
+          case "account_dir_id_email_key" => Failure(ConflictException(
             resource = "",
             message = "email address already exists in directory",
             developerMessage = "An account with the specified email address already exists in the specified directory."
-          )
-          case "account_dir_id_phone_number_key" => throw new CreateConflictException(
+          ))
+          case "account_dir_id_phone_number_key" => Failure(ConflictException(
             resource = "",
             message = "phone number already exists in directory",
             developerMessage = "An account with the specified phone number already exists in the specified directory."
-          )
-          case _ => throw t
+          ))
+          case _ => Failure(t)
+        }
+    }
+  }
+
+  def saveAccount(account: UserAccountRepository)
+                   (implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
+    Try {
+      account.save()
+    } recoverWith {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "account_phone_number_check" => Failure(BadRequestException(
+            resource = "",
+            message = "phone number was not properly formatted",
+            developerMessage = "The provided phone number must be formatted according to E.164."
+          ))
+          case "account_dir_id_username_key" => Failure(ConflictException(
+            resource = "",
+            message = "username already exists in directory",
+            developerMessage = "An account with the specified username already exists in the specified directory."
+          ))
+          case "account_dir_id_email_key" => Failure(ConflictException(
+            resource = "",
+            message = "email address already exists in directory",
+            developerMessage = "An account with the specified email address already exists in the specified directory."
+          ))
+          case "account_dir_id_phone_number_key" => Failure(ConflictException(
+            resource = "",
+            message = "phone number already exists in directory",
+            developerMessage = "An account with the specified phone number already exists in the specified directory."
+          ))
+          case _ =>
+            Logger.error("PSQLException in saveAccount",t)
+            Failure(UnknownAPIException(
+              code = 500,
+              resource = "",
+              message = "sql error",
+              developerMessage = "SQL error updating account. Check the error log for more details."
+            ))
         }
     }
   }
 
   def updateAccount(account: UserAccountRepository, patches: Seq[PatchOp])
-                   (implicit session: DBSession = autoSession): UserAccountRepository = {
+                   (implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     val patchedAccount = patches.foldLeft(account)((acc, patch) => {
       patch.copy(op = patch.op.toLowerCase) match {
         case PatchOp("replace", "/username",value)     => acc.copy(username = value.as[String])
@@ -152,87 +191,23 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         )
       }
     })
-    try {
+    saveAccount(
       patchedAccount.copy(
         phoneNumber = patchedAccount.phoneNumber map canonicalE164
-      ).save()
-    } catch {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
-        t.getServerErrorMessage.getConstraint match {
-          case "account_phone_number_check" => throw new BadRequestException(
-            resource = "",
-            message = "phone number was not properly formatted",
-            developerMessage = "The provided phone number must be formatted according to E.164."
-          )
-          case "account_dir_id_username_key" => throw new CreateConflictException(
-            resource = "",
-            message = "username already exists in directory",
-            developerMessage = "An account with the specified username already exists in the specified directory."
-          )
-          case "account_dir_id_email_key" => throw new CreateConflictException(
-            resource = "",
-            message = "email address already exists in directory",
-            developerMessage = "An account with the specified email address already exists in the specified directory."
-          )
-          case "account_dir_id_phone_number_key" => throw new CreateConflictException(
-            resource = "",
-            message = "phone number already exists in directory",
-            developerMessage = "An account with the specified phone number already exists in the specified directory."
-          )
-          case _ => throw t
-        }
-    }
+      )
+    )
   }
 
-  def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): UserAccountRepository = {
+  def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
-    val newEmail = update.email map { email =>
-      if (UserAccountRepository.findBy(sqls"email = ${email} and dir_id = ${account.dirId}").isDefined) {
-        throw new CreateConflictException(
-          resource = s"/accounts/${account.id}",
-          message = "email address already exists",
-          developerMessage = "The provided email address is already present in the directory containing the account."
-        )
-      }
-      email
-    }
-    val newUsername = update.username map { username =>
-      if (UserAccountRepository.findBy(sqls"username = ${username} and dir_id = ${account.dirId}").isDefined) {
-        throw new CreateConflictException(
-          resource = s"/accounts/${account.id}",
-          message = "username already exists",
-          developerMessage = "The provided username is already present in the directory containing the account."
-        )
-      }
-      username
-    }
-    val newPhoneNumber = update.phoneNumber map { pn =>
-      val t = validatePhoneNumber(pn)
-      t match {
-        case Success(canonicalPN) =>
-          if (UserAccountRepository.findBy(sqls"phone_number = ${canonicalPN} and dir_id = ${account.dirId}").isDefined) {
-            throw new CreateConflictException(
-              resource = s"/accounts/${account.id}",
-              message = "phone number already exists",
-              developerMessage = "The provided phone number is already present in the directory containing the account."
-            )
-          }
-          canonicalPN
-        case Failure(ex) => ex match {
-          case br: BadRequestException => throw br.copy(
-            resource = s"/accounts/${account.id}"
-          )
-          case t: Throwable => throw t
-        }
-      }
-    }
-    UserAccountRepository.save(
+    val newPhoneNumber = update.phoneNumber map canonicalE164
+    saveAccount(
       account.copy(
-        username = newUsername getOrElse account.username,
+        username = update.username getOrElse account.username,
         firstName = update.firstName getOrElse account.firstName,
         lastName = update.lastName getOrElse account.lastName,
-        email = newEmail orElse account.email,
+        email = update.email orElse account.email,
         phoneNumber = newPhoneNumber orElse account.phoneNumber,
         hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
         secret = newpass getOrElse account.secret

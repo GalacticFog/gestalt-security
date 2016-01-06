@@ -97,7 +97,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
 
   def handleError(request: RequestHeader, e: Throwable): Result = {
-    val resource = e.getCause match {
+    val resource = e match {
       case sre: SecurityRESTException if !sre.resource.isEmpty =>
         sre.resource
       case _ => request.path
@@ -105,17 +105,17 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     e match {
       case sql: PSQLException =>
         log.error(s"caught psql error with state ${sql.getSQLState}", sql)
-        throw new UnknownAPIException(
+        InternalServerError(Json.toJson(UnknownAPIException(
           code = 500,
           resource = "",
           message = s"PSQL error ${sql.getSQLState}, ${sql.getErrorCode}",
           developerMessage = sql.getServerErrorMessage.getMessage
-        )
+        )))
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
       case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
       case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
       case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
-      case conflict: CreateConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
+      case conflict: ConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
       case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
       case nope: Throwable =>
         log.error("caught unexpected error", nope)

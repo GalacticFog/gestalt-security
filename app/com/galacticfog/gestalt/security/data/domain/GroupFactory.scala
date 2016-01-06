@@ -136,7 +136,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       )
     sql"""select distinct ${grp.result.*}
           from ${UserGroupRepository.as(grp)},${AccountStoreMappingRepository.as(asm)}
-          where ${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId} and ${grp.id} = ${groupId}
+          where (${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId} and ${grp.id} = ${groupId}) OR
+                (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId} and ${grp.id} = ${groupId})
       """.map(UserGroupRepository(grp)).list.apply().headOption
   }
 
@@ -153,7 +154,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       UserGroupRepository.syntax("grp"),
       AccountStoreMappingRepository.syntax("asm")
       )
-    sql"""select ${grp.result.*}
+    sql"""select distinct ${grp.result.*}
           from ${UserGroupRepository.as(grp)},${AccountStoreMappingRepository.as(asm)}
           where (${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId}) OR
                 (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId})

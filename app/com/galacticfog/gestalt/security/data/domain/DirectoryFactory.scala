@@ -1,10 +1,11 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import com.galacticfog.gestalt.security.api.{GestaltGroupCreate, GestaltDirectoryCreate, GestaltPasswordCredential, GestaltAccountCreate}
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, BadRequestException, CreateConflictException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, BadRequestException, ConflictException, ResourceNotFoundException}
 import org.mindrot.jbcrypt.BCrypt
 import play.api.libs.json.Json
 import scalikejdbc._
+import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 import com.galacticfog.gestalt.security.data.model._
 
@@ -16,7 +17,7 @@ trait Directory {
                     lastName: String,
                     email: Option[String],
                     phoneNumber: Option[String],
-                    cred: GestaltPasswordCredential): UserAccountRepository
+                    cred: GestaltPasswordCredential): Try[UserAccountRepository]
 
   def lookupAccountByUsername(username: String): Option[UserAccountRepository]
   def lookupGroupByName(groupName: String): Option[UserGroupRepository]
@@ -61,7 +62,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     GroupFactory.delete(groupId)
   }
 
-  override def createAccount(username: String, firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): UserAccountRepository = {
+  override def createAccount(username: String, firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
     AccountFactory.createAccount(
       dirId = id,
       username = username,
@@ -104,7 +105,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
   // TODO: omg, refactor this
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
     GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}") match {
-      case Some(_) => Failure(CreateConflictException(
+      case Some(_) => Failure(ConflictException(
         resource = s"/orgs/${orgId}/directories",
         message = "directory with specified name already exists in org",
         developerMessage = "The org already contains a directory with the specified name."
@@ -145,56 +146,49 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): UserAccountRepository = {
+  def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     DirectoryFactory.find(dirId) match {
-      case None => throw new ResourceNotFoundException(
+      case None => Failure(ResourceNotFoundException(
         resource = s"/directories/${dirId}",
         message = "could not create account in non-existent directory",
         developerMessage = "Could not create account in non-existent directory. If this error was encountered during an attempt to create an account in an org, it suggests that the org is misconfigured."
-      )
+      ))
       case Some(dir) =>
         DB localTx { implicit session =>
-          val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
-          val newAccount = dir.createAccount(
-            username = create.username,
-            email = if (create.email.trim.isEmpty) None else Some(create.email),
-            phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
-            firstName = create.firstName,
-            lastName = create.lastName,
-            cred = cred
-          )
-          create.groups.toSeq.flatten foreach {
-            grpId => GroupMembershipRepository.create(
-              accountId = newAccount.id.asInstanceOf[UUID],
-              groupId = grpId
+          for {
+            cred <- Try(create.credential.asInstanceOf[GestaltPasswordCredential])
+            newAccount <- dir.createAccount(
+              username = create.username,
+              email = if (create.email.trim.isEmpty) None else Some(create.email),
+              phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
+              firstName = create.firstName,
+              lastName = create.lastName,
+              cred = cred
             )
-          }
-          newAccount
+            _ = create.groups.toSeq.flatten foreach {
+              grpId => GroupMembershipRepository.create(
+                accountId = newAccount.id.asInstanceOf[UUID],
+                groupId = grpId
+              )
+            }
+          } yield newAccount
         }
     }
   }
 
-  def createGroupInDir(dirId: UUID, create: GestaltGroupCreate)(implicit session: DBSession = autoSession): UserGroupRepository = {
-    if (GestaltDirectoryRepository.find(dirId).isEmpty) {
-      throw new ResourceNotFoundException(
+  def createGroupInDir(dirId: UUID, create: GestaltGroupCreate)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    GestaltDirectoryRepository.find(dirId) match {
+      case None => Failure(ResourceNotFoundException(
         resource = s"/directories/${dirId}",
         message = "could not create group in non-existent directory",
         developerMessage = "Could not create group in non-existent directory. If this error was encountered during an attempt to create a group in an org, it suggests that the org is misconfigured."
+      ))
+      case Some(dir) => GroupFactory.create(
+        name = create.name,
+        dirId = dir.id.asInstanceOf[UUID],
+        parentOrg = dir.orgId.asInstanceOf[UUID]
       )
     }
-    if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
-      throw new CreateConflictException(
-        resource = s"/directories/${dirId}/groups",
-        message = "group name already exists in directory",
-        developerMessage = "The directory already contains a group with the specified name."
-      )
-    }
-    UserGroupRepository.create(
-      id = UUID.randomUUID(),
-      dirId = dirId,
-      name = create.name,
-      disabled = false
-    )
   }
 
   def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[Directory] = {

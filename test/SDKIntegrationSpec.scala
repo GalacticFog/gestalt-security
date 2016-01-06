@@ -2,7 +2,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.Global
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, UnauthorizedAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, OrgFactory, DirectoryFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import org.specs2.execute.{Results, Result}
@@ -218,10 +218,10 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   "New Org Without Directory" should {
 
-    lazy val newOrgName = "neworgnodir"
+    lazy val newOrgName = "new-org-no-dir"
     lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
       name = newOrgName,
-      createDefaultUserGroup = Some(false)
+      createDefaultUserGroup = false
     )))
     lazy val newOrgApp = await(newOrg.getServiceApp())
 
@@ -266,8 +266,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     "be unable to create another org with the same name" in {
       await(rootOrg.createSubOrg(GestaltOrgCreate(
         name = newOrgName,
-        createDefaultUserGroup = Some(false)
-      ))) must throwA[CreateConflictException](".*name already exists.*")
+        createDefaultUserGroup = false
+      ))) must throwA[ConflictException](".*name already exists.*")
     }
 
     lazy val newOrgMappings = await(newOrgApp.listAccountStores)
@@ -426,7 +426,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "throw on update for username conflict" in {
       await(testAccount.update(
         'username -> Json.toJson(rootAccount.username)
-      )) must throwA[CreateConflictException](".*username already exists.*")
+      )) must throwA[ConflictException](".*username already exists.*")
     }
 
     "throw on create for username conflict" in {
@@ -437,13 +437,13 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = "root@root",
         phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException](".*username already exists.*")
+      )) must throwA[ConflictException](".*username already exists.*")
     }
 
     "throw on update for email conflict" in {
       await(testAccount.update(
         'email -> Json.toJson(rootEmail)
-      )) must throwA[CreateConflictException](".*email address already exists.*")
+      )) must throwA[ConflictException](".*email address already exists.*")
     }
 
     "throw on create for email conflict" in {
@@ -454,13 +454,13 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = testAccount.email,
         phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException](".*email address already exists.*")
+      )) must throwA[ConflictException](".*email address already exists.*")
     }
 
     "throw on update for phone number conflict" in {
       await(testAccount.update(
         'phoneNumber -> Json.toJson(rootPhone)
-      )) must throwA[CreateConflictException](".*phone number already exists.*")
+      )) must throwA[ConflictException](".*phone number already exists.*")
     }
 
     "throw on create for phone number conflict" in {
@@ -471,7 +471,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         email = "newaccount@root",
         phoneNumber = testAccount.phoneNumber,
         credential = GestaltPasswordCredential("letmein"))
-      )) must throwA[CreateConflictException](".*phone number already exists.*")
+      )) must throwA[ConflictException](".*phone number already exists.*")
     }
 
     "be updated with a new username" in {
@@ -547,6 +547,222 @@ class SDKIntegrationSpec extends PlaySpecification {
 //    "disable account for auth" in {
 //
 //    }
+
+  }
+
+  "New Org with Directory" should {
+
+    lazy val newOrgName = "new-org-with-dir"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val newOrgApp = await(newOrg.getServiceApp())
+    lazy val newOrgDir = await(newOrg.listDirectories()).head
+
+    "have a new directory" in {
+      await(newOrg.listDirectories()) must haveSize(1)
+    }
+
+    "have a mapping for the new directory as the default group store" in {
+      await(newOrgApp.listAccountStores()) must contain( (asm: GestaltAccountStoreMapping) =>
+          asm.storeId == newOrgDir.id
+            && asm.storeType == DIRECTORY
+            && asm.isDefaultGroupStore
+      )
+    }
+
+    "have a new group in the new directory with a procedural name with a mapping as the default account store" in {
+      val dirGroups = await(newOrgDir.listGroups)
+      dirGroups must haveSize(1)
+      val newGroup = dirGroups.head
+      newGroup.name must contain(newOrg.name)
+      await(newOrgApp.listAccountStores()) must contain( (asm: GestaltAccountStoreMapping) =>
+          asm.storeId == newGroup.id
+            && asm.storeType == GROUP
+            && asm.isDefaultAccountStore
+      )
+    }
+
+    "have a group in the root directory for the root user, visible by ID but not by name" in {
+      val rootGroupSeq = await(newOrg.listGroups).filter(_.directoryId == rootDir.id)
+      rootGroupSeq must haveSize(1)
+      val rootGroup = rootGroupSeq.head
+      await(newOrg.getGroupById(rootGroup.id)) must beSome(rootGroup)
+      await(newOrg.getGroupByName(rootGroup.name)) must beNone
+    }
+
+    "should list groups created directly in the directory" in {
+      val manualGrp = await(newOrgDir.createGroup(GestaltGroupCreate(
+        name = "manually-created-dir-group"
+      )))
+      await(newOrg.listGroups) must contain(manualGrp)
+      await(newOrg.getGroupById(manualGrp.id)) must beSome(manualGrp)
+      await(newOrg.getGroupByName(manualGrp.name)) must beSome(manualGrp)
+    }
+
+    "should list accounts created directly in the directory" in {
+      val manualAccount = await(newOrgDir.createAccount(GestaltAccountCreate(
+        username = "manual-user",
+        firstName = "Manny",
+        lastName = "User",
+        email = "",
+        phoneNumber = "",
+        groups = None,
+        credential = GestaltPasswordCredential("letmein")
+      )))
+      await(newOrg.listAccounts) must contain(manualAccount)
+      await(newOrg.getAccountById(manualAccount.id)) must beSome(manualAccount)
+      await(newOrg.getAccountByUsername(manualAccount.username)) must beSome(manualAccount)
+    }
+
+    "cleanup" in {
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
+  "Org Groups" should {
+
+    lazy val newOrgName = "new-org-for-org-group-testing"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val newOrgApp = await(newOrg.getServiceApp())
+    lazy val newOrgDir = await(newOrg.listDirectories()).head
+    lazy val unmappedGrpFromRootDir = await(rootDir.createGroup(GestaltGroupCreate(
+      name = "unmapped-group-in-root-dir"
+    )))
+
+    "precheck" in {
+      await(rootDir.getGroupByName(unmappedGrpFromRootDir.name)) must beSome(unmappedGrpFromRootDir)
+      await(GestaltGroup.getById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
+      await(rootDir.listGroups) must contain(unmappedGrpFromRootDir)
+    }
+
+    "not list an unmapped group in the org" in {
+      await(newOrg.listGroups) must not contain unmappedGrpFromRootDir
+    }
+
+    "not list an unmapped group in the service app" in {
+      await(newOrgApp.listGroups) must not contain unmappedGrpFromRootDir
+    }
+
+    "fail to get an unmapped group by id in the org" in {
+      await(newOrg.getGroupById(unmappedGrpFromRootDir.id)) must beNone
+    }
+
+    "fail to get an unmapped group by id in the service app" in {
+      await(newOrgApp.getGroupById(unmappedGrpFromRootDir.id)) must beNone
+    }
+
+    "fail to get an unmapped group by name in the org" in {
+      await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone
+    }
+
+    "fail to get an unmapped group by name in the service app" in {
+      await(newOrgApp.getGroupByName(unmappedGrpFromRootDir.name)) must beNone
+    }
+
+    lazy val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights(
+      name = "new-org-group",
+      rights = Some(Seq(GestaltGrantCreate(
+        grantName = "grantA"
+      ), GestaltGrantCreate(
+        grantName = "grantB", grantValue = Some("grantBvalue")
+      )))
+    )))
+
+    "show up in org after creation" in {
+      await(newOrg.getGroupById(newOrgGrp.id)) must beSome(newOrgGrp)
+      await(newOrg.getGroupByName(newOrgGrp.name)) must beSome(newOrgGrp)
+      await(newOrg.listGroups) must contain(newOrgGrp)
+    }
+
+    "list grants provided at creation" in {
+      await(GestaltOrg.listGroupGrants(newOrg.id, newOrgGrp.id)) must containTheSameElementsAs(Seq(
+        GestaltRightGrant(null, "grantA", None, newOrgApp.id),
+        GestaltRightGrant(null, "grantB", Some("grantBvalue"), newOrgApp.id)
+      ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
+    }
+
+    "cleanup" in {
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,ru,rp)) must beTrue
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
+  "Org Accounts" should {
+
+    lazy val newOrgName = "new-org-for-org-account-testing"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val newOrgApp = await(newOrg.getServiceApp())
+    lazy val newOrgDir = await(newOrg.listDirectories()).head
+    lazy val unmappedGrpFromRootDir = await(rootDir.createGroup(GestaltGroupCreate(
+      name = "unmapped-group-in-root-dir"
+    )))
+
+    "precheck" in {
+      await(rootDir.getGroupByName(unmappedGrpFromRootDir.name)) must beSome(unmappedGrpFromRootDir)
+      await(GestaltGroup.getById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
+      await(rootDir.listGroups) must contain(unmappedGrpFromRootDir)
+    }
+
+//    "not list an unmapped group in the org" in {
+//      await(newOrg.listGroups) must not contain unmappedGrpFromRootDir
+//    }
+//
+//    "not list an unmapped group in the service app" in {
+//      await(newOrgApp.listGroups) must not contain unmappedGrpFromRootDir
+//    }
+//
+//    "fail to get an unmapped group by id in the org" in {
+//      await(newOrg.getGroupById(unmappedGrpFromRootDir.id)) must beNone
+//    }
+//
+//    "fail to get an unmapped group by id in the service app" in {
+//      await(newOrgApp.getGroupById(unmappedGrpFromRootDir.id)) must beNone
+//    }
+//
+//    "fail to get an unmapped group by name in the org" in {
+//      await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone
+//    }
+//
+//    "fail to get an unmapped group by name in the service app" in {
+//      await(newOrgApp.getGroupByName(unmappedGrpFromRootDir.name)) must beNone
+//    }
+//
+//    lazy val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights(
+//      name = "new-org-group",
+//      rights = Some(Seq(GestaltGrantCreate(
+//        grantName = "grantA"
+//      ), GestaltGrantCreate(
+//        grantName = "grantB", grantValue = Some("grantBvalue")
+//      )))
+//    )))
+//
+//    "show up in org after creation" in {
+//      await(newOrg.getGroupById(newOrgGrp.id)) must beSome(newOrgGrp)
+//      await(newOrg.getGroupByName(newOrgGrp.name)) must beSome(newOrgGrp)
+//      await(newOrg.listGroups) must contain(newOrgGrp)
+//    }
+//
+//    "list grants provided at creation" in {
+//      await(GestaltOrg.listGroupGrants(newOrg.id, newOrgGrp.id)) must containTheSameElementsAs(Seq(
+//        GestaltRightGrant(null, "grantA", None, newOrgApp.id),
+//        GestaltRightGrant(null, "grantB", Some("grantBvalue"), newOrgApp.id)
+//      ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
+//    }
+
+    "cleanup" in {
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,ru,rp)) must beTrue
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
 
   }
 

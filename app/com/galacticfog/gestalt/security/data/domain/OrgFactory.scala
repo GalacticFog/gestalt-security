@@ -2,7 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, CreateConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, ConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import org.postgresql.util.PSQLException
@@ -10,6 +10,7 @@ import play.api.Logger
 import play.api.libs.json.{Json, JsResultException, JsValue}
 import play.api.mvc.Security
 import scalikejdbc._
+import scalikejdbc.TxBoundary.Try._
 
 import scala.util.{Success, Try, Failure}
 
@@ -90,7 +91,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   }
 
   def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
-    Try(DB localTx { implicit session =>
+    DB localTx { implicit session =>
       // create org
       val newOrgAndAppIdTry = for {
         newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name)
@@ -107,7 +108,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         _ <- RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
       } yield (newOrg,newAppId)
       // create users group in a new directory under this org, map new group
-      if (create.createDefaultUserGroup.contains(true)) {
+      if (create.createDefaultUserGroup) {
         for {
           (newOrg,newAppId) <- newOrgAndAppIdTry
           newOrgId = newOrg.id.asInstanceOf[UUID]
@@ -124,11 +125,11 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           usersGroup <- GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)
           usersGroupId = usersGroup.id.asInstanceOf[UUID]
           _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
+          _ <- AppFactory.mapDirToApp(appId = newAppId, dirId = newDir.id, defaultAccountStore = false, defaultGroupStore = true)
         } yield usersGroupId
       }
-      // TODO: there's got to be a better way to unroll the transaction than to let it catch any generated exception
-      newOrgAndAppIdTry.get._1
-    })
+      newOrgAndAppIdTry map {_._1}
+    }
   }
 
   def getRootOrg()(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
@@ -146,16 +147,17 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         case Some(org) => Success(org)
       }
       newfqon = if (parentOrg.parent.isDefined) parentOrg.fqon + "." + name else name
-    } yield GestaltOrgRepository.create(
-      id = UUID.randomUUID(),
-      name = name,
-      fqon = newfqon,
-      parent = Some(parentOrg.id)
-    )
+      newOrg <- Try(GestaltOrgRepository.create(
+        id = UUID.randomUUID(),
+        name = name,
+        fqon = newfqon,
+        parent = Some(parentOrg.id)
+      ))
+    } yield newOrg
     newOrg recoverWith {
       case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "org_parent_name_key") =>
         val v = t.getServerErrorMessage
-        Failure(CreateConflictException(
+        Failure(ConflictException(
           resource = "",
           message = "org name already exists in the parent org",
           developerMessage = "The parent org already has a sub-org with the requested name. Pick a new name or a different parent."

@@ -2,15 +2,14 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.errors.{CreateConflictException, ResourceNotFoundException, UnknownAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{ConflictException, ResourceNotFoundException, UnknownAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model._
-import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.mindrot.jbcrypt.BCrypt
 import scalikejdbc._
+import scalikejdbc.TxBoundary.Try._
 
 import scala.util.{Try, Success, Failure}
-import scala.util.matching.Regex
 
 object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
@@ -42,10 +41,21 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     Try(AccountStoreMappingRepository.create(
       id = UUID.randomUUID,
       appId = appId,
-      storeType = "GROUP",
+      storeType = GROUP.label,
       accountStoreId = groupId,
       defaultAccountStore = if (defaultAccountStore) Some(appId) else None,
       defaultGroupStore = None
+    ))
+  }
+
+  def mapDirToApp(appId: UUID, dirId: UUID, defaultAccountStore: Boolean, defaultGroupStore: Boolean)(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    Try(AccountStoreMappingRepository.create(
+      id = UUID.randomUUID,
+      appId = appId,
+      storeType = DIRECTORY.label,
+      accountStoreId = dirId,
+      defaultAccountStore = if (defaultAccountStore) Some(appId) else None,
+      defaultGroupStore = if (defaultGroupStore) Some(appId) else None
     ))
   }
 
@@ -77,48 +87,56 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def getDefaultAccountStore(appId: UUID)(implicit session: DBSession = autoSession): Either[GestaltDirectoryRepository,UserGroupRepository] = {
+  def getDefaultAccountStore(appId: UUID)(implicit session: DBSession = autoSession): Try[Either[GestaltDirectoryRepository,UserGroupRepository]] = {
     AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}") match {
       case Some(asm) =>
         asm.storeType match {
           case "GROUP" =>
             UserGroupRepository.find(asm.accountStoreId) match {
-              case Some(group) => Right(group)
+              case Some(group) => Success(Right(group))
               case None =>
                 throw new UnknownAPIException(500, resource = s"/groups/${asm.accountStoreId}", message = "error accessing group corresponding to app's default account store", developerMessage = "")
             }
           case "DIRECTORY" =>
             GestaltDirectoryRepository.find(asm.accountStoreId) match {
-              case Some(dir) => Left(dir)
+              case Some(dir) => Success(Left(dir))
               case None =>
                 throw new UnknownAPIException(500, resource = s"/directories/${asm.accountStoreId}", message = "error accessing directory corresponding to app's default account store", developerMessage = "")
             }
         }
       case None =>
-        throw new BadRequestException(
-          resource = s"/apps/${appId}",
-          message = "app does not have a default account store",
-          developerMessage = "Some operation attempted to use the app's default account store, but it does not have one. You will need to add one or avoid relying on its existence.")
+        AppFactory.find(appId) match {
+          case Some(_) => Failure(BadRequestException(
+            resource = s"/apps/${appId}",
+            message = "app does not have a default account store",
+            developerMessage = "Some operation attempted to use the app's default account store, but it does not have one. You will need to add one or avoid relying on its existence."
+          ))
+          case None => Failure(BadRequestException(
+            resource = s"s/apps/${appId}",
+            message = "cannot get default account store because app does not exist",
+            developerMessage = "App does not exist and therefore does not have a default account store."
+          ))
+        }
     }
   }
 
   def createOrgAccountStoreMapping(appId: UUID, create: GestaltOrgAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
     if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType.label} and account_store_id = ${create.accountStoreId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "mapping already exists",
         developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
       )
     }
     if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "default account store already set",
         developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
       )
     }
     if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "default group store already set",
         developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
@@ -161,21 +179,21 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def createAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
     if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType.label} and account_store_id = ${create.accountStoreId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "mapping already exists",
         developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
       )
     }
     if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${create.appId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "default account store already set",
         developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
       )
     }
     if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${create.appId}").isDefined) {
-      throw new CreateConflictException(
+      throw new ConflictException(
         resource = s"/apps/${appId}/accountStores",
         message = "default group store already set",
         developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
@@ -216,94 +234,56 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     )
   }
 
-  def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights)(implicit session: DBSession = autoSession): UserAccountRepository = {
+  def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     DB localTx { implicit session =>
       // have to find the default account store for the app
       // if it's a directory, add the account to the directory
       // if it's a group, add the account to the group's directory and then to the group
       // then add the account to any groups specified in the create request
-      if (GestaltAppRepository.find(appId).isEmpty) {
-        throw new ResourceNotFoundException(
-          resource = s"/apps/${appId}",
-          message = "could not create account in non-existent app",
-          developerMessage = "Could not create account in non-existent application. If this was created as a result of an attempt to create an account in an org, it suggests that the org is misconfigured."
-        )
-      }
       val cred = create.credential.asInstanceOf[GestaltPasswordCredential]
-      val asm = getDefaultAccountStore(appId)
-      val dirId = asm.fold(_.id, _.dirId).asInstanceOf[UUID]
-      if (UserAccountRepository.findBy(sqls"username = ${create.username} and dir_id = ${dirId}").isDefined) {
-        throw new CreateConflictException(
-          resource = s"/apps/${appId}",
-          message = "username already exists",
-          developerMessage = "The default directory associated with this app already contains an account with the specified username."
+      val newUserTry = for {
+        asm <- getDefaultAccountStore(appId)
+        dirId = asm.fold(_.id, _.dirId).asInstanceOf[UUID]
+        newUser <- AccountFactory.createAccount(
+          dirId = dirId,
+          username = create.username,
+          email = create.email.trim match {
+            case "" => None
+            case e => Some(e)
+          },
+          phoneNumber = create.phoneNumber.trim match {
+            case "" => None
+            case p => Some(AccountFactory.canonicalE164(p))
+          },
+          firstName = create.firstName,
+          lastName = create.lastName,
+          hashMethod = "bcrypt",
+          secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
+          salt = "",
+          disabled = false
         )
-      }
-      val email = if (! create.email.isEmpty) {
-        if (UserAccountRepository.findBy(sqls"phone_number = ${create.email} and dir_id = ${dirId}").isDefined) {
-          throw new CreateConflictException(
-            resource = s"/directories/${dirId}",
-            message = "email address already exists",
-            developerMessage = "The default directory associated with this app already contains an account with the specified email address."
-          )
-        }
-        Some(create.email)
-      } else None
-      val phoneNumber = if (! create.phoneNumber.isEmpty) {
-        val newNumber = {
-          val t = AccountFactory.validatePhoneNumber(create.phoneNumber)
-          t match {
-            case Success(canonicalPN) => canonicalPN
-            case Failure(ex) => ex match {
-              case br: BadRequestException => throw br.copy(
-                resource = s"/accounts"
-              )
-              case t: Throwable => throw t
-            }
+        newUserId = newUser.id.asInstanceOf[UUID]
+        // add grants
+        _ = create.rights foreach {
+          _.foreach { grant =>
+            RightGrantRepository.create(
+              grantId = UUID.randomUUID,
+              appId = appId,
+              groupId = None,
+              accountId = Some(newUser.id),
+              grantName = grant.grantName,
+              grantValue = grant.grantValue
+            )
           }
         }
-        if (UserAccountRepository.findBy(sqls"phone_number = ${newNumber} and dir_id = ${dirId}").isDefined) {
-          throw new CreateConflictException(
-            resource = s"/directories/${dirId}",
-            message = "phone number already exists",
-            developerMessage = "The default directory associated with this app already contains an account with the specified phone number."
-          )
+        // add groups
+        _ = (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
+          _.id.asInstanceOf[UUID]
+        }).distinct.map {
+          groupId => GroupFactory.addAccountToGroup(accountId = newUserId, groupId = groupId)
         }
-        Some(newNumber)
-      } else None
-      val newUser = AccountFactory.createAccount(
-        dirId = dirId,
-        username = create.username,
-        email = email,
-        phoneNumber = phoneNumber,
-        firstName = create.firstName,
-        lastName = create.lastName,
-        hashMethod = "bcrypt",
-        secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
-        salt = "",
-        disabled = false
-      )
-      // add grants
-      val newUserId = newUser.id.asInstanceOf[UUID]
-      create.rights foreach {
-        _.foreach { grant =>
-          RightGrantRepository.create(
-            grantId = UUID.randomUUID,
-            appId = appId,
-            groupId = None,
-            accountId = Some(newUser.id),
-            grantName = grant.grantName,
-            grantValue = grant.grantValue
-          )
-        }
-      }
-      // add groups
-      (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
-        _.id.asInstanceOf[UUID]
-      }).distinct.map {
-        groupId => GroupFactory.addAccountToGroup(accountId = newUserId, groupId = groupId)
-      }
-      newUser
+      } yield newUser
+      newUserTry
     }
   }
 
@@ -321,7 +301,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       val dirId = getDefaultGroupStore(appId).id.asInstanceOf[UUID]
       if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
-        throw new CreateConflictException(
+        throw new ConflictException(
           resource = s"/apps/${appId}",
           message = "group name already exists",
           developerMessage = "The default directory associated with this app already contains a group with the specified name."
@@ -385,15 +365,60 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     GestaltAppRepository.findAllBy(sqls"org_id=${orgId}")
   }
 
-  def findUsernameInDefaultAccountStore(appId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    DirectoryFactory.find(getDefaultAccountStore(appId).fold(_.id, _.dirId).asInstanceOf[UUID]) match {
-      case Some(dir) => dir.lookupAccountByUsername(username)
-      case None => throw new ResourceNotFoundException(
-        resource = "",
-        message = "could not locate the default account directory for the app/org",
-        developerMessage = "Could not locate the default account directory for the application/organization."
-      )
-    }
+  def getUsernameInDefaultAccountStore(appId: UUID, username: String)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
+    for {
+      asm <- getDefaultAccountStore(appId)
+      dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
+      dir <- DirectoryFactory.find(dirId) match {
+        case Some(dir) => Success(dir)
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate the default account directory for the specified app",
+          developerMessage = "Could not locate the default account directory for the specified application."
+        ))
+      }
+      account <- dir.lookupAccountByUsername(username) match {
+        case Some(a) => Success(a)
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate requested account in the application",
+          developerMessage = "Could not locate the requested account in the default " +
+            "account store associated with the application."
+        ))
+      }
+    } yield account
+  }
+
+  def getUsernameInOrgDefaultAccountStore(orgId: UUID, username: String)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
+    for {
+      app <- findServiceAppForOrg(orgId) match {
+        case Some(app) => Success(app)
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate service app for the specified org",
+          developerMessage = "Could not locate the service app for the specified organization."
+        ))
+      }
+      asm <- getDefaultAccountStore(app.id.asInstanceOf[UUID])
+      dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
+      dir <- DirectoryFactory.find(dirId) match {
+        case Some(dir) => Success(dir)
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate the default account directory for the specified org",
+          developerMessage = "Could not locate the default account directory for the specified organization."
+        ))
+      }
+      account <- dir.lookupAccountByUsername(username) match {
+        case Some(a) => Success(a)
+        case None => Failure(ResourceNotFoundException(
+          resource = "",
+          message = "could not locate requested account in the application",
+          developerMessage = "Could not locate the requested account in the default " +
+            "account store associated with the application."
+        ))
+      }
+    } yield account
   }
 
   def findGroupNameInDefaultGroupStore(appId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {

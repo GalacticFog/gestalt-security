@@ -121,9 +121,9 @@ DELETE        /apps/:appId/groups/:groupId/rights/:grantName            controll
 ##########################################
 # rights
 ##########################################
-GET             /rights/:rightId                                        controllers.RESTAPIController.getRightGrant(rightId: java.util.UUID)
-DELETE          /rights/:rightId                                        controllers.RESTAPIController.deleteRightGrant(rightId: java.util.UUID)
-PATCH           /rights/:rightId                                        controllers.RESTAPIController.updateRightGrant(rightId: java.util.UUID)
+GET           /rights/:rightId                                          controllers.RESTAPIController.getRightGrant(rightId: java.util.UUID)
+DELETE        /rights/:rightId                                          controllers.RESTAPIController.deleteRightGrant(rightId: java.util.UUID)
+PATCH         /rights/:rightId                                          controllers.RESTAPIController.updateRightGrant(rightId: java.util.UUID)
 
 ##########################################
 # account-store mappings
