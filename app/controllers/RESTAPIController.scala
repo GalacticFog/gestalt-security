@@ -84,50 +84,50 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Methods for extracting orgId for authentication from context
   ////////////////////////////////////////////////////////////////
 
-  def rootOrg: Option[UUID] = OrgFactory.getRootOrg() map {
+  private[this] def resolveRoot: Option[UUID] = OrgFactory.getRootOrg() map {
     _.id.asInstanceOf[UUID]
   }
 
-  def rootFromCredentials(requestHeader: RequestHeader): Option[UUID] = {
+  private[this] def resolveFromCredentials(requestHeader: RequestHeader): Option[UUID] = {
     val keyRoot = for {
       authToken <- GestaltHeaderAuthentication.extractAuthToken(requestHeader)
       apiKey <- APICredentialFactory.findByAPIKey(authToken.username)
     } yield apiKey.orgId.asInstanceOf[UUID]
-    keyRoot orElse rootOrg
+    keyRoot orElse resolveRoot
   }
 
-  def fqonToOrgUUID(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {
+  private[this] def resolveFQON(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {
     _.id.asInstanceOf[UUID]
   }
 
-  def getGrantOrg(grantId: UUID): Option[UUID] = for {
+  private[this] def resolveGrantOrg(grantId: UUID): Option[UUID] = for {
     grant <- RightGrantRepository.find(grantId)
     app <- AppFactory.findByAppId(grant.appId.asInstanceOf[UUID])
   } yield app.orgId.asInstanceOf[UUID]
 
-  def getAppOrg(appId: UUID): Option[UUID] = for {
+  private[this] def resolveAppOrg(appId: UUID): Option[UUID] = for {
     app <- AppFactory.findByAppId(appId)
   } yield app.orgId.asInstanceOf[UUID]
 
-  def getAccountOrg(accountId: UUID): Option[UUID] = {
+  private[this] def resolveAccountOrg(accountId: UUID): Option[UUID] = {
     for {
       account <- AccountFactory.find(accountId)
       dir <- DirectoryFactory.find(account.dirId.asInstanceOf[UUID])
     } yield dir.orgId
   }
 
-  def getGroupOrg(groupId: UUID): Option[UUID] = {
+  private[this] def resolveGroupOrg(groupId: UUID): Option[UUID] = {
     for {
       group <- GroupFactory.find(groupId)
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID])
     } yield dir.orgId
   }
 
-  def getOrgFromDirectory(dirId: UUID): Option[UUID] = for {
+  private[this] def resolveDirectoryOrg(dirId: UUID): Option[UUID] = for {
     dir <- DirectoryFactory.find(dirId)
   } yield dir.orgId
 
-  def getOrgFromAccountStoreMapping(mapId: UUID): Option[UUID] = for {
+  private[this] def resolveMappingOrg(mapId: UUID): Option[UUID] = for {
     mapping <- services.accountStoreMappingService.find(mapId)
     app <- AppFactory.find(mapping.appId.asInstanceOf[UUID])
   } yield app.orgId.asInstanceOf[UUID]
@@ -144,7 +144,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(ar))
   }
 
-  def orgAuthByFQON(fqon: String) = AuthenticatedAction(fqonToOrgUUID(fqon)) { implicit request =>
+  def orgAuthByFQON(fqon: String) = AuthenticatedAction(resolveFQON(fqon)) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -152,7 +152,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(ar))
   }
 
-  def apiAuth() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
+  def apiAuth() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -160,7 +160,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(ar))
   }
 
-  def appAuth(appId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def appAuth(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(AUTHENTICATE_ACCOUNTS)
     val creds = validateBody[GestaltBasicCredsToken]
     val app = AppFactory.findByAppId(appId)
@@ -196,7 +196,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def getHealth = Action.async {
     Future {
       Try {
-        rootOrg
+        resolveRoot
       } match {
         case Success(orgId) if orgId.isDefined =>
           Ok("healthy")
@@ -208,7 +208,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getCurrentOrg = AuthenticatedAction(rootFromCredentials _) { implicit request =>
+  def getCurrentOrg = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     OrgFactory.findByOrgId(request.user.orgId) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -219,7 +219,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getOrgByFQON(fqon: String) = AuthenticatedAction(fqonToOrgUUID(fqon)) { implicit request =>
+  def getOrgByFQON(fqon: String) = AuthenticatedAction(resolveFQON(fqon)) { implicit request =>
     OrgFactory.findByFQON(fqon) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
       case None => defaultResourceNotFound
@@ -233,7 +233,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAppById(appId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppById(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[GestaltApp](app))
       case None => defaultResourceNotFound
@@ -252,6 +252,18 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def getAppAccount(appId: java.util.UUID, accountId: java.util.UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
+    AccountFactory.getAppAccount(appId = appId, accountId = accountId) match {
+      case Some(account) => Ok(Json.toJson[GestaltAccount](account))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested account in the application",
+        developerMessage = "Could not locate the requested account in the application." +
+          " Make sure to use the account ID (not the username) and that the account is mapped to the application."
+      )))
+    }
+  }
+
   def getOrgAccountByUsername(orgId: UUID, username: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     val account = AppFactory.getUsernameInOrgDefaultAccountStore(orgId, username)
@@ -260,7 +272,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getOrgGroupByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    AppFactory.findGroupNameInDefaultGroupStore(request.user.serviceAppId, groupName) match {
+    AppFactory.getGroupNameInOrgDefaultGroupStore(request.user.serviceAppId, groupName) match {
       case Some(group) =>
         Ok(Json.toJson[GestaltGroup](group))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -272,13 +284,13 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAppAccountByUsername(appId: UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppAccountByUsername(appId: UUID, username: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     val account = AppFactory.getUsernameInDefaultAccountStore(appId, username)
     renderTry[GestaltAccount](Ok)(account)
   }
 
-  def getGroup(groupId: UUID) = AuthenticatedAction(getGroupOrg(groupId)) { implicit request =>
+  def getGroup(groupId: UUID) = AuthenticatedAction(resolveGroupOrg(groupId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     GroupFactory.find(groupId) match {
       case Some(group) => Ok(Json.toJson[GestaltGroup](group))
@@ -290,7 +302,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listGroupMembers(groupId: java.util.UUID) = AuthenticatedAction(getGroupOrg(groupId)) { implicit request =>
+  def listGroupMembers(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     GroupFactory.find(groupId) match {
       case Some(group) => DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
@@ -319,7 +331,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAppGroup(appId: UUID, groupId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppGroup(appId: UUID, groupId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     GroupFactory.getAppGroupMapping(appId = appId, groupId = groupId) match {
       case Some(group) => Ok(Json.toJson[GestaltGroup](group))
@@ -331,7 +343,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def getAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
     AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[GestaltAccount](account))
@@ -343,7 +355,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccountEmail(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def getAccountEmail(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
     AccountFactory.find(accountId) match {
@@ -357,7 +369,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def getAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
     AccountFactory.find(accountId) match {
@@ -371,11 +383,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccountStores(appId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAccountStores(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId) map { mapping => mapping: GestaltAccountStoreMapping }))
   }
 
-  def getOrgAccountStores(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def listOrgAccountStores(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId = request.user.serviceAppId) map { mapping => mapping: GestaltAccountStoreMapping }))
   }
 
@@ -407,7 +419,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[GestaltRightGrant](Ok)(right)
   }
 
-  def getAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     AccountFactory.getAppAccountGrant(appId, accountId, grantName) match {
       case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant))
@@ -419,7 +431,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     val grant = for {
       account <- AppFactory.getUsernameInDefaultAccountStore(appId, username)
@@ -435,7 +447,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[GestaltRightGrant](Ok)(grant)
   }
 
-  def getDirectory(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def getDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
         Ok(Json.toJson[GestaltDirectory](dir))
@@ -447,7 +459,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
@@ -467,7 +479,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
@@ -487,7 +499,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)) { implicit request =>
+  def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)) { implicit request =>
     services.accountStoreMappingService.find(mapId) match {
       case Some(asm) => Ok(Json.toJson[GestaltAccountStoreMapping](asm))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -498,7 +510,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def rootOrgSync() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
+  def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     // get the org tree
     val orgTree = OrgFactory.getOrgTree(request.user.orgId)
     val dirCache = DirectoryFactory.findAll map {
@@ -567,7 +579,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listAllOrgs() = AuthenticatedAction(rootFromCredentials _) { implicit request =>
+  def listAllOrgs() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     Ok(Json.toJson(OrgFactory.getOrgTree(request.user.orgId).map { o => o: GestaltOrg }))
   }
 
@@ -583,7 +595,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listAppAccounts(appId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAppAccounts(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -610,12 +622,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[Seq[GestaltRightGrant]](Ok)(grants)
   }
 
-  def listAppAccountRights(appId: UUID, accountId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAppAccountRights(appId: UUID, accountId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     val rights = AccountFactory.listAppAccountGrants(appId, accountId)
     Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
   }
 
-  def listAppAccountRightsByUsername(appId: UUID, username: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAppAccountRightsByUsername(appId: UUID, username: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     requireAuthorization(READ_DIRECTORY)
     val grants = for {
@@ -625,7 +637,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[Seq[GestaltRightGrant]](Ok)(grants)
   }
 
-  def getRightGrant(rightId: UUID) = AuthenticatedAction(getGrantOrg(rightId)) { implicit request =>
+  def getRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId)) { implicit request =>
     RightGrantRepository.find(rightId) match {
       case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -651,7 +663,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listDirAccounts(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def listDirAccounts(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) => Ok(
@@ -669,7 +681,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listDirGroups(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId)) { implicit request =>
+  def listDirGroups(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) => Ok(
@@ -699,7 +711,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     ))
   }
 
-  def listAccountGroups(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[Seq[GestaltGroup]](
         GroupFactory.listAccountGroups(accountId = accountId).map { g => g: GestaltGroup }
@@ -760,7 +772,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT_STORE)
-    val create = validateBody[GestaltOrgAccountStoreMappingCreate]
+    val create = validateBody[GestaltAccountStoreMappingCreate]
     val serviceAppId = request.user.serviceAppId
     OrgFactory.findByOrgId(orgId) match {
       case Some(parentOrg) =>
@@ -770,6 +782,21 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         resource = request.path,
         message = "parent org does not exist",
         developerMessage = "Could not create account store mapping in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
+      )))
+    }
+  }
+
+  def createAppAccountStoreMapping(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
+    requireAuthorization(CREATE_ACCOUNT_STORE)
+    val create = validateBody[GestaltAccountStoreMappingCreate]
+    AppFactory.findByAppId(appId) match {
+      case Some(app) =>
+        val newMapping = AppFactory.createAccountStoreMapping(appId = appId, create)
+        Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "app does not exist",
+        developerMessage = "Could not create account store mapping because the specified app does not exist."
       )))
     }
   }
@@ -808,14 +835,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createAppAccount(appId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)
     val create = validateBody[GestaltAccountCreateWithRights]
     val newAccount = AppFactory.createAccountInApp(appId = appId, create)
     renderTry[GestaltAccount](Created)(newAccount)
   }
 
-  def createAppGroup(appId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def createAppGroup(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_GROUP)
     val create = validateBody[GestaltGroupCreateWithRights]
     AppFactory.findByAppId(appId) match {
@@ -830,7 +857,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createDirAccount(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
+  def createDirAccount(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)
     val create = validateBody[GestaltAccountCreate]
     DirectoryFactory.find(dirId) match {
@@ -845,7 +872,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def createDirGroup(dirId: UUID) = AuthenticatedAction(getOrgFromDirectory(dirId))(parse.json) { implicit request =>
+  def createDirGroup(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_GROUP)
     val create = validateBody[GestaltGroupCreate]
     DirectoryFactory.find(dirId) match {
@@ -856,30 +883,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         resource = request.path,
         message = "app does not exist",
         developerMessage = "Could not create group in directory because the directory does not exist."
-      )))
-    }
-  }
-
-  def createAccountStoreMapping() = new AuthenticatedActionBuilderAgainstRequest {
-    override def genOrgId[B](request: Request[B]): Option[UUID] = request.body match {
-      case json: JsValue => for {
-        appId <- (json \ "appId").asOpt[UUID]
-        app <- AppFactory.findByAppId(appId)
-      } yield app.orgId.asInstanceOf[UUID]
-      case _ => None
-    }
-  }.apply(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT_STORE)
-    val create = validateBody[GestaltAccountStoreMappingCreate]
-    val appId = create.appId
-    AppFactory.findByAppId(appId) match {
-      case Some(app) =>
-        val newMapping = AppFactory.createAccountStoreMapping(appId = appId, create)
-        Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "app does not exist",
-        developerMessage = "Could not create account store mapping because the specified app does not exist."
       )))
     }
   }
@@ -898,14 +901,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
   }
 
-  def createAppGroupRight(appId: UUID, groupId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def createAppGroupRight(appId: UUID, groupId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToGroup(appId, groupId, Seq(grant))
     renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
   }
 
-  def createAppAccountRight(appId: UUID, accountId: UUID) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def createAppAccountRight(appId: UUID, accountId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToAccount(appId, accountId, Seq(grant))
@@ -916,7 +919,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Update methods
   ////////////////////////////////////////////////////////
 
-  def removeAccountEmail(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def removeAccountEmail(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
     AccountFactory.find(accountId) match {
@@ -931,7 +934,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def removeAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)) { implicit request =>
+  def removeAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     // user can update their own account
     if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
     AccountFactory.find(accountId) match {
@@ -946,7 +949,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(getGroupOrg(groupId))(parse.json) { implicit request =>
+  def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId))(parse.json) { implicit request =>
     val payload = validateBody[Seq[PatchOp]]
     requireAuthorization(UPDATE_GROUP)
     GroupFactory.find(groupId) match {
@@ -961,7 +964,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId))(parse.json) { implicit request =>
+  def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
     val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
       case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
       case _ => request.body.validate[GestaltAccountUpdate] match {
@@ -990,7 +993,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateRightGrant(rightId: UUID) = AuthenticatedAction(getGrantOrg(rightId))(parse.json) { implicit request =>
+  def updateRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_APP_GRANT)
     RightGrantRepository.find(rightId) match {
       case Some(grant) =>
@@ -1011,7 +1014,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId))(parse.json) { implicit request =>
+  def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_ACCOUNT_STORE)
     val patch = validateBody[Seq[PatchOp]]
     services.accountStoreMappingService.find(mapId) match {
@@ -1022,14 +1025,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_APP_GRANT)
     val patch = validateBody[Seq[PatchOp]]
     val grant = AccountFactory.updateAppAccountGrant(appId, accountId, grantName, patch)
     Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
-  def updateAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def updateAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_APP_GRANT)
     requireAuthorization(READ_DIRECTORY)
     val patch = validateBody[Seq[PatchOp]]
@@ -1062,7 +1065,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   // Delete methods
   ////////////////////////////////////////////////////////
 
-  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(getOrgFromAccountStoreMapping(mapId)).async { implicit request =>
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)).async { implicit request =>
     requireAuthorization(DELETE_ACCOUNT_STORE)
     services.accountStoreMappingService.find(mapId) match {
       case Some(asm) =>
@@ -1106,7 +1109,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def deleteAppById(appId: UUID) = AuthenticatedAction(getAppOrg(appId)).async { implicit request =>
+  def deleteAppById(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)).async { implicit request =>
     requireAuthorization(DELETE_APP)
     AppFactory.findByAppId(appId) match {
       case Some(app) if !app.isServiceApp =>
@@ -1131,7 +1134,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def deleteGroup(groupId: java.util.UUID) = AuthenticatedAction(getGroupOrg(groupId)).async { implicit request =>
+  def deleteGroup(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId)).async { implicit request =>
     requireAuthorization(DELETE_GROUP)
     GroupFactory.find(groupId) match {
       case None => Future{defaultResourceNotFound}
@@ -1151,7 +1154,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def disableAccount(accountId: UUID) = AuthenticatedAction(getAccountOrg(accountId)).async { implicit request =>
+  def disableAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
     requireAuthorization(DELETE_ACCOUNT)
     AccountFactory.find(accountId) match {
       case Some(account) if !account.disabled && account.id != request.user.identity.id =>
@@ -1192,7 +1195,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def deleteRightGrant(rightId: UUID) = AuthenticatedAction(getGrantOrg(rightId)) { implicit request =>
+  def deleteRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId)) { implicit request =>
     requireAuthorization(DELETE_APP_GRANT)
     Ok(Json.toJson(DeleteResult(RightGrantFactory.deleteRightGrant(rightId))))
   }
@@ -1213,12 +1216,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[DeleteResult](Ok)(result)
   }
 
-  def deleteAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def deleteAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     val wasDeleted = AccountFactory.deleteAppAccountGrant(appId, accountId, grantName)
     Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
-  def deleteAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def deleteAppAccountRightByUsername(appId: UUID, username: String, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(DELETE_APP_GRANT)
     requireAuthorization(READ_DIRECTORY)
     val result = for {
@@ -1233,7 +1236,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
-  def deleteAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def deleteAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     val wasDeleted = AccountFactory.deleteAppGroupGrant(appId, groupId, grantName)
     Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
@@ -1244,7 +1247,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
   }
 
-  def listAppGroupRights(appId: UUID, groupId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAppGroupRights(appId: UUID, groupId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     val rights = AccountFactory.listAppGroupGrants(request.user.serviceAppId, groupId)
     Ok(Json.toJson[Seq[GestaltRightGrant]](rights map { r => r: GestaltRightGrant }))
@@ -1262,7 +1265,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def getAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     requireAuthorization(LIST_APP_GRANTS)
     AccountFactory.getAppGroupGrant(appId, groupId, grantName) match {
       case Some(grant) => Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
@@ -1274,7 +1277,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def listAppGroupMappings(appId: UUID) = AuthenticatedAction(getAppOrg(appId)) { implicit request =>
+  def listAppGroupMappings(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
       GroupFactory.listAppGroupMappings(appId).map { g => g: GestaltGroup }
     ))
@@ -1286,10 +1289,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
 
-  def updateAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(getAppOrg(appId))(parse.json) { implicit request =>
+  def updateAppGroupRight(appId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     val patch = validateBody[Seq[PatchOp]]
     val grant = AccountFactory.updateAppGroupGrant(appId, groupId = groupId, grantName, patch)
     Ok(Json.toJson[GestaltRightGrant](grant: GestaltRightGrant))
   }
+
 
 }

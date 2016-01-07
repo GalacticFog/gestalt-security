@@ -25,7 +25,7 @@ POST          /orgs/:orgId/apps                                         controll
 GET           /orgs/:orgId/apps                                         controllers.RESTAPIController.listOrgApps(orgId: java.util.UUID)
 GET           /orgs/:orgId/serviceApp                                   controllers.RESTAPIController.getServiceApp(orgId: java.util.UUID)
 #
-GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.getOrgAccountStores(orgId: java.util.UUID)
+GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.listOrgAccountStores(orgId: java.util.UUID)
 POST          /orgs/:orgId/accountStores                                controllers.RESTAPIController.createOrgAccountStore(orgId: java.util.UUID)
 #
 GET           /orgs/:orgId/usernames/:username                          controllers.RESTAPIController.getOrgAccountByUsername(orgId: java.util.UUID, username: String)
@@ -93,10 +93,12 @@ GET           /directories/:dirId/groupnames/:groupName                 controll
 GET           /apps/:appId                                              controllers.RESTAPIController.getAppById(appId: java.util.UUID)
 DELETE        /apps/:appId                                              controllers.RESTAPIController.deleteAppById(appId: java.util.UUID)
 #
-GET           /apps/:appId/accountStores                                controllers.RESTAPIController.getAccountStores(appId: java.util.UUID)
+GET           /apps/:appId/accountStores                                controllers.RESTAPIController.listAccountStores(appId: java.util.UUID)
+POST          /apps/:appId/accountStores                                controllers.RESTAPIController.createAppAccountStoreMapping(appId: java.util.UUID)
 #
 GET           /apps/:appId/accounts                                     controllers.RESTAPIController.listAppAccounts(appId: java.util.UUID)
 POST          /apps/:appId/accounts                                     controllers.RESTAPIController.createAppAccount(appId: java.util.UUID)
+GET           /apps/:appId/accounts/:accountId                          controllers.RESTAPIController.getAppAccount(appId: java.util.UUID, accountId: java.util.UUID)
 GET           /apps/:appId/accounts/:accountId/rights                   controllers.RESTAPIController.listAppAccountRights(appId: java.util.UUID, accountId: java.util.UUID)
 POST          /apps/:appId/accounts/:accountId/rights                   controllers.RESTAPIController.createAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID)
 GET           /apps/:appId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.getAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID, grantName)
@@ -128,7 +130,6 @@ PATCH         /rights/:rightId                                          controll
 ##########################################
 # account-store mappings
 ##########################################
-POST          /accountStores                                            controllers.RESTAPIController.createAccountStoreMapping()
 GET           /accountStores/:mapId                                     controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
 PATCH         /accountStores/:mapId                                     controllers.RESTAPIController.updateAccountStoreMapping(mapId: java.util.UUID)
 DELETE        /accountStores/:mapId                                     controllers.RESTAPIController.deleteAccountStoreMapping(mapId: java.util.UUID)
