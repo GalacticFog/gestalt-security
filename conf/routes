@@ -78,6 +78,7 @@ PATCH         /groups/:groupId/accounts                                 controll
 # directories
 ##########################################
 GET           /directories/:dirId                                       controllers.RESTAPIController.getDirectory(dirId: java.util.UUID)
+DELETE        /directories/:dirId                                       controllers.RESTAPIController.deleteDirectory(dirId: java.util.UUID)
 #
 GET           /directories/:dirId/accounts                              controllers.RESTAPIController.listDirAccounts(dirId: java.util.UUID)
 POST          /directories/:dirId/accounts                              controllers.RESTAPIController.createDirAccount(dirId: java.util.UUID)
@@ -119,6 +120,8 @@ POST          /apps/:appId/groups/:groupId/rights                       controll
 GET           /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.getAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
 PATCH         /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.updateAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
 DELETE        /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
+#
+GET           /apps/:appId/groupnames/:groupName                        controllers.RESTAPIController.getAppGroupByName(appId: java.util.UUID, groupName)
 
 ##########################################
 # rights

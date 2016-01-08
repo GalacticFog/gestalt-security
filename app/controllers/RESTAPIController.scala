@@ -272,16 +272,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def getOrgGroupByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    AppFactory.getGroupNameInOrgDefaultGroupStore(request.user.serviceAppId, groupName) match {
-      case Some(group) =>
-        Ok(Json.toJson[GestaltGroup](group))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested group in the organization",
-        developerMessage = "Could not locate the requested group in the organization in the default " +
-          "group store associated with the org."
-      )))
-    }
+    val group = AppFactory.getGroupNameInOrgDefaultGroupStore(orgId, groupName)
+    renderTry[GestaltGroup](Ok)(group)
+  }
+
+  def getAppGroupByName(appId: java.util.UUID, groupName: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
+    requireAuthorization(READ_DIRECTORY)
+    val group = AppFactory.getGroupNameInAppDefaultGroupStore(appId, groupName)
+    renderTry[GestaltGroup](Ok)(group)
   }
 
   def getAppAccountByUsername(appId: UUID, username: String) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
@@ -741,98 +739,43 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)
     val create = validateBody[GestaltAccountCreateWithRights]
-    val serviceAppId = request.user.serviceAppId
-    OrgFactory.findByOrgId(parentOrgId) match {
-      case Some(parentOrg) =>
-        val newAccount = AppFactory.createAccountInApp(appId = serviceAppId, create)
-        renderTry[GestaltAccount](Created)(newAccount)
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "parent org does not exist",
-        developerMessage = "Could not create account in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
-      )))
-    }
+    val newAccount = AppFactory.createAccountInApp(appId = request.user.serviceAppId, create)
+    renderTry[GestaltAccount](Created)(newAccount)
   }
 
   def createOrgGroup(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_GROUP)
     val create = validateBody[GestaltGroupCreateWithRights]
-    val serviceAppId = request.user.serviceAppId
-    OrgFactory.findByOrgId(parentOrgId) match {
-      case Some(parentOrg) =>
-        val newGroup = AppFactory.createGroupInApp(appId = serviceAppId, create)
-        Created(Json.toJson[GestaltGroup](newGroup))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "parent org does not exist",
-        developerMessage = "Could not create group in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
-      )))
-    }
+    val newGroup = AppFactory.createGroupInApp(appId = request.user.serviceAppId, create)
+    renderTry[GestaltGroup](Created)(newGroup)
   }
 
   def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT_STORE)
     val create = validateBody[GestaltAccountStoreMappingCreate]
-    val serviceAppId = request.user.serviceAppId
-    OrgFactory.findByOrgId(orgId) match {
-      case Some(parentOrg) =>
-        val newMapping = AppFactory.createOrgAccountStoreMapping(appId = serviceAppId, create)
-        Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "parent org does not exist",
-        developerMessage = "Could not create account store mapping in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
-      )))
-    }
+    val newMapping = AppFactory.createOrgAccountStoreMapping(orgId, create)
+    renderTry[GestaltAccountStoreMapping](Created)(newMapping)
   }
 
   def createAppAccountStoreMapping(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT_STORE)
     val create = validateBody[GestaltAccountStoreMappingCreate]
-    AppFactory.findByAppId(appId) match {
-      case Some(app) =>
-        val newMapping = AppFactory.createAccountStoreMapping(appId = appId, create)
-        Created(Json.toJson[GestaltAccountStoreMapping](newMapping))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "app does not exist",
-        developerMessage = "Could not create account store mapping because the specified app does not exist."
-      )))
-    }
+    val newMapping = AppFactory.createAppAccountStoreMapping(appId = appId, create)
+    renderTry[GestaltAccountStoreMapping](Created)(newMapping)
   }
 
-  def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId)).async(parse.json) { implicit request =>
+  def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP)
     val create = validateBody[GestaltAppCreate]
-    OrgFactory.findByOrgId(orgId) match {
-      case Some(org) =>
-        Future {
-          val newApp = AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
-          renderTry[GestaltApp](Created)(newApp)
-        }
-      case None => Future {
-        NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "org does not exist",
-          developerMessage = "Cannot create application because the specified org does not exist."
-        )))
-      }
-    }
+    val newApp = AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
+    renderTry[GestaltApp](Created)(newApp)
   }
 
   def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_DIRECTORY)
     val create = validateBody[GestaltDirectoryCreate]
-    OrgFactory.findByOrgId(orgId) match {
-      case Some(parentOrg) =>
-        val newDir = DirectoryFactory.createDirectory(orgId = parentOrg.id.asInstanceOf[UUID], create)
-        renderTry[GestaltDirectory](Created)(newDir)
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "parent org does not exist",
-        developerMessage = "Could not create directory in org because the specified org does not exist. Make sure to use the organization ID and not the organization name."
-      )))
-    }
+    val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
+    renderTry[GestaltDirectory](Created)(newDir)
   }
 
   def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
@@ -845,46 +788,22 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def createAppGroup(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_GROUP)
     val create = validateBody[GestaltGroupCreateWithRights]
-    AppFactory.findByAppId(appId) match {
-      case Some(app) =>
-        val newGroup = AppFactory.createGroupInApp(appId = appId, create)
-        Created(Json.toJson[GestaltGroup](newGroup))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "app does not exist",
-        developerMessage = "Could not create account in app because the app does not exist."
-      )))
-    }
+    val newGroup = AppFactory.createGroupInApp(appId = appId, create)
+    renderTry[GestaltGroup](Created)(newGroup)
   }
 
   def createDirAccount(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)
     val create = validateBody[GestaltAccountCreate]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        val newAccount = DirectoryFactory.createAccountInDir(dirId = dirId, create)
-        renderTry[GestaltAccount](Created)(newAccount)
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "directory does not exist",
-        developerMessage = "Could not create account in directory because the directory does not exist."
-      )))
-    }
+    val newAccount = DirectoryFactory.createAccountInDir(dirId = dirId, create)
+    renderTry[GestaltAccount](Created)(newAccount)
   }
 
   def createDirGroup(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_GROUP)
     val create = validateBody[GestaltGroupCreate]
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        val newGroup = DirectoryFactory.createGroupInDir(dirId = dirId, create)
-        renderTry[GestaltGroup](Created)(newGroup)
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "app does not exist",
-        developerMessage = "Could not create group in directory because the directory does not exist."
-      )))
-    }
+    val newGroup = DirectoryFactory.createGroupInDir(dirId = dirId, create)
+    renderTry[GestaltGroup](Created)(newGroup)
   }
 
   def createOrgAccountRight(orgId: UUID, accountId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
@@ -1081,6 +1000,24 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           developerMessage = "Could not delete the target account store mapping because it does not exist or the provided credentials do not have rights to see it."
         )))
       }
+    }
+  }
+
+  def deleteDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)).async { implicit request =>
+    requireAuthorization(DELETE_DIRECTORY)
+    DirectoryFactory.find(dirId) match {
+      case Some(dir) =>
+        Future {
+          DirectoryFactory.removeDirectory(dirId)
+        } map {
+          _ => Ok(Json.toJson(DeleteResult(true)))
+        }
+      case None =>
+        Future(NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "directory doe not exist",
+          developerMessage = "Could not delete the target directory because it does not exist or the provided credentials do not have rights to see it."
+        ))))
     }
   }
 

@@ -6,6 +6,7 @@ import com.galacticfog.gestalt.security.api.errors.{ConflictException, ResourceN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model._
 import org.mindrot.jbcrypt.BCrypt
+import org.postgresql.util.PSQLException
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
@@ -120,118 +121,132 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def createOrgAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
-    if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType.label} and account_store_id = ${create.accountStoreId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "mapping already exists",
-        developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
-      )
-    }
-    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "default account store already set",
-        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
-      )
-    }
-    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "default group store already set",
-        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
-      )
-    }
-    if (create.isDefaultGroupStore && create.storeType != DIRECTORY) {
-      throw new BadRequestException(
-        resource = s"/apps/${appId}/accountStores",
+  def createOrgAccountStoreMapping(orgId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    val mapping = for {
+      _ <- OrgFactory.find(orgId) match {
+        case Some(_) => Success(Unit)
+        case None => Failure(ResourceNotFoundException(
+          resource = s"/orgs/${orgId}/accountStores",
+          message = "org not found",
+          developerMessage = "Organization with the specified ID does not exist."
+        ))
+      }
+      _ <- if (create.isDefaultGroupStore && create.storeType != DIRECTORY) Failure(BadRequestException(
+        resource = s"/orgs/${orgId}/accountStores",
         message = "default group store must be an account store of type DIRECTORY",
         developerMessage = "A default group store must correspond to an account store of type DIRECTORY."
-      )
-    }
-    create.storeType match {
-      case DIRECTORY => if (GestaltDirectoryRepository.find(create.accountStoreId).isEmpty) {
-        throw new BadRequestException(
-          resource = s"/apps/${appId}/accountStores",
+      )) else Success(Unit)
+      _ <- create.storeType match {
+        case DIRECTORY if GestaltDirectoryRepository.find(create.accountStoreId).isEmpty => Failure(BadRequestException(
+          resource = s"/orgs/${orgId}/accountStores",
           message = "account store does not correspond to an existing directory",
           developerMessage = "The account store indicates type DIRECTORY, but there is no directory with the given account store ID."
-        )
-      }
-      case GROUP => if (UserGroupRepository.find(create.accountStoreId).isEmpty) {
-        throw new BadRequestException(
-          resource = s"/apps/${appId}/accountStores",
+        ))
+        case GROUP if UserGroupRepository.find(create.accountStoreId).isEmpty => Failure(BadRequestException(
+          resource = s"/orgs/${orgId}/accountStores",
           message = "account store does not correspond to an existing group",
           developerMessage = "The account store indicates type GROUP, but there is no group with the given account store ID."
-        )
+        ))
+        case _ => Success(Unit)
       }
+      app <- findServiceAppForOrg(orgId) match {
+        case Some(app) => Success(app)
+        case None => Failure(BadRequestException(
+          resource = s"/orgs/${orgId}/accountStores",
+          message = "could not locate service application for the specified org",
+          developerMessage = "Could not locate the service application for the specified organization."
+        ))
+      }
+      asm <- Try(AccountStoreMappingRepository.create(
+        id = UUID.randomUUID(),
+        appId = app.id.asInstanceOf[UUID],
+        storeType = create.storeType.label,
+        accountStoreId = create.accountStoreId,
+        name = Some(create.name),
+        description = Some(create.description),
+        defaultAccountStore = if (create.isDefaultAccountStore) Some(orgId) else None,
+        defaultGroupStore = if (create.isDefaultGroupStore) Some(orgId) else None
+      ))
+    } yield asm
+    mapping recoverWith {
+      case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "account_store_mapping_app_id_store_type_account_store_id_key") =>
+        Failure(ConflictException(
+          resource = s"/orgs/${orgId}/accountStores",
+          message = "mapping already exists",
+          developerMessage = "There already exists a mapping on this org to the specified group or directory."
+        ))
     }
-    AccountStoreMappingRepository.create(
-      id = UUID.randomUUID(),
-      appId = appId,
-      storeType = create.storeType.label,
-      accountStoreId = create.accountStoreId,
-      name = Some(create.name),
-      description = Some(create.description),
-      defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
-      defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
-    )
+    //    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
+    //      throw new ConflictException(
+    //        resource = s"/apps/${appId}/accountStores",
+    //        message = "default account store already set",
+    //        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
+    //      )
+    //    }
+    //    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
+    //      throw new ConflictException(
+    //        resource = s"/apps/${appId}/accountStores",
+    //        message = "default group store already set",
+    //        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
+    //      )
+    //    }
   }
 
-  def createAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
-    if (AccountStoreMappingRepository.findBy(sqls"app_id = ${appId} and store_type = ${create.storeType.label} and account_store_id = ${create.accountStoreId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "mapping already exists",
-        developerMessage = "There already exists a mapping on this application/org to the specified group or directory."
-      )
-    }
-    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "default account store already set",
-        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
-      )
-    }
-    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
-      throw new ConflictException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "default group store already set",
-        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
-      )
-    }
-    if (create.isDefaultGroupStore && create.storeType != DIRECTORY) {
-      throw new BadRequestException(
-        resource = s"/apps/${appId}/accountStores",
-        message = "default group store must be an account store of type DIRECTORY",
-        developerMessage = "A default group store must correspond to an account store of type DIRECTORY."
-      )
-    }
-    create.storeType match {
-      case DIRECTORY => if (GestaltDirectoryRepository.find(create.accountStoreId).isEmpty) {
-        throw new BadRequestException(
+  def createAppAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    val mapping = for {
+      _ <- if (create.isDefaultGroupStore && create.storeType != DIRECTORY) {
+        Failure(BadRequestException(
+          resource = s"/apps/${appId}/accountStores",
+          message = "default group store must be an account store of type DIRECTORY",
+          developerMessage = "A default group store must correspond to an account store of type DIRECTORY."
+        ))
+      } else Success(Unit)
+      _ <- create.storeType match {
+        case DIRECTORY if GestaltDirectoryRepository.find(create.accountStoreId).isEmpty => Failure(BadRequestException(
           resource = s"/apps/${appId}/accountStores",
           message = "account store does not correspond to an existing directory",
           developerMessage = "The account store indicates type DIRECTORY, but there is no directory with the given account store ID."
-        )
-      }
-      case GROUP => if (UserGroupRepository.find(create.accountStoreId).isEmpty) {
-        throw new BadRequestException(
+        ))
+        case GROUP if UserGroupRepository.find(create.accountStoreId).isEmpty => Failure(BadRequestException(
           resource = s"/apps/${appId}/accountStores",
           message = "account store does not correspond to an existing group",
           developerMessage = "The account store indicates type GROUP, but there is no group with the given account store ID."
-        )
+        ))
+        case _ => Success(Unit)
       }
+      asm <- Try(AccountStoreMappingRepository.create(
+        id = UUID.randomUUID(),
+        appId = appId,
+        storeType = create.storeType.label,
+        accountStoreId = create.accountStoreId,
+        name = Some(create.name),
+        description = Some(create.description),
+        defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
+        defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
+      ))
+    } yield asm
+//    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
+//      throw new ConflictException(
+//        resource = s"/apps/${appId}/accountStores",
+//        message = "default account store already set",
+//        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
+//      )
+//    }
+//    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
+//      throw new ConflictException(
+//        resource = s"/apps/${appId}/accountStores",
+//        message = "default group store already set",
+//        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
+//      )
+//    }
+    mapping recoverWith {
+      case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "account_store_mapping_app_id_store_type_account_store_id_key") =>
+        Failure(ConflictException(
+          resource = s"/apps/${appId}/accountStores",
+          message = "mapping already exists",
+          developerMessage = "There already exists a mapping on this application to the specified group or directory."
+        ))
     }
-    AccountStoreMappingRepository.create(
-      id = UUID.randomUUID(),
-      appId = appId,
-      storeType = create.storeType.label,
-      accountStoreId = create.accountStoreId,
-      name = Some(create.name),
-      description = Some(create.description),
-      defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
-      defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
-    )
   }
 
   def createAccountInApp(appId: UUID, create: GestaltAccountCreateWithRights)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {

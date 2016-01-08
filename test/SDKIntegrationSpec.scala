@@ -123,7 +123,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltOrg.deleteOrg(rootOrg.id,ru,rp)) must throwA[BadRequestException]
+      await(GestaltOrg.deleteOrg(rootOrg.id,ru,rp)) must throwA[BadRequestException](".*cannot delete root org.*")
     }
 
     "list root admin among accounts" in {
@@ -174,7 +174,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltApp.deleteApp(rootApp.id, ru, rp)) must throwA[BadRequestException]
+      await(GestaltApp.deleteApp(rootApp.id, ru, rp)) must throwA[BadRequestException](".*cannot delete service app.*")
     }
 
     "authenticate equivalently to framework" in {
@@ -191,27 +191,27 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "prohibit a mixed case name" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "hasAcapitalletter")
-      await(failure) must throwA[BadRequestException]
+      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with a space" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "has space")
-      await(failure) must throwA[BadRequestException]
+      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with preceding dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "-good-but-for-the-dash")
-      await(failure) must throwA[BadRequestException]
+      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with a trailing dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for-the-dash-")
-      await(failure) must throwA[BadRequestException]
+      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with consecutive dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for--the-dash")
-      await(failure) must throwA[BadRequestException]
+      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
   }
@@ -387,7 +387,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be able to delete themselves" in {
-      await(GestaltAccount.deleteAccount(rootAccount.id, ru, rp)) must throwA[BadRequestException]
+      await(GestaltAccount.deleteAccount(rootAccount.id, ru, rp)) must throwA[BadRequestException](".*cannot delete self.*")
     }
 
     "be updated with an email address" in {
@@ -526,7 +526,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
     }
 
-//    "allow account to authenticate against an org via a manually added group" in {
+//    "allow account to authenticate against an org via a manually added group" in { // TODO
 //
 //    }
 
@@ -688,7 +688,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrgApp.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
     }
 
-    "successfully list/get in the org/app after being mapped to the org app" in {
+    "successfully list/get in the org/app after being mapped to the service app" in {
       val mapping = await(newOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "test-mapping",
         description = "",
@@ -737,6 +737,258 @@ class SDKIntegrationSpec extends PlaySpecification {
     "cleanup" in {
       await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,ru,rp)) must beTrue
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
+  "Account Store Mappings" should {
+
+    lazy val testDirInRootOrg = await(rootOrg.createDirectory(GestaltDirectoryCreate(
+      name = "test-dir-in-root-org",
+      description = None,
+      config = None
+    )))
+    lazy val testGroupInTestDir = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
+      name = "test-group-in-test-dir"
+    )))
+    lazy val testGroup2InTestDir = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
+      name = "test-group2-in-test-dir"
+    )))
+    lazy val testSubOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = "suborg-for-asm-testing",
+      createDefaultUserGroup = false
+    )))
+    lazy val testSubOrgApp = await(testSubOrg.getServiceApp)
+
+    "fail appropriately for non-existent directory store on org" in {
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = UUID.randomUUID(),
+      isDefaultAccountStore = false,
+      isDefaultGroupStore = false
+      ))) must throwA[BadRequestException](".*account store does not correspond to an existing directory.*")
+    }
+
+    "fail appropriately for non-existent directory store on app" in {
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = UUID.randomUUID(),
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[BadRequestException](".*account store does not correspond to an existing directory.*")
+    }
+
+    "fail appropriately for non-existent group store on org" in {
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = UUID.randomUUID(),
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[BadRequestException](".*account store does not correspond to an existing group.*")
+    }
+
+    "fail appropriately for non-existent group store on app" in {
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = UUID.randomUUID(),
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[BadRequestException](".*account store does not correspond to an existing group.*")
+    }
+
+    "fail appropriately when setting group as default group store in org" in {
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = true
+      ))) must throwA[BadRequestException](".*default group store must be an account store of type DIRECTORY.*")
+    }
+
+    "fail appropriately when setting group as default group store in app" in {
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "failed-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = true
+      ))) must throwA[BadRequestException](".*default group store must be an account store of type DIRECTORY.*")
+    }
+
+    "fail appropriately for redundant dir mapping against org" in {
+      val newMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException](".*mapping already exists.*")
+      await(GestaltAccountStoreMapping.delete(newMapping.id)) must beTrue
+    }
+
+    "fail appropriately for redundant dir mapping against app" in {
+      val newMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException](".*mapping already exists.*")
+      await(GestaltAccountStoreMapping.delete(newMapping.id)) must beTrue
+    }
+
+    "fail appropriately for redundant group mapping against org" in {
+      val newMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(newMapping.id)) must beTrue
+    }
+
+    "fail appropriately for redundant group mapping against app" in {
+      val newMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(newMapping.id)) must beTrue
+    }
+
+    "fail appropriately when setting conflicting default account store on org" in {
+      val firstMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroup2InTestDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(firstMapping.id)) must beTrue
+    }
+
+    "fail appropriately when setting conflicting default account store on app" in {
+      val firstMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroupInTestDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      )))
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = GROUP,
+        accountStoreId = testGroup2InTestDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(firstMapping.id)) must beTrue
+    }
+
+    "fail appropriately when setting conflicting default group store on org" in {
+      val firstMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = true
+      )))
+      await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = rootDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(firstMapping.id)) must beTrue
+    }
+
+    "fail appropriately when setting conflicting default group store on app" in {
+      val firstMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "first-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = testDirInRootOrg.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = true
+      )))
+      await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "second-mapping",
+        description = "",
+        storeType = DIRECTORY,
+        accountStoreId = rootDir.id,
+        isDefaultAccountStore = true,
+        isDefaultGroupStore = false
+      ))) must throwA[ConflictException]("bad message")
+      await(GestaltAccountStoreMapping.delete(firstMapping.id)) must beTrue
+    }
+
+    "cleanup" in {
+      await(GestaltDirectory.deleteDirectory(testDirInRootOrg.id)) must beTrue
+      await(GestaltOrg.deleteOrg(testSubOrg.id)) must beTrue
     }
 
   }

@@ -102,6 +102,13 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     GestaltDirectoryRepository.findAll map {d => d:Directory}
   }
 
+  def removeDirectory(dirId: UUID)(implicit session: DBSession = autoSession): Unit = {
+    GestaltDirectoryRepository.find(dirId) match {
+      case Some(dir) => dir.destroy()
+      case _ =>
+    }
+  }
+
   // TODO: omg, refactor this
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
     GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}") match {

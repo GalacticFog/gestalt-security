@@ -156,7 +156,6 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     } yield newOrg
     newOrg recoverWith {
       case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "org_parent_name_key") =>
-        val v = t.getServerErrorMessage
         Failure(ConflictException(
           resource = "",
           message = "org name already exists in the parent org",
