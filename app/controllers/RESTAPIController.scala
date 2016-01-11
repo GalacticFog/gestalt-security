@@ -353,34 +353,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
-  def getAccountEmail(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
-    // user can update their own account
-    if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
-    AccountFactory.find(accountId) match {
-      case Some(account) =>
-        Ok(account.email getOrElse "")
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-      )))
-    }
-  }
-
-  def getAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
-    // user can update their own account
-    if (request.user.identity.id != accountId) requireAuthorization(READ_DIRECTORY)
-    AccountFactory.find(accountId) match {
-      case Some(account) =>
-        Ok(account.phoneNumber getOrElse "")
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-      )))
-    }
-  }
-
   def listAccountStores(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson(AppFactory.listAccountStoreMappings(appId) map { mapping => mapping: GestaltAccountStoreMapping }))
   }
@@ -810,7 +782,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(CREATE_ORG_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToAccount(request.user.serviceAppId, accountId, Seq(grant))
-    Ok(Json.toJson[GestaltRightGrant](newGrants.head))
+    val newGrant = newGrants map {_.head}
+    renderTry[GestaltRightGrant](Created)(newGrant)
   }
 
   def createOrgGroupRight(orgId: UUID, groupId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
@@ -831,7 +804,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
     val newGrants = RightGrantFactory.addRightsToAccount(appId, accountId, Seq(grant))
-    Ok(Json.toJson[GestaltRightGrant](newGrants.head))
+    val newGrant = newGrants map {_.head}
+    renderTry[GestaltRightGrant](Created)(newGrant)
   }
 
   ////////////////////////////////////////////////////////

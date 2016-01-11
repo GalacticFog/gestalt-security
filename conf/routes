@@ -61,9 +61,7 @@ GET           /accounts/:accountId                                      controll
 PATCH         /accounts/:accountId                                      controllers.RESTAPIController.updateAccount(accountId: java.util.UUID)
 DELETE        /accounts/:accountId                                      controllers.RESTAPIController.disableAccount(accountId: java.util.UUID)
 GET           /accounts/:accountId/groups                               controllers.RESTAPIController.listAccountGroups(accountId: java.util.UUID)
-GET           /accounts/:accountId/email                                controllers.RESTAPIController.getAccountEmail(accountId: java.util.UUID)
 DELETE        /accounts/:accountId/email                                controllers.RESTAPIController.removeAccountEmail(accountId: java.util.UUID)
-GET           /accounts/:accountId/phoneNumber                          controllers.RESTAPIController.getAccountPhoneNumber(accountId: java.util.UUID)
 DELETE        /accounts/:accountId/phoneNumber                          controllers.RESTAPIController.removeAccountPhoneNumber(accountId: java.util.UUID)
 
 ##########################################

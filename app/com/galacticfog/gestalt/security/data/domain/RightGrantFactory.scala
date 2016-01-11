@@ -3,36 +3,65 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltGrantCreate
+import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.model.{RightGrantRepository, UserGroupRepository, GroupMembershipRepository}
+import org.postgresql.util.PSQLException
 import play.api.Logger
 import scalikejdbc._
+import scalikejdbc.TxBoundary.Try._
 
-import scala.util.Try
+import scala.util.{Failure, Try}
 
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
   override val autoSession = AutoSession
+
+  def recoverRightGrantCreate: PartialFunction[Throwable, Try[RightGrantRepository]] = _ match {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "right_grant_name_nonempty" => Failure(BadRequestException(
+            resource = "",
+            message = "right grant must be non-empty without leading or trailing spaces",
+            developerMessage = "Right grant name may not have leading or trailing spaces, and must be non-empty."
+          ))
+          case _ => Failure(t)
+        }
+    }
 
   def addRightsToGroup(appId: UUID,
                        groupId: UUID,
                        rights: Seq[GestaltGrantCreate])
                       (implicit session: DBSession = autoSession): Try[Seq[RightGrantRepository]] =
   {
-    val f: Seq[Try[RightGrantRepository]] = rights map {
-      grant => Try(RightGrantRepository.create(
-        grantId = UUID.randomUUID,
-        appId = appId,
-        groupId = Some(groupId),
-        grantName = grant.grantName,
-        grantValue = grant.grantValue
-      ))
+    DB localTx { implicit session =>
+      val tries = rights map {
+        grant => Try { RightGrantRepository.create(
+          grantId = UUID.randomUUID,
+          appId = appId,
+          groupId = Some(groupId),
+          grantName = grant.grantName,
+          grantValue = grant.grantValue
+        )} recoverWith recoverRightGrantCreate
+      }
+      Try{ tries map { _.get } }
     }
-    Try ( f.map {_.get} )
   }
 
-  def addRightsToAccount(appId: UUID, accountId: UUID, rights: Seq[GestaltGrantCreate])(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
-    rights map {
-      grant => RightGrantRepository.create(grantId = UUID.randomUUID, appId = appId, accountId = Some(accountId), grantName = grant.grantName, grantValue = grant.grantValue)
+  def addRightsToAccount(appId: UUID,
+                         accountId: UUID,
+                         rights: Seq[GestaltGrantCreate])
+                        (implicit session: DBSession = autoSession): Try[Seq[RightGrantRepository]] = {
+    DB localTx { implicit session =>
+      val tries = rights map {
+        grant => Try { RightGrantRepository.create(
+          grantId = UUID.randomUUID,
+          appId = appId,
+          accountId = Some(accountId),
+          grantName = grant.grantName,
+          grantValue = grant.grantValue
+        )} recoverWith recoverRightGrantCreate
+      }
+      Try { tries map { _.get } }
     }
   }
 

@@ -7,6 +7,7 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model._
 import org.mindrot.jbcrypt.BCrypt
 import org.postgresql.util.PSQLException
+import play.api.Logger
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
@@ -157,39 +158,49 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           developerMessage = "Could not locate the service application for the specified organization."
         ))
       }
+      appId = app.id.asInstanceOf[UUID]
       asm <- Try(AccountStoreMappingRepository.create(
         id = UUID.randomUUID(),
-        appId = app.id.asInstanceOf[UUID],
+        appId = appId,
         storeType = create.storeType.label,
         accountStoreId = create.accountStoreId,
         name = Some(create.name),
         description = Some(create.description),
-        defaultAccountStore = if (create.isDefaultAccountStore) Some(orgId) else None,
-        defaultGroupStore = if (create.isDefaultGroupStore) Some(orgId) else None
+        defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
+        defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
       ))
     } yield asm
     mapping recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "account_store_mapping_app_id_store_type_account_store_id_key") =>
-        Failure(ConflictException(
-          resource = s"/orgs/${orgId}/accountStores",
-          message = "mapping already exists",
-          developerMessage = "There already exists a mapping on this org to the specified group or directory."
-        ))
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "account_store_mapping_app_id_store_type_account_store_id_key" =>
+            Failure(ConflictException(
+              resource = s"/orgs/${orgId}/accountStores",
+              message = "mapping already exists",
+              developerMessage = "There already exists a mapping on this org to the specified group or directory."
+            ))
+          case "account_store_mapping_default_group_store_key" =>
+            Failure(ConflictException(
+              resource = s"/orgs/${orgId}/accountStores",
+              message = "default group store already set",
+              developerMessage = "There already exists a default group store on this org. The existing default must be removed before a new one can be set."
+            ))
+          case "account_store_mapping_default_account_store_key" =>
+            Failure(ConflictException(
+              resource = s"/orgs/${orgId}/accountStores",
+              message = "default account store already set",
+              developerMessage = "There already exists a default account store on this org. The existing default must be removed before a new one can be set."
+            ))
+          case _ =>
+            Logger.error("PSQLException in saveAccount", t)
+            Failure(UnknownAPIException(
+              code = 500,
+              resource = "",
+              message = "sql error",
+              developerMessage = "SQL error updating account. Check the error log for more details."
+            ))
+        }
     }
-    //    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
-    //      throw new ConflictException(
-    //        resource = s"/apps/${appId}/accountStores",
-    //        message = "default account store already set",
-    //        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
-    //      )
-    //    }
-    //    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
-    //      throw new ConflictException(
-    //        resource = s"/apps/${appId}/accountStores",
-    //        message = "default group store already set",
-    //        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
-    //      )
-    //    }
   }
 
   def createAppAccountStoreMapping(appId: UUID, create: GestaltAccountStoreMappingCreate)(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
@@ -225,27 +236,36 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
       ))
     } yield asm
-//    if (create.isDefaultAccountStore && AccountStoreMappingRepository.findBy(sqls"default_account_store = ${appId}").isDefined) {
-//      throw new ConflictException(
-//        resource = s"/apps/${appId}/accountStores",
-//        message = "default account store already set",
-//        developerMessage = "There already exists a default account store on this application/org. This default must be removed before a new one can be set."
-//      )
-//    }
-//    if (create.isDefaultGroupStore && AccountStoreMappingRepository.findBy(sqls"default_group_store = ${appId}").isDefined) {
-//      throw new ConflictException(
-//        resource = s"/apps/${appId}/accountStores",
-//        message = "default group store already set",
-//        developerMessage = "There already exists a default group store on this application/org. This default must be removed before a new one can be set."
-//      )
-//    }
     mapping recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505") && (t.getServerErrorMessage.getConstraint == "account_store_mapping_app_id_store_type_account_store_id_key") =>
-        Failure(ConflictException(
-          resource = s"/apps/${appId}/accountStores",
-          message = "mapping already exists",
-          developerMessage = "There already exists a mapping on this application to the specified group or directory."
-        ))
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "account_store_mapping_app_id_store_type_account_store_id_key" =>
+            Failure(ConflictException(
+              resource = s"/apps/${appId}/accountStores",
+              message = "mapping already exists",
+              developerMessage = "There already exists a mapping on this application to the specified group or directory."
+            ))
+          case "account_store_mapping_default_account_store_key" =>
+            Failure(ConflictException(
+              resource = s"/apps/${appId}/accountStores",
+              message = "default account store already set",
+              developerMessage = "There already exists a default account store on this application. The existing default must be removed before a new one can be set."
+            ))
+          case "account_store_mapping_default_group_store_key" =>
+            Failure(ConflictException(
+              resource = s"/apps/${appId}/accountStores",
+              message = "default group store already set",
+              developerMessage = "There already exists a default group store on this application. The existing default must be removed before a new one can be set."
+            ))
+          case _ =>
+            Logger.error("PSQLException in saveAccount", t)
+            Failure(UnknownAPIException(
+              code = 500,
+              resource = "",
+              message = "sql error",
+              developerMessage = "SQL error updating account. Check the error log for more details."
+            ))
+        }
     }
   }
 
@@ -279,23 +299,18 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         )
         newUserId = newUser.id.asInstanceOf[UUID]
         // add grants
-        _ = create.rights foreach {
-          _.foreach { grant =>
-            RightGrantRepository.create(
-              grantId = UUID.randomUUID,
-              appId = appId,
-              groupId = None,
-              accountId = Some(newUser.id),
-              grantName = grant.grantName,
-              grantValue = grant.grantValue
-            )
-          }
-        }
+        v <- RightGrantFactory.addRightsToAccount(
+          appId = appId,
+          accountId = newUserId,
+          rights = create.rights.toSeq.flatten
+        )
         // add groups
-        _ = (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
-          _.id.asInstanceOf[UUID]
-        }).distinct.map {
-          groupId => GroupFactory.addAccountToGroup(accountId = newUserId, groupId = groupId)
+        _ <- Try {
+          (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
+            _.id.asInstanceOf[UUID]
+          }).distinct.map {
+            groupId => GroupFactory.addAccountToGroup(accountId = newUserId, groupId = groupId).get
+          }
         }
       } yield newUser
       newUserTry
