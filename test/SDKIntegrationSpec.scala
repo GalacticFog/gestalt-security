@@ -35,7 +35,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   val ru = Global.DEFAULT_ROOT_USERNAME
   val rp = Global.DEFAULT_ROOT_PASSWORD
 
-  lazy val fakeApp = FakeApplication(additionalConfiguration = Map(
+  val additionalConfig = Map(
     "database.host" -> scala.sys.env.getOrElse("TESTDB_HOST","localhost"),
     "database.dbname" -> scala.sys.env.getOrElse("TESTDB_DBNAME","gestalt-security-test"),
     "database.port" -> scala.sys.env.getOrElse("TESTDB_PORT", "5432").toInt,
@@ -45,7 +45,10 @@ class SDKIntegrationSpec extends PlaySpecification {
     "database.clean" -> true,
     "database.shutdownAfterMigrate" -> false,
     "database.timeoutMs" -> scala.sys.env.getOrElse("TESTDB_TIMEOUTMS","5000").toInt
-  ))
+  )
+  println(additionalConfig)
+
+  lazy val fakeApp = FakeApplication(additionalConfiguration = additionalConfig)
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
 
   stopOnFail
