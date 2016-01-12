@@ -1,3 +1,5 @@
+package com.galacticfog.gestalt.security
+
 import play.api._
 import play.api.mvc._
 

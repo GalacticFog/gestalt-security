@@ -7,7 +7,8 @@ case class GestaltDirectoryRepository(
   name: String,
   description: Option[String] = None,
   orgId: Any,
-  config: Option[String] = None) {
+  config: Option[String] = None,
+  directoryType: String) {
 
   def save()(implicit session: DBSession = GestaltDirectoryRepository.autoSession): GestaltDirectoryRepository = GestaltDirectoryRepository.save(this)(session)
 
@@ -22,7 +23,7 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
 
   override val tableName = "directory"
 
-  override val columns = Seq("id", "name", "description", "org_id", "config")
+  override val columns = Seq("id", "name", "description", "org_id", "config", "directory_type")
 
   def apply(gdr: SyntaxProvider[GestaltDirectoryRepository])(rs: WrappedResultSet): GestaltDirectoryRepository = apply(gdr.resultName)(rs)
   def apply(gdr: ResultName[GestaltDirectoryRepository])(rs: WrappedResultSet): GestaltDirectoryRepository = new GestaltDirectoryRepository(
@@ -30,7 +31,8 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
     name = rs.get(gdr.name),
     description = rs.get(gdr.description),
     orgId = rs.any(gdr.orgId),
-    config = rs.get(gdr.config)
+    config = rs.get(gdr.config),
+    directoryType = rs.get(gdr.directoryType)
   )
 
   val gdr = GestaltDirectoryRepository.syntax("gdr")
@@ -74,20 +76,23 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
     name: String,
     description: Option[String] = None,
     orgId: Any,
-    config: Option[String] = None)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
+    config: Option[String] = None,
+    directoryType: String)(implicit session: DBSession = autoSession): GestaltDirectoryRepository = {
     withSQL {
       insert.into(GestaltDirectoryRepository).columns(
         column.id,
         column.name,
         column.description,
         column.orgId,
-        column.config
+        column.config,
+        column.directoryType
       ).values(
         id,
         name,
         description,
         orgId,
-        config
+        config,
+        directoryType
       )
     }.update.apply()
 
@@ -96,7 +101,8 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
       name = name,
       description = description,
       orgId = orgId,
-      config = config)
+      config = config,
+      directoryType = directoryType)
   }
 
   def batchInsert(entities: Seq[GestaltDirectoryRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -106,19 +112,22 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
         'name -> entity.name,
         'description -> entity.description,
         'orgId -> entity.orgId,
-        'config -> entity.config))
+        'config -> entity.config,
+        'directoryType -> entity.directoryType))
         SQL("""insert into directory(
         id,
         name,
         description,
         org_id,
-        config
+        config,
+        directory_type
       ) values (
         {id},
         {name},
         {description},
         {orgId},
-        {config}
+        {config},
+        {directoryType}
       )""").batchByName(params: _*).apply()
     }
 
@@ -129,7 +138,8 @@ object GestaltDirectoryRepository extends SQLSyntaxSupport[GestaltDirectoryRepos
         column.name -> entity.name,
         column.description -> entity.description,
         column.orgId -> entity.orgId,
-        column.config -> entity.config
+        column.config -> entity.config,
+        column.directoryType -> entity.directoryType
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity

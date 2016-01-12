@@ -23,25 +23,36 @@ POST          /orgs/:orgId/directories                                  controll
 #
 POST          /orgs/:orgId/apps                                         controllers.RESTAPIController.createOrgApp(orgId: java.util.UUID)
 GET           /orgs/:orgId/apps                                         controllers.RESTAPIController.listOrgApps(orgId: java.util.UUID)
+GET           /orgs/:orgId/serviceApp                                   controllers.RESTAPIController.getServiceApp(orgId: java.util.UUID)
 #
-GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.getOrgAccountStores(orgId: java.util.UUID)
+GET           /orgs/:orgId/accountStores                                controllers.RESTAPIController.listOrgAccountStores(orgId: java.util.UUID)
 POST          /orgs/:orgId/accountStores                                controllers.RESTAPIController.createOrgAccountStore(orgId: java.util.UUID)
 #
+GET           /orgs/:orgId/usernames/:username                          controllers.RESTAPIController.getOrgAccountByUsername(orgId: java.util.UUID, username: String)
+GET           /orgs/:orgId/usernames/:username/rights                   controllers.RESTAPIController.listOrgAccountRightsByUsername(orgId: java.util.UUID, username: String)
+GET           /orgs/:orgId/usernames/:username/rights/:grantName        controllers.RESTAPIController.getOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName)
+PATCH         /orgs/:orgId/usernames/:username/rights/:grantName        controllers.RESTAPIController.updateOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName)
+DELETE        /orgs/:orgId/usernames/:username/rights/:grantName        controllers.RESTAPIController.deleteOrgAccountRightByUsername(orgId: java.util.UUID, username: String, grantName)
+#
 GET           /orgs/:orgId/accounts                                     controllers.RESTAPIController.listOrgAccounts(orgId: java.util.UUID)
-POST          /orgs/:orgId/accounts                                     controllers.RESTAPIController.createAccountInOrg(orgId: java.util.UUID)
+POST          /orgs/:orgId/accounts                                     controllers.RESTAPIController.createOrgAccount(orgId: java.util.UUID)
 GET           /orgs/:orgId/accounts/:accountId                          controllers.RESTAPIController.getOrgAccount(orgId: java.util.UUID, accountId: java.util.UUID)
 GET           /orgs/:orgId/accounts/:accountId/rights                   controllers.RESTAPIController.listOrgAccountRights(orgId: java.util.UUID, accountId: java.util.UUID)
-GET           /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.getOrgAccountGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
-PUT           /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.updateOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
-DELETE        /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.deleteOrgAccountRightGrant(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
+POST          /orgs/:orgId/accounts/:accountId/rights                   controllers.RESTAPIController.createOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID)
+GET           /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.getOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
+PATCH         /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.updateOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
+DELETE        /orgs/:orgId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.deleteOrgAccountRight(orgId: java.util.UUID, accountId: java.util.UUID, grantName)
 #
-GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroupMappings(orgId: java.util.UUID)
-POST          /orgs/:orgId/groups                                       controllers.RESTAPIController.createGroupInOrg(orgId: java.util.UUID)
+GET           /orgs/:orgId/groups                                       controllers.RESTAPIController.listOrgGroups(orgId: java.util.UUID)
+POST          /orgs/:orgId/groups                                       controllers.RESTAPIController.createOrgGroup(orgId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId                              controllers.RESTAPIController.getOrgGroup(orgId: java.util.UUID, groupId: java.util.UUID)
 GET           /orgs/:orgId/groups/:groupId/rights                       controllers.RESTAPIController.listOrgGroupRights(orgId: java.util.UUID, groupId: java.util.UUID)
-GET           /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.getOrgGroupGrant(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
-PUT           /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.updateOrgGroupRightGrant(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
-DELETE        /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteOrgGroupRightGrant(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
+POST          /orgs/:orgId/groups/:groupId/rights                       controllers.RESTAPIController.createOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID)
+GET           /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.getOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
+PATCH         /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.updateOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
+DELETE        /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
+#
+GET           /orgs/:orgId/groupnames/:groupName                        controllers.RESTAPIController.getOrgGroupByName(orgId: java.util.UUID, groupName)
 
 ##########################################
 # accounts
@@ -50,19 +61,30 @@ GET           /accounts/:accountId                                      controll
 PATCH         /accounts/:accountId                                      controllers.RESTAPIController.updateAccount(accountId: java.util.UUID)
 DELETE        /accounts/:accountId                                      controllers.RESTAPIController.disableAccount(accountId: java.util.UUID)
 GET           /accounts/:accountId/groups                               controllers.RESTAPIController.listAccountGroups(accountId: java.util.UUID)
+DELETE        /accounts/:accountId/email                                controllers.RESTAPIController.removeAccountEmail(accountId: java.util.UUID)
+DELETE        /accounts/:accountId/phoneNumber                          controllers.RESTAPIController.removeAccountPhoneNumber(accountId: java.util.UUID)
+
+##########################################
+# groups
+##########################################
+GET           /groups/:groupId                                          controllers.RESTAPIController.getGroup(groupId: java.util.UUID)
+DELETE        /groups/:groupId                                          controllers.RESTAPIController.deleteGroup(groupId: java.util.UUID)
+GET           /groups/:groupId/accounts                                 controllers.RESTAPIController.listGroupMembers(groupId: java.util.UUID)
+PATCH         /groups/:groupId/accounts                                 controllers.RESTAPIController.updateGroupMembership(groupId: java.util.UUID)
 
 ##########################################
 # directories
 ##########################################
 GET           /directories/:dirId                                       controllers.RESTAPIController.getDirectory(dirId: java.util.UUID)
+DELETE        /directories/:dirId                                       controllers.RESTAPIController.deleteDirectory(dirId: java.util.UUID)
 #
 GET           /directories/:dirId/accounts                              controllers.RESTAPIController.listDirAccounts(dirId: java.util.UUID)
 POST          /directories/:dirId/accounts                              controllers.RESTAPIController.createDirAccount(dirId: java.util.UUID)
-GET           /directories/:dirId/accounts/:username                    controllers.RESTAPIController.getDirAccountByUsername(dirId: java.util.UUID, username)
+GET           /directories/:dirId/usernames/:username                   controllers.RESTAPIController.getDirAccountByUsername(dirId: java.util.UUID, username)
 #
 GET           /directories/:dirId/groups                                controllers.RESTAPIController.listDirGroups(dirId: java.util.UUID)
 POST          /directories/:dirId/groups                                controllers.RESTAPIController.createDirGroup(dirId: java.util.UUID)
-GET           /directories/:dirId/groups/:groupName                     controllers.RESTAPIController.getDirGroupByName(dirId: java.util.UUID, groupName)
+GET           /directories/:dirId/groupnames/:groupName                 controllers.RESTAPIController.getDirGroupByName(dirId: java.util.UUID, groupName)
 
 ##########################################
 # apps
@@ -70,30 +92,47 @@ GET           /directories/:dirId/groups/:groupName                     controll
 GET           /apps/:appId                                              controllers.RESTAPIController.getAppById(appId: java.util.UUID)
 DELETE        /apps/:appId                                              controllers.RESTAPIController.deleteAppById(appId: java.util.UUID)
 #
-GET           /apps/:appId/accountStores                                controllers.RESTAPIController.getAccountStores(appId: java.util.UUID)
+GET           /apps/:appId/accountStores                                controllers.RESTAPIController.listAccountStores(appId: java.util.UUID)
+POST          /apps/:appId/accountStores                                controllers.RESTAPIController.createAppAccountStoreMapping(appId: java.util.UUID)
 #
 GET           /apps/:appId/accounts                                     controllers.RESTAPIController.listAppAccounts(appId: java.util.UUID)
 POST          /apps/:appId/accounts                                     controllers.RESTAPIController.createAppAccount(appId: java.util.UUID)
+GET           /apps/:appId/accounts/:accountId                          controllers.RESTAPIController.getAppAccount(appId: java.util.UUID, accountId: java.util.UUID)
+GET           /apps/:appId/accounts/:accountId/rights                   controllers.RESTAPIController.listAppAccountRights(appId: java.util.UUID, accountId: java.util.UUID)
+POST          /apps/:appId/accounts/:accountId/rights                   controllers.RESTAPIController.createAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID)
+GET           /apps/:appId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.getAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID, grantName)
+PATCH         /apps/:appId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.updateAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID, grantName)
+DELETE        /apps/:appId/accounts/:accountId/rights/:grantName        controllers.RESTAPIController.deleteAppAccountRight(appId: java.util.UUID, accountId: java.util.UUID, grantName)
 #
-GET           /apps/:appId/accounts/:accountId/rights                    controllers.RESTAPIController.listAccountRights(appId: java.util.UUID, accountId: java.util.UUID)
-GET           /apps/:appId/accounts/:accountId/rights/:grantName         controllers.RESTAPIController.getAccountGrant(appId: java.util.UUID, accountId: java.util.UUID, grantName)
-PUT           /apps/:appId/accounts/:accountId/rights/:grantName         controllers.RESTAPIController.updateRightGrant(appId: java.util.UUID, accountId: java.util.UUID, grantName)
-DELETE        /apps/:appId/accounts/:accountId/rights/:grantName         controllers.RESTAPIController.deleteRightGrant(appId: java.util.UUID, accountId: java.util.UUID, grantName)
+GET           /apps/:appId/usernames/:username                          controllers.RESTAPIController.getAppAccountByUsername(appId: java.util.UUID, username: String)
+GET           /apps/:appId/usernames/:username/rights                   controllers.RESTAPIController.listAppAccountRightsByUsername(appId: java.util.UUID, username: String)
+GET           /apps/:appId/usernames/:username/rights/:grantName        controllers.RESTAPIController.getAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName)
+PATCH         /apps/:appId/usernames/:username/rights/:grantName        controllers.RESTAPIController.updateAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName)
+DELETE        /apps/:appId/usernames/:username/rights/:grantName        controllers.RESTAPIController.deleteAppAccountRightByUsername(appId: java.util.UUID, username: String, grantName)
+#
+GET           /apps/:appId/groups                                       controllers.RESTAPIController.listAppGroupMappings(appId: java.util.UUID)
+POST          /apps/:appId/groups                                       controllers.RESTAPIController.createAppGroup(appId: java.util.UUID)
+GET           /apps/:appId/groups/:groupId                              controllers.RESTAPIController.getAppGroup(appId: java.util.UUID, groupId: java.util.UUID)
+GET           /apps/:appId/groups/:groupId/rights                       controllers.RESTAPIController.listAppGroupRights(appId: java.util.UUID, groupId: java.util.UUID)
+POST          /apps/:appId/groups/:groupId/rights                       controllers.RESTAPIController.createAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID)
+GET           /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.getAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
+PATCH         /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.updateAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
+DELETE        /apps/:appId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteAppGroupRight(appId: java.util.UUID, groupId: java.util.UUID, grantName)
+#
+GET           /apps/:appId/groupnames/:groupName                        controllers.RESTAPIController.getAppGroupByName(appId: java.util.UUID, groupName)
 
 ##########################################
 # rights
 ##########################################
-# TODO
-# GET             /rights/:rightId
-# POST            /rights/:rightId
-# PUT             /rights/:rightId
+GET           /rights/:rightId                                          controllers.RESTAPIController.getRightGrant(rightId: java.util.UUID)
+DELETE        /rights/:rightId                                          controllers.RESTAPIController.deleteRightGrant(rightId: java.util.UUID)
+PATCH         /rights/:rightId                                          controllers.RESTAPIController.updateRightGrant(rightId: java.util.UUID)
 
 ##########################################
 # account-store mappings
 ##########################################
-POST          /accountStores                                            controllers.RESTAPIController.createAccountStoreMapping()
 GET           /accountStores/:mapId                                     controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
-PUT           /accountStores/:mapId                                     controllers.RESTAPIController.updateAccountStoreMapping(mapId: java.util.UUID)
+PATCH         /accountStores/:mapId                                     controllers.RESTAPIController.updateAccountStoreMapping(mapId: java.util.UUID)
 DELETE        /accountStores/:mapId                                     controllers.RESTAPIController.deleteAccountStoreMapping(mapId: java.util.UUID)
 
 # Map static resources from the /public folder to the /assets URL path
@@ -106,5 +145,5 @@ POST          /apps/:appId/auth                                         controll
 POST          /orgs/:orgId/auth                                         controllers.RESTAPIController.orgAuthByUUID(orgId: java.util.UUID)
 POST          /auth                                                     controllers.RESTAPIController.apiAuth
 
-POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/auth  controllers.RESTAPIController.orgAuthByFQON(fqon: String)
 GET           /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>       controllers.RESTAPIController.getOrgByFQON(fqon: String)
+POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/auth  controllers.RESTAPIController.orgAuthByFQON(fqon: String)

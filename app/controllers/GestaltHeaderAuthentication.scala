@@ -11,6 +11,8 @@ import play.api.mvc.Security._
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.json.JsonImports.exceptionFormat
 
+import scala.language.reflectiveCalls
+
 trait GestaltHeaderAuthentication {
 
   import GestaltHeaderAuthentication._
@@ -20,14 +22,6 @@ trait GestaltHeaderAuthentication {
       AuthenticatedBuilder(authenticateAgainstOrg(maybeGenFQON flatMap {
         _.apply(request)
       }), onUnauthorized = onUnauthorized).invokeBlock(request, block)
-    }
-  }
-
-  abstract class AuthenticatedActionBuilderAgainstRequest extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
-    def genOrgId[B](request: Request[B]): Option[UUID]
-
-    override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
-      AuthenticatedBuilder(authenticateAgainstOrg(genOrgId(request)), onUnauthorized = onUnauthorized).invokeBlock(request, block)
     }
   }
 
@@ -91,7 +85,7 @@ object GestaltHeaderAuthentication {
     lazy val maybeTokenAuth = for {
       token <- extractAuthToken(request)
       foundKey <- APICredentialFactory.findByAPIKey(token.username)
-      if foundKey.apiSecret == token.password && orgId.exists(_ == foundKey.orgId) && foundKey.disabled == false
+      if foundKey.apiSecret == token.password && orgId.contains(foundKey.orgId) && !foundKey.disabled
       orgId = foundKey.orgId.asInstanceOf[UUID]
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
