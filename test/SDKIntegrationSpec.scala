@@ -1285,4 +1285,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
+  step({
+    server.stop()
+  })
 }
