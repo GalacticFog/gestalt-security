@@ -105,7 +105,12 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
         _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
         // give admin rights to new admin group
-        _ <- RightGrantFactory.addRightsToGroup(appId = newAppId, groupId = adminGroupId, rights = OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {g => GestaltGrantCreate(grantName = g, grantValue = None)})
+        _ <- Try { OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {
+          g => RightGrantFactory.addRightToGroup(
+            appId = newAppId,
+            groupId = adminGroupId,
+            right = GestaltGrantCreate(grantName = g, grantValue = None)).get
+        } }
       } yield (newOrg,newAppId)
       // create users group in a new directory under this org, map new group
       if (create.createDefaultUserGroup) {

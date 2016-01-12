@@ -28,41 +28,31 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
         }
     }
 
-  def addRightsToGroup(appId: UUID,
-                       groupId: UUID,
-                       rights: Seq[GestaltGrantCreate])
-                      (implicit session: DBSession = autoSession): Try[Seq[RightGrantRepository]] =
+  def addRightToGroup(appId: UUID,
+                      groupId: UUID,
+                      right: GestaltGrantCreate)
+                     (implicit session: DBSession = autoSession): Try[RightGrantRepository] =
   {
-    DB localTx { implicit session =>
-      val tries = rights map {
-        grant => Try { RightGrantRepository.create(
-          grantId = UUID.randomUUID,
-          appId = appId,
-          groupId = Some(groupId),
-          grantName = grant.grantName,
-          grantValue = grant.grantValue
-        )} recoverWith recoverRightGrantCreate
-      }
-      Try{ tries map { _.get } }
-    }
+    Try { RightGrantRepository.create(
+      grantId = UUID.randomUUID,
+      appId = appId,
+      groupId = Some(groupId),
+      grantName = right.grantName,
+      grantValue = right.grantValue
+    ) } recoverWith recoverRightGrantCreate
   }
 
-  def addRightsToAccount(appId: UUID,
-                         accountId: UUID,
-                         rights: Seq[GestaltGrantCreate])
-                        (implicit session: DBSession = autoSession): Try[Seq[RightGrantRepository]] = {
-    DB localTx { implicit session =>
-      val tries = rights map {
-        grant => Try { RightGrantRepository.create(
-          grantId = UUID.randomUUID,
-          appId = appId,
-          accountId = Some(accountId),
-          grantName = grant.grantName,
-          grantValue = grant.grantValue
-        )} recoverWith recoverRightGrantCreate
-      }
-      Try { tries map { _.get } }
-    }
+  def addRightToAccount(appId: UUID,
+                        accountId: UUID,
+                        right: GestaltGrantCreate)
+                       (implicit session: DBSession = autoSession): Try[RightGrantRepository] = {
+    Try { RightGrantRepository.create(
+      grantId = UUID.randomUUID,
+      appId = appId,
+      accountId = Some(accountId),
+      grantName = right.grantName,
+      grantValue = right.grantValue
+    )} recoverWith recoverRightGrantCreate
   }
 
   def deleteRightGrant(grantId: UUID)(implicit session: DBSession = autoSession): Boolean = {

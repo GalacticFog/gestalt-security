@@ -781,30 +781,28 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def createOrgAccountRight(orgId: UUID, accountId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ORG_GRANT)
     val grant = validateBody[GestaltGrantCreate]
-    val newGrants = RightGrantFactory.addRightsToAccount(request.user.serviceAppId, accountId, Seq(grant))
-    val newGrant = newGrants map {_.head}
+    val newGrant = RightGrantFactory.addRightToAccount(request.user.serviceAppId, accountId, grant)
     renderTry[GestaltRightGrant](Created)(newGrant)
   }
 
   def createOrgGroupRight(orgId: UUID, groupId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ORG_GRANT)
     val grant = validateBody[GestaltGrantCreate]
-    val newGrants = RightGrantFactory.addRightsToGroup(request.user.serviceAppId, groupId, Seq(grant))
-    renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
+    val newGrant = RightGrantFactory.addRightToGroup(request.user.serviceAppId, groupId, grant)
+    renderTry[GestaltRightGrant](Ok)(newGrant)
   }
 
   def createAppGroupRight(appId: UUID, groupId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
-    val newGrants = RightGrantFactory.addRightsToGroup(appId, groupId, Seq(grant))
-    renderTry[GestaltRightGrant](Ok)(newGrants map {_.head})
+    val newGrant = RightGrantFactory.addRightToGroup(appId, groupId, grant)
+    renderTry[GestaltRightGrant](Ok)(newGrant)
   }
 
   def createAppAccountRight(appId: UUID, accountId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_APP_GRANT)
     val grant = validateBody[GestaltGrantCreate]
-    val newGrants = RightGrantFactory.addRightsToAccount(appId, accountId, Seq(grant))
-    val newGrant = newGrants map {_.head}
+    val newGrant = RightGrantFactory.addRightToAccount(appId, accountId, grant)
     renderTry[GestaltRightGrant](Created)(newGrant)
   }
 

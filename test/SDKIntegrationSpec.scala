@@ -682,11 +682,20 @@ class SDKIntegrationSpec extends PlaySpecification {
         rights = Some(Seq(GestaltGrantCreate(
           grantName = ""   // fail
         ))
-      )))) must throwA[BadRequestException](".*cannot add account to non-existent group.*")
+      )))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
       await(newOrg.listAccounts) must not contain((a: GestaltAccount) => a.username == failAccountName)
     }
 
-    // TODO: check group add with rights
+    "should not add group with invalid right grants" in {
+      val failGroupName = "failedGroup"
+      await(GestaltOrg.createGroup( newOrg.id, GestaltGroupCreateWithRights(
+        name = failGroupName,
+        rights = Some(Seq(GestaltGrantCreate(
+          grantName = "" // fail
+        )))
+      ))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
+      await(newOrg.listGroups) must not contain((g: GestaltGroup) => g.name == failGroupName)
+    }
 
     "cleanup" in {
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue

@@ -25,14 +25,6 @@ trait GestaltHeaderAuthentication {
     }
   }
 
-  abstract class AuthenticatedActionBuilderAgainstRequest extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
-    def genOrgId[B](request: Request[B]): Option[UUID]
-
-    override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
-      AuthenticatedBuilder(authenticateAgainstOrg(genOrgId(request)), onUnauthorized = onUnauthorized).invokeBlock(request, block)
-    }
-  }
-
   object AuthenticatedAction extends AuthenticatedActionBuilder {
     def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
     def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({rh: RequestHeader => genFQON}))

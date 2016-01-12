@@ -299,13 +299,15 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         )
         newUserId = newUser.id.asInstanceOf[UUID]
         // add grants
-        v <- RightGrantFactory.addRightsToAccount(
-          appId = appId,
-          accountId = newUserId,
-          rights = create.rights.toSeq.flatten
-        )
+        rights <- Try{ create.rights.toSeq.flatten map {
+          cr => RightGrantFactory.addRightToAccount(
+            appId = appId,
+            accountId = newUserId,
+            right = cr
+          ).get
+        } }
         // add groups
-        _ <- Try {
+        groups <- Try {
           (create.groups.toSeq.flatten ++ asm.right.toSeq.map {
             _.id.asInstanceOf[UUID]
           }).distinct.map {
@@ -340,16 +342,12 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         ))
         newGroupId = newGroup.id.asInstanceOf[UUID]
         // add grants
-        _ = create.rights foreach {
-          _.foreach { grant =>
-            RightGrantRepository.create(
-              grantId = UUID.randomUUID,
+        _ <- Try{ create.rights.toSeq.flatten map { grant =>
+            RightGrantFactory.addRightToGroup(
               appId = appId,
-              groupId = Some(newGroupId),
-              accountId = None,
-              grantName = grant.grantName,
-              grantValue = grant.grantValue
-            )
+              groupId = newGroupId,
+              right = grant
+            ).get
           }
         }
       } yield newGroup
