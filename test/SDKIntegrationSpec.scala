@@ -257,6 +257,19 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
+  "New Org with old API syntax" should {
+
+    "parse old syntax on org creation" in {
+      val newOrgName = "new-org-old-syntax"
+      val newOrg = await(sdk.postWithAuth[GestaltOrg](rootOrg.href, Json.obj(
+        "orgName" -> newOrgName
+      ), ru, rp))
+      newOrg must haveName(newOrgName)
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
   "New Org Without Directory" should {
 
     lazy val newOrgName = "new-org-no-dir"
