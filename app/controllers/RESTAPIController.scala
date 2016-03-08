@@ -2,11 +2,12 @@ package controllers
 
 import java.util.UUID
 import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
-import com.galacticfog.gestalt.security.Global
+import com.galacticfog.gestalt.security.{BuildInfo, Global}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
+import play.api.http.MimeTypes
 import play.api.libs.json._
 import play.api._
 import play.api.mvc._
@@ -1205,4 +1206,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
 
+  def info() = Action {
+    Ok(BuildInfo.toJson).withHeaders(CONTENT_TYPE -> MimeTypes.JSON)
+  }
 }

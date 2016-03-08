@@ -12,7 +12,28 @@ dockerUpdateLatest := true
 
 dockerRepository := Some("galacticfog.artifactoryonline.com")
 
-lazy val root = (project in file(".")).enablePlugins(PlayScala,SbtNativePackager)
+lazy val root = (project in file(".")).
+  enablePlugins(PlayScala,SbtNativePackager).
+  enablePlugins(BuildInfoPlugin).
+  settings(
+    buildInfoKeys := Seq[BuildInfoKey](
+      name, version, scalaVersion, sbtVersion,
+      "builtBy" -> System.getProperty("user.name"),
+      "gitHash" -> new java.lang.Object(){
+              override def toString(): String = {
+                      try { 
+                    val extracted = new java.io.InputStreamReader(
+                              java.lang.Runtime.getRuntime().exec("git rev-parse HEAD").getInputStream())                         
+                    (new java.io.BufferedReader(extracted)).readLine()
+                      } catch {      case t: Throwable => "get git hash failed"    }
+              }}.toString()
+    ),
+    buildInfoPackage := "com.galacticfog.gestalt.security"
+  )
+
+buildInfoOptions += BuildInfoOption.BuildTime
+
+buildInfoOptions += BuildInfoOption.ToJson
 
 scalaVersion := "2.11.7"
 
