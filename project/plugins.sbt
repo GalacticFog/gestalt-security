@@ -31,5 +31,5 @@ libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 
 addSbtPlugin("org.flywaydb" % "flyway-sbt" % "3.1")
 
-resolvers += "Flyway" at "http://flywaydb.org/repo"
+resolvers += "Flyway" at "https://flywaydb.org/repo"
 
