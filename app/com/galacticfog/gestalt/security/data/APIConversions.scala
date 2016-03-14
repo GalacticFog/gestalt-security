@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.data
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, Directory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
@@ -91,4 +92,6 @@ object APIConversions {
       isDefaultGroupStore = asm.defaultGroupStore.contains(asm.appId)
     )
   }
+
+  implicit def tokenModelToApi(token: TokenRepository): GestaltToken = OpaqueToken(token.id.asInstanceOf[UUID], ACCESS_TOKEN)
 }

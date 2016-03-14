@@ -1,10 +1,13 @@
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.Global
+import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
+import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, OrgFactory, DirectoryFactory}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
+import controllers.RESTAPIController
 import org.specs2.execute.{Results, Result}
 import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
 import org.specs2.specification.Fragments
@@ -78,6 +81,11 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "return OK on /health" in {
       await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
+    }
+
+    "return info on /info" in {
+      val resp = await(client.url(s"http://localhost:${testServerPort}/info").get())
+      resp.status must equalTo(OK)
     }
 
   }
@@ -601,6 +609,149 @@ class SDKIntegrationSpec extends PlaySpecification {
 //    "disable account for auth" in {
 //
 //    }
+
+  }
+
+  "Org oauth2" should {
+
+    lazy val orgName = "new-org-for-oauth"
+    lazy val org = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = orgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val subOrg = await(org.createSubOrg(GestaltOrgCreate(
+      name = "sub",
+      createDefaultUserGroup = false // will map group from existing directory
+    )))
+    lazy val subSubOrg = await(subOrg.createSubOrg(GestaltOrgCreate(
+      name = "sub",
+      createDefaultUserGroup = false // will map group from existing directory
+    )))
+    lazy val orgDir = await(org.listDirectories()).head
+    lazy val group = await(orgDir.createGroup(GestaltGroupCreate(
+      name = "users"
+    )))
+    lazy val subOrgMapping = await(subOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+      name = "mapping",
+      description = "",
+      storeType = GROUP,
+      accountStoreId = group.id,
+      isDefaultAccountStore = false,
+      isDefaultGroupStore = false
+    )))
+    lazy val rights = Seq(GestaltGrantCreate(
+      grantName = "grantA"
+    ), GestaltGrantCreate(
+      grantName = "grantB", grantValue = Some("grantBvalue")
+    ))
+    lazy val account = await(GestaltOrg.createAccount(org.id, GestaltAccountCreateWithRights(
+      username = "new-org-account",
+      firstName = "Account",
+      lastName = "InNewOrg",
+      email = "",
+      phoneNumber = "",
+      groups = Some(Seq(group.id)),
+      rights = Some(rights),
+      credential = GestaltPasswordCredential("letmein")
+    )))
+
+    lazy val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
+
+    "not issue access tokens on invalid credentials (UUID)" in {
+      await(GestaltOrg.grantPasswordToken(org.id, account.username, "bad password")) must beNone
+    }
+
+    "not issue access tokens on invalid credentials (FQON)" in {
+      await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "bad password")) must beNone
+    }
+
+    "issue access tokens on valid credentials (UUID)" in {
+      val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
+      token must beSome
+      token.get.tokenType must_== BEARER
+    }
+
+    "issue access tokens on valid credentials (FQON)" in {
+      val token = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
+      token must beSome
+      token.get.tokenType must_== BEARER
+    }
+
+    "validate valid access tokens (UUID) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(org.id, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+    }
+
+    "validate valid access tokens (FQON) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(org.fqon, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+    }
+
+    "validate valid access tokens (UUID) against non-generating subscribed org" in {
+      subOrgMapping.storeId must_== group.id
+      val resp = await(GestaltOrg.validateToken(subOrg.id, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must beEmpty
+    }
+
+    "validate valid access tokens (FQON) against non-generating subscribed org" in {
+      subOrgMapping.storeId must_== group.id
+      val resp = await(GestaltOrg.validateToken(subOrg.fqon, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must beEmpty
+    }
+
+    "not validate invalid access tokens (UUID)" in {
+      val resp = await(GestaltOrg.validateToken(org.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate invalid access tokens (FQON)" in {
+      val resp = await(GestaltOrg.validateToken(org.fqon, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate token if account doesn't belong to org (UUID)" in {
+      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate token if account doesn't belong to org (FQON)" in {
+      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
 
   }
 
@@ -1239,7 +1390,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
-  "Org apps" should {
+  "Org Apps" should {
 
     val testAppName = "test-app-in-root-org"
     lazy val testApp = await(rootOrg.createApp(GestaltAppCreate(
