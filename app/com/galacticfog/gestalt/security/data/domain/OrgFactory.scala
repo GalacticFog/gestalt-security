@@ -70,6 +70,41 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.destroy(org)
   }
 
+  def orgSync(orgId: UUID)(implicit session: DBSession = autoSession): GestaltOrgSync = {
+    import com.galacticfog.gestalt.security.data.APIConversions.dirModelToApi
+    import com.galacticfog.gestalt.security.data.APIConversions.orgModelToApi
+    import com.galacticfog.gestalt.security.data.APIConversions.groupModelToApi
+    val orgTree = OrgFactory.getOrgTree(orgId) flatMap {
+      org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]) map { (org,_) }
+    }
+    val dirCache = DirectoryFactory.findAll map {
+      dir => (dir.id, dir)
+    } toMap
+    val orgUsers = (orgTree flatMap {
+      case (org,sApp) => AccountFactory.listAppUsers(sApp.id.asInstanceOf[UUID])
+    } distinct) flatMap {
+      uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map { dir =>
+        GestaltAccount(
+          id = uar.id.asInstanceOf[UUID],
+          username = uar.username,
+          firstName = uar.firstName,
+          lastName = uar.lastName,
+          email = uar.email getOrElse "",
+          phoneNumber = uar.phoneNumber getOrElse "",
+          directory = dir
+        )
+      }
+    }
+    val orgGroups = (orgTree flatMap {
+      case (org,sApp) => GroupFactory.listAppGroups(sApp.id.asInstanceOf[UUID])
+    } distinct) map { ugr => ugr: GestaltGroup }
+    GestaltOrgSync(
+      accounts = orgUsers,
+      groups = orgGroups,
+      orgs = orgTree map { case (o,_) => o: GestaltOrg }
+    )
+  }
+
 // ugh, what a hassle. will do this later.
 //  def updateOrg(orgId: UUID, newName: String)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
 //    OrgFactory.find(orgId) match {

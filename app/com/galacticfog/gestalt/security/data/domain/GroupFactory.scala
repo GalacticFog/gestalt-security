@@ -149,7 +149,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
     The latter is because any user in the directory is assigned to the app, so that any user in any group in the
     directory (therefore, a user in the directory) is in the app.
    */
-  def listAppGroupMappings(appId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
+  def listAppGroups(appId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
       AccountStoreMappingRepository.syntax("asm")

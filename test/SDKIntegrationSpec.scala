@@ -74,6 +74,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
   lazy val daoRootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
   lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
+  lazy val rootGroup: GestaltGroup = daoRootDir.lookupGroupByName("admins").get
   val rootPhone = "+1.505.867.5309"
   val rootEmail = "root@root"
 
@@ -116,6 +117,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       val sync = await(GestaltOrg.syncOrgTree(None, ru, rp))
       sync.orgs     must contain(exactly(rootOrg))
       sync.accounts must contain(exactly(rootAccount))
+      sync.groups   must contain(exactly(rootGroup))
 
       await(GestaltOrg.syncOrgTree(Some(rootOrg.id), ru, rp)) must_== sync
     }
