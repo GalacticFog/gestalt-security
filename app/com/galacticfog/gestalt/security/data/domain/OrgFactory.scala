@@ -98,10 +98,14 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val orgGroups = (orgTree flatMap {
       case (org,sApp) => GroupFactory.listAppGroups(sApp.id.asInstanceOf[UUID])
     } distinct) map { ugr => ugr: GestaltGroup }
+    val memberships = orgGroups.map {g =>
+      (g.id -> GroupFactory.listGroupAccounts(g.id).map{_.id.asInstanceOf[UUID]})
+    }.toMap
     GestaltOrgSync(
       accounts = orgUsers,
       groups = orgGroups,
-      orgs = orgTree map { case (o,_) => o: GestaltOrg }
+      orgs = orgTree map { case (o,_) => o: GestaltOrg },
+      groupMembership = memberships
     )
   }
 
