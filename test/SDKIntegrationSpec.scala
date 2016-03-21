@@ -5,7 +5,7 @@ import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
-import com.galacticfog.gestalt.security.data.domain.{AccountFactory, AppFactory, OrgFactory, DirectoryFactory}
+import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import controllers.RESTAPIController
 import org.specs2.execute.{Results, Result}
@@ -72,8 +72,9 @@ class SDKIntegrationSpec extends PlaySpecification {
   )
   lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
-  lazy val daoRootDir = DirectoryFactory.listByOrgId(rootOrg.id).head
+  lazy val daoRootDir: Directory = DirectoryFactory.listByOrgId(rootOrg.id).head
   lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
+  lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroupByName("admins").get
   val rootPhone = "+1.505.867.5309"
   val rootEmail = "root@root"
 
@@ -116,6 +117,9 @@ class SDKIntegrationSpec extends PlaySpecification {
       val sync = await(GestaltOrg.syncOrgTree(None, ru, rp))
       sync.orgs     must contain(exactly(rootOrg))
       sync.accounts must contain(exactly(rootAccount))
+      sync.groups   must contain(exactly(rootAdminsGroup))
+      sync.groupMembership must haveKeys(rootAdminsGroup.id)
+      sync.groupMembership(rootAdminsGroup.id) must contain(exactly(rootAccount.id))
 
       await(GestaltOrg.syncOrgTree(Some(rootOrg.id), ru, rp)) must_== sync
     }
@@ -862,6 +866,88 @@ class SDKIntegrationSpec extends PlaySpecification {
         )))
       ))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
       await(newOrg.listGroups) must not contain((g: GestaltGroup) => g.name == failGroupName)
+    }
+
+    "cleanup" in {
+      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
+  "SubOrg sync" should {
+
+    lazy val newOrgName = "new-org"
+    lazy val subOrgName = "sub-org"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val subOrg = await(newOrg.createSubOrg(GestaltOrgCreate(
+      name = subOrgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val newOrgGroup = await(GestaltOrg.createGroup(newOrg.id,
+      GestaltGroupCreateWithRights("new-org-group", rights = None)))
+    lazy val subOrgGroup1 = await(GestaltOrg.createGroup(subOrg.id,
+      GestaltGroupCreateWithRights( name = "group-1", rights = None )))
+    lazy val subOrgGroup2 = await(GestaltOrg.createGroup(subOrg.id,
+      GestaltGroupCreateWithRights( name = "group-2", rights = None )))
+    lazy val newOrgAccount = await(GestaltOrg.createAccount(newOrg.id,
+      GestaltAccountCreateWithRights(
+        username = "new-account",
+        firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
+        groups = Some(Seq(newOrgGroup.id)), rights = None
+      )))
+    lazy val subOrgAccount = await(GestaltOrg.createAccount(subOrg.id,
+      GestaltAccountCreateWithRights(
+        username = "sub-account",
+        firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
+        groups = Some(Seq(subOrgGroup1.id)), rights = None
+      )))
+    lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id), ru, rp))
+
+    "precheck" in {
+      newOrgAccount.directory.orgId must_== newOrg.id
+      subOrgAccount.directory.orgId must_== subOrg.id
+      newOrgGroup.directoryId must_== newOrgAccount.directory.id
+      subOrgGroup1.directoryId must_== subOrgAccount.directory.id
+      subOrgGroup2.directoryId must_== subOrgAccount.directory.id
+    }
+
+    "contain only orgs below sync point" in {
+      sync.orgs must containTheSameElementsAs[GestaltOrg](Seq(newOrg, subOrg), _.id == _.id)
+    }
+
+    "contain creator and all local accounts" in {
+      sync.accounts must containTheSameElementsAs[GestaltAccount](Seq(rootAccount, newOrgAccount, subOrgAccount), _.id == _.id)
+    }
+
+    "contain admins account and all local groups" in {
+      sync.groups must containAllOf(Seq(newOrgGroup, subOrgGroup1, subOrgGroup2))
+      sync.groups.filter(g => g.directoryId == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
+      sync.groups.filter(g => g.name.endsWith("users")) must haveSize(2)
+    }
+
+    "contain membership data for all groups in the sync" in {
+      sync.groupMembership must haveKeys( sync.groups map {_.id}:_* )
+    }
+
+    "contain membership from admin groups to creator" in {
+      sync.groupMembership.filterKeys(
+        gid => sync.groups.find(_.id == gid).exists(_.name.endsWith("admins"))
+      ).values must containTheSameElementsAs(Seq(Seq(rootAccount.id),Seq(rootAccount.id)))
+    }
+
+    "contain membership from user groups to appropriate users" in {
+      sync.groupMembership.filterKeys(
+        gid => sync.groups.find(_.id == gid).exists(_.name.endsWith("users"))
+      ).values must containTheSameElementsAs(Seq(Seq(newOrgAccount.id),Seq(subOrgAccount.id)))
+    }
+
+    "contain membership from manual groups to appropriate users" in {
+      sync.groupMembership(newOrgGroup.id) must containTheSameElementsAs(Seq(newOrgAccount.id))
+      sync.groupMembership(subOrgGroup1.id) must containTheSameElementsAs(Seq(subOrgAccount.id))
+      sync.groupMembership(subOrgGroup2.id) must beEmpty
     }
 
     "cleanup" in {

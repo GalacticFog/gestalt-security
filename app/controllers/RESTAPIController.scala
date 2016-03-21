@@ -486,66 +486,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
-    // get the org tree
-    val orgTree = OrgFactory.getOrgTree(request.user.orgId)
-    val dirCache = DirectoryFactory.findAll map {
-      dir => (dir.id, dir)
-    } toMap
-    val orgUsers = (orgTree flatMap {
-      org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
-    } flatMap {
-      app => AccountFactory.listAppUsers(app.id.asInstanceOf[UUID])
-    } distinct) flatMap {
-      uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map { dir =>
-        GestaltAccount(
-          id = uar.id.asInstanceOf[UUID],
-          username = uar.username,
-          firstName = uar.firstName,
-          lastName = uar.lastName,
-          email = uar.email getOrElse "",
-          phoneNumber = uar.phoneNumber getOrElse "",
-          directory = dir
-        )
-      }
-    }
-    Ok(Json.toJson(
-      GestaltOrgSync(
-        accounts = orgUsers,
-        orgs = orgTree map { o => o: GestaltOrg }
-      )
-    ))
+    Ok(Json.toJson(OrgFactory.orgSync(request.user.orgId)))
   }
 
   def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     OrgFactory.find(orgId) match {
-      case Some(org) =>
-        val orgTree = OrgFactory.getOrgTree(org.id.asInstanceOf[UUID])
-        val dirCache = DirectoryFactory.findAll map {
-          dir => (dir.id, dir)
-        } toMap
-        val orgUsers = (orgTree flatMap {
-          org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID])
-        } flatMap {
-          app => AccountFactory.listAppUsers(app.id.asInstanceOf[UUID])
-        } distinct) flatMap {
-          uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map { dir =>
-            GestaltAccount(
-              id = uar.id.asInstanceOf[UUID],
-              username = uar.username,
-              firstName = uar.firstName,
-              lastName = uar.lastName,
-              email = uar.email getOrElse "",
-              phoneNumber = uar.phoneNumber getOrElse "",
-              directory = dir
-            )
-          }
-        }
-        Ok(Json.toJson(
-          GestaltOrgSync(
-            accounts = orgUsers,
-            orgs = orgTree map { o => o: GestaltOrg }
-          )
-        ))
+      case Some(org) => Ok(Json.toJson(OrgFactory.orgSync(org.id.asInstanceOf[UUID])))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested org",
@@ -682,7 +628,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroupMappings(appId = request.user.serviceAppId).map { g => g: GestaltGroup }
+      GroupFactory.listAppGroups(appId = request.user.serviceAppId).map { g => g: GestaltGroup }
     ))
   }
 
@@ -1193,7 +1139,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def listAppGroupMappings(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroupMappings(appId).map { g => g: GestaltGroup }
+      GroupFactory.listAppGroups(appId).map { g => g: GestaltGroup }
     ))
   }
 
