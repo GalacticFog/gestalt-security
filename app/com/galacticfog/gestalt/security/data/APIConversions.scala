@@ -24,7 +24,7 @@ object APIConversions {
     GestaltGroup(
       id = ugr.id.asInstanceOf[UUID],
       name = ugr.name,
-      directoryId = ugr.dirId.asInstanceOf[UUID],
+      directory = DirectoryFactory.find(ugr.dirId.asInstanceOf[UUID]).get,
       disabled = ugr.disabled
     )
   }

@@ -794,7 +794,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "have a group in the root directory for the root user, visible by ID but not by name" in {
-      val rootGroupSeq = await(newOrg.listGroups).filter(_.directoryId == rootDir.id)
+      val rootGroupSeq = await(newOrg.listGroups).filter(_.directory.id == rootDir.id)
       rootGroupSeq must haveSize(1)
       val rootGroup = rootGroupSeq.head
       await(newOrg.getGroupById(rootGroup.id)) must beSome(rootGroup)
@@ -909,9 +909,9 @@ class SDKIntegrationSpec extends PlaySpecification {
     "precheck" in {
       newOrgAccount.directory.orgId must_== newOrg.id
       subOrgAccount.directory.orgId must_== subOrg.id
-      newOrgGroup.directoryId must_== newOrgAccount.directory.id
-      subOrgGroup1.directoryId must_== subOrgAccount.directory.id
-      subOrgGroup2.directoryId must_== subOrgAccount.directory.id
+      newOrgGroup.directory.id must_== newOrgAccount.directory.id
+      subOrgGroup1.directory.id must_== subOrgAccount.directory.id
+      subOrgGroup2.directory.id must_== subOrgAccount.directory.id
     }
 
     "contain only orgs below sync point" in {
@@ -924,7 +924,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "contain admins account and all local groups" in {
       sync.groups must containAllOf(Seq(newOrgGroup, subOrgGroup1, subOrgGroup2))
-      sync.groups.filter(g => g.directoryId == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
+      sync.groups.filter(g => g.directory.id == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
       sync.groups.filter(g => g.name.endsWith("users")) must haveSize(2)
     }
 
