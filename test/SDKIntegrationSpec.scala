@@ -1,6 +1,6 @@
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.Global
+import com.galacticfog.gestalt.security.{EnvConfig, Global}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
@@ -35,8 +35,8 @@ class SDKIntegrationSpec extends PlaySpecification {
   }
 
   // default credentials on flyway are
-  val ru = Global.DEFAULT_ROOT_USERNAME
-  val rp = Global.DEFAULT_ROOT_PASSWORD
+  val ru = EnvConfig.DEFAULT_ROOT_USERNAME
+  val rp = EnvConfig.DEFAULT_ROOT_PASSWORD
 
   val additionalConfig = Map(
     "database.host" -> scala.sys.env.getOrElse("TESTDB_HOST","localhost"),
