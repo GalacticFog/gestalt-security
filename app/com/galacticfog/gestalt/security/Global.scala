@@ -47,21 +47,52 @@ object EnvConfig {
   lazy val rootUsername = getEnvOpt("ROOT_USERNAME") getOrElse DEFAULT_ROOT_USERNAME
   lazy val rootPassword = getEnvOpt("ROOT_PASSWORD") getOrElse DEFAULT_ROOT_PASSWORD
 
-  lazy val dbConnection = for {
-    host <- getEnvOpt("DATABASE_HOSTNAME")
-    username <- getEnvOpt("DATABASE_USERNAME")
-    password <- getEnvOpt("DATABASE_PASSWORD")
-    dbname <- getEnvOpt("DATABASE_NAME")
-    port = getEnvOpt("DATABASE_PORT") flatMap { s => Try{s.toInt}.toOption} getOrElse(DEFAULT_DB_PORT)
-    timeout = getEnvOpt("DATABASE_TIMEOUT_MS") flatMap { s => Try{s.toLong}.toOption} getOrElse(DEFAULT_DB_TIMEOUT)
-  } yield ScalikePostgresDBConnection(
-    host = host,
-    port = port,
-    database = dbname,
-    username = username,
-    password = password,
-    timeoutMs = timeout
-  )
+  private lazy val host = getEnvOpt("DATABASE_HOSTNAME")
+  private lazy val username = getEnvOpt("DATABASE_USERNAME")
+  private lazy val password = getEnvOpt("DATABASE_PASSWORD")
+  private lazy val dbname = getEnvOpt("DATABASE_NAME")
+  private lazy val port = getEnvOpt("DATABASE_PORT")
+  private lazy val timeout = getEnvOpt("DATABASE_TIMEOUT_MS")
+
+  lazy val dbConnection = {
+    log.info(EnvConfig.toString)
+    for {
+      host <- host
+      username <- username
+      password <- password
+      dbname <- dbname
+      port <- port flatMap { s => Try{s.toInt}.toOption} orElse Some(DEFAULT_DB_PORT)
+      timeout <- timeout flatMap { s => Try{s.toLong}.toOption} orElse Some(DEFAULT_DB_TIMEOUT)
+    } yield ScalikePostgresDBConnection(
+      host = host,
+      port = port,
+      database = dbname,
+      username = username,
+      password = password,
+      timeoutMs = timeout
+    )
+  }
+
+  lazy val databaseUrl = {
+    "jdbc:postgresql://%s:%s/%s?user=%s&password=%s".format(
+      host getOrElse "undefined",
+      port getOrElse 9455,
+      dbname getOrElse "undefined",
+      username getOrElse "undefined",
+      password map {_ => "*****"} getOrElse "undefined"
+    )
+  }
+
+  override def toString = {
+    s"""
+       |EnvConfig(
+       |  database = ${databaseUrl},
+       |  migrateDatabase = ${migrateDatabase},
+       |  cleanOnMigrate = ${cleanOnMigrate},
+       |  shutdownAfterMigrate = ${shutdownAfterMigrate}
+       |)
+    """.stripMargin
+  }
 }
 
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
@@ -190,7 +221,7 @@ object FlywayMigration {
       case e: Throwable => log.error("error closing base datasource",e)
     }
     migLevel match {
-      case Success(l) => log.info("Base DB migrated to level " + l)
+      case Success(l) => log.info(s"Base DB migrated ${l} levels")
       case Failure(ex) => throw ex
     }
 
