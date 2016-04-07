@@ -1188,7 +1188,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         if grant_type == "password"
         username <- request.body.get("username") flatMap asSingleton
         password <- request.body.get("password") flatMap asSingleton
-      } yield GestaltBasicCredsToken(username,password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
+      } yield GestaltBasicCredsToken(username = username, password = password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
       account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
       newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration)
     } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")

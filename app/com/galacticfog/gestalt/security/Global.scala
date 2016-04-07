@@ -1,5 +1,6 @@
 package com.galacticfog.gestalt.security
 
+import com.typesafe.config.ConfigObject
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
 import scala.collection.JavaConverters._
@@ -17,16 +18,91 @@ import play.api.mvc.{Result, RequestHeader}
 import scala.util.{Failure, Success, Try}
 import play.api.mvc.Results._
 
-object Global extends GlobalSettings with GlobalWithMethodOverriding {
-
+object EnvConfig {
   val DEFAULT_ROOT_USERNAME = "root"
   val DEFAULT_ROOT_PASSWORD = "letmein"
+  val DEFAULT_DB_TIMEOUT: Long = 5000
+  val DEFAULT_DB_PORT: Int = 5432
+
+  def getEnvOpt(name: String): Option[String] = {
+    System.getenv(name) match {
+      case null => None
+      case empty if empty.trim.isEmpty => None
+      case okay => Some(okay)
+    }
+  }
+
+  def getEnvOpInt(name: String): Option[Int] = {
+    getEnvOpt(name) flatMap { s => Try{s.toInt}.toOption }
+  }
+
+  def getEnvOptBoolean(name: String): Option[Boolean] = {
+    getEnvOpt(name) flatMap { s => Try{s.toBoolean}.toOption }
+  }
+
+  lazy val migrateDatabase = getEnvOptBoolean("MIGRATE_DATABASE") getOrElse true
+  lazy val cleanOnMigrate = getEnvOptBoolean("CLEAN_ON_MIGRATE") getOrElse false
+  lazy val shutdownAfterMigrate = getEnvOptBoolean("SHUTDOWN_AFTER_MIGRATE") getOrElse false
+
+  lazy val rootUsername = getEnvOpt("ROOT_USERNAME") getOrElse DEFAULT_ROOT_USERNAME
+  lazy val rootPassword = getEnvOpt("ROOT_PASSWORD") getOrElse DEFAULT_ROOT_PASSWORD
+
+  private lazy val host = getEnvOpt("DATABASE_HOSTNAME")
+  private lazy val username = getEnvOpt("DATABASE_USERNAME")
+  private lazy val password = getEnvOpt("DATABASE_PASSWORD")
+  private lazy val dbname = getEnvOpt("DATABASE_NAME")
+  private lazy val port = getEnvOpt("DATABASE_PORT")
+  private lazy val timeout = getEnvOpt("DATABASE_TIMEOUT_MS")
+
+  lazy val dbConnection = {
+    log.info(EnvConfig.toString)
+    for {
+      host <- host
+      username <- username
+      password <- password
+      dbname <- dbname
+      port <- port flatMap { s => Try{s.toInt}.toOption} orElse Some(DEFAULT_DB_PORT)
+      timeout <- timeout flatMap { s => Try{s.toLong}.toOption} orElse Some(DEFAULT_DB_TIMEOUT)
+    } yield ScalikePostgresDBConnection(
+      host = host,
+      port = port,
+      database = dbname,
+      username = username,
+      password = password,
+      timeoutMs = timeout
+    )
+  }
+
+  lazy val databaseUrl = {
+    "jdbc:postgresql://%s:%s/%s?user=%s&password=%s".format(
+      host getOrElse "undefined",
+      port getOrElse 9455,
+      dbname getOrElse "undefined",
+      username getOrElse "undefined",
+      password map {_ => "*****"} getOrElse "undefined"
+    )
+  }
+
+  override def toString = {
+    s"""
+       |EnvConfig(
+       |  database = ${databaseUrl},
+       |  migrateDatabase = ${migrateDatabase},
+       |  cleanOnMigrate = ${cleanOnMigrate},
+       |  shutdownAfterMigrate = ${shutdownAfterMigrate}
+       |)
+    """.stripMargin
+  }
+}
+
+object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
   import com.galacticfog.gestalt.security.api.json.JsonImports._
 
   /**
    * Indicates the query parameter name used to override the HTTP method
-   * @return a non-empty string indicating the query parameter. Popular choice is "_method"
+    *
+    * @return a non-empty string indicating the query parameter. Popular choice is "_method"
    */
   override def overrideParameter: String = "_method"
 
@@ -54,47 +130,25 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
   override def onStart(app: Application): Unit = {
-    val connection = current.configuration.getObject("database") match {
-      case None =>
-        throw new RuntimeException("FATAL: Database configuration not found.")
-      case Some(config) => {
-        val configMap = config.unwrapped.asScala.toMap
-        displayStartupSettings(configMap)
-        ScalikePostgresDBConnection(
-          host = configMap("host").toString,
-          database = configMap("dbname").toString,
-          port = configMap("port").toString.toInt,
-          username = configMap("username").toString,
-          password = configMap("password").toString,
-          timeoutMs = configMap("timeoutMs").toString.toLong)
-      }
+    val connection = EnvConfig.dbConnection getOrElse {
+      throw new RuntimeException("FATAL: Database configuration not found.")
     }
 
-    val doMigrate: Boolean = current.configuration.getBoolean("database.migrate") getOrElse false
-
-    if (doMigrate) {
-      val doClean: Boolean = current.configuration.getBoolean("database.clean") getOrElse false
-      val doShutdown: Boolean = current.configuration.getBoolean("database.shutdownAfterMigrate") getOrElse false
-      val rootUsername = current.configuration.getString("root.username") getOrElse DEFAULT_ROOT_USERNAME
-      val rootPassword = current.configuration.getString("root.password") getOrElse DEFAULT_ROOT_PASSWORD
+    if (EnvConfig.migrateDatabase) {
       log.info("Migrating databases")
-      FlywayMigration.migrate(connection, doClean, rootUsername = rootUsername, rootPassword = rootPassword)
-      if (doShutdown) {
+      FlywayMigration.migrate(
+        info = connection,
+        clean = EnvConfig.cleanOnMigrate,
+        rootUsername = EnvConfig.rootUsername,
+        rootPassword = EnvConfig.rootPassword
+      )
+      if (EnvConfig.shutdownAfterMigrate) {
         log.info("Shutting because database.shutdownAfterMigrate == true")
         Play.stop()
         scala.sys.exit()
       }
     }
   }
-
-  private def displayStartupSettings(config: Map[String, Object]) {
-    log.debug("DATABASE SETTINGS:")
-    for ((k,v) <- config) {
-      if (k != "password")
-        log.debug("%s = '%s'".format(k, v.toString))
-    }
-  }
-
 
   def handleError(request: RequestHeader, e: Throwable): Result = {
     val resource = e match {
@@ -167,7 +221,7 @@ object FlywayMigration {
       case e: Throwable => log.error("error closing base datasource",e)
     }
     migLevel match {
-      case Success(l) => log.info("Base DB migrated to level " + l)
+      case Success(l) => log.info(s"Base DB migrated ${l} levels")
       case Failure(ex) => throw ex
     }
 
