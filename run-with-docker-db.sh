@@ -36,6 +36,21 @@ echo "
 DB running at $DOCKERIP:$DBPORT
 "
 
+cleanup_docker_db() {
+echo ""
+echo Stopping db container
+echo Stopped $(docker stop $db)
+echo Removing db 
+echo Removed $(docker rm $db)
+
+echo "
+List of running docker containers; make sure I didn't leave anything behind
+$(docker ps)
+"
+}
+
+trap cleanup_docker_db EXIT SIGSTOP SIGTERM
+
 export DATABASE_HOSTNAME=$DOCKERIP
 export DATABASE_NAME=$DBNAME
 export DATABASE_PORT=$DBPORT
@@ -60,13 +75,4 @@ or run
 "
 ./activator run -Dhttp.port=9455
 
-echo ""
-echo Stopping db container
-echo Stopped $(docker stop $db)
-echo Removing db 
-echo Removed $(docker rm $db)
-
-echo "
-List of running docker containers; make sure I didn't leave anything behind
-$(docker ps)
-"
+exit 0

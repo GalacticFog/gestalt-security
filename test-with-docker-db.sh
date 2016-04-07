@@ -35,20 +35,28 @@ DBPORT=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].Ho
 echo ""
 echo DB running at $DOCKERIP:$DBPORT
 
-export TESTDB_HOST=$DOCKERIP
-export TESTDB_DBNAME=$DBNAME
-export TESTDB_PORT=$DBPORT
-export TESTDB_USERNAME=$DBUSER
-export TESTDB_PASSWORD=$DBPASS
-
+cleanup_docker_db() {
 echo ""
-echo "Running tests!"
-./activator test
-
-echo ""
-echo Stopping db container $(docker stop $db)
-echo Removing db container $(docker rm $db)
+echo Stopping db container
+echo Stopped $(docker stop $db)
+echo Removing db 
+echo Removed $(docker rm $db)
 
 echo ""
 echo "List of running docker containers; make sure I didn't leave anything behind"
 docker ps
+}
+
+trap cleanup_docker_db EXIT SIGSTOP SIGTERM
+
+export DATABASE_HOSTNAME=$DOCKERIP
+export DATABASE_NAME=$DBNAME
+export DATABASE_PORT=$DBPORT
+export DATABASE_USERNAME=$DBUSER
+export DATABASE_PASSWORD=$DBPASS
+
+echo ""
+echo "Running tests!"
+./activator test || true
+
+exit 0
