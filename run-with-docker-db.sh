@@ -3,6 +3,7 @@
 DBUSER=gestaltdev
 DBPASS=***REMOVED***
 DBNAME=security
+DOCKERDBCONTAINER=gestaltdb
 
 set -o errexit
 set -o nounset
@@ -27,22 +28,48 @@ esac
 
 # it's easier to remove it and then start a new one than to try to restart it if it exists with fallback on creation
 
-echo Starting database in docker
-db=$(docker run -P -d -e DB_NAME="$DBNAME" -e DB_USER=$DBUSER -e DB_PASS=$DBPASS galacticfog.artifactoryonline.com/centos7postgresql944:latest)
+echo Looking for DB in docker
+set +o pipefail
+isRunning=$(docker inspect $DOCKERDBCONTAINER 2>/dev/null | jq -r '.[0].State.Running')
+set -o pipefail
+case $isRunning in 
+true)
+  echo DB container already running
+  db=$(docker inspect $DOCKERDBCONTAINER 2>/dev/null | jq -r '.[0].Id')
+  ;;
+false)
+  echo Restarting DB container
+  docker start $DOCKERDBCONTAINER
+  db=$(docker inspect $DOCKERDBCONTAINER 2>/dev/null | jq -r '.[0].Id')
+  ;;
+*)
+  echo Starting DB container
+  db=$(docker run -P -d --name=$DOCKERDBCONTAINER -e DB_NAME=$DBNAME -e DB_USER=$DBUSER -e DB_PASS=$DBPASS galacticfog.artifactoryonline.com/centos7postgresql944:latest)
+  ;;
+esac
 
 DBPORT=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].HostPort')
 
 echo "
-DB running at $DOCKERIP:$DBPORT
+DB running at $DOCKERIP:$DBPORT/$DBNAME
 "
 
+sleep 5
+echo $DBPASS | docker exec  -i gestaltdb  createdb -h $DOCKERIP -p $DBPORT -U $DBUSER -W $DBNAME || true
+
 cleanup_docker_db() {
+while true; do
+    read -p "Stop database container?" yn
+    case $yn in
+        [Yy]* ) 
 echo ""
 echo Stopping db container
 echo Stopped $(docker stop $db)
-echo Removing db 
-echo Removed $(docker rm $db)
-
+break;; 
+        [Nn]* ) break;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
 echo "
 List of running docker containers; make sure I didn't leave anything behind
 $(docker ps)
