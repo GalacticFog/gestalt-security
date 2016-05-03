@@ -1195,7 +1195,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[AccessTokenResponse](Ok)(authResp)
   }
 
-  def orgTokenIntroUUID(orgId: java.util.UUID) = Action(parse.urlFormEncoded) { implicit request =>
+  def orgTokenIntroUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
     val introspection = for {
       serviceApp <- o2t(AppFactory.findServiceAppForOrg(orgId))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
@@ -1213,6 +1213,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           iat = token.issuedAt.getMillis/1000,
           jti = token.id.asInstanceOf[UUID],
           gestalt_token_href = token.href,
+          gestalt_org_id = orgId,
+          gestalt_account = orgAccount,
+          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
           gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
         )
       }
@@ -1222,7 +1225,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def orgTokenIntroFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
     val introspection = for {
-      serviceApp <- o2t(AppFactory.findServiceAppForFQON(fqon))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
+      org <- o2t(OrgFactory.findByFQON(fqon))(ResourceNotFoundException("","could not location org with the specified FQON",""))
+      serviceApp <- o2t(AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
       tokenAndAccount = for {
@@ -1238,6 +1242,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           iat = token.issuedAt.getMillis/1000,
           jti = token.id.asInstanceOf[UUID],
           gestalt_token_href = token.href,
+          gestalt_org_id = org.id.asInstanceOf[UUID],
+          gestalt_account = orgAccount,
+          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
           gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
         )
       }
