@@ -680,6 +680,11 @@ class SDKIntegrationSpec extends PlaySpecification {
       )
     }
 
+    "accept valid access token for authentication" in {
+      val resp = await(GestaltOrg.getById(org.id, GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString)))
+      resp must beSome(org)
+    }
+
     "validate valid access tokens (FQON) against generating org" in {
       val resp = await(GestaltOrg.validateToken(org.fqon, token.get.accessToken))
       resp must beAnInstanceOf[ValidTokenResponse]
