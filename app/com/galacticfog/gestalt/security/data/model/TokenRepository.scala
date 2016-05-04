@@ -8,7 +8,9 @@ case class TokenRepository(
   accountId: Any,
   issuedAt: DateTime,
   expiresAt: DateTime,
-  refreshToken: Option[Any] = None) {
+  refreshToken: Option[Any] = None,
+  issuedOrgId: Any,
+  tokenType: String) {
 
   def save()(implicit session: DBSession = TokenRepository.autoSession): TokenRepository = TokenRepository.save(this)(session)
 
@@ -23,7 +25,7 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
 
   override val tableName = "token"
 
-  override val columns = Seq("id", "account_id", "issued_at", "expires_at", "refresh_token")
+  override val columns = Seq("id", "account_id", "issued_at", "expires_at", "refresh_token", "issued_org_id", "token_type")
 
   def apply(tr: SyntaxProvider[TokenRepository])(rs: WrappedResultSet): TokenRepository = apply(tr.resultName)(rs)
   def apply(tr: ResultName[TokenRepository])(rs: WrappedResultSet): TokenRepository = new TokenRepository(
@@ -31,7 +33,9 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
     accountId = rs.any(tr.accountId),
     issuedAt = rs.get(tr.issuedAt),
     expiresAt = rs.get(tr.expiresAt),
-    refreshToken = rs.anyOpt(tr.refreshToken)
+    refreshToken = rs.anyOpt(tr.refreshToken),
+    issuedOrgId = rs.any(tr.issuedOrgId),
+    tokenType = rs.get(tr.tokenType)
   )
 
   val tr = TokenRepository.syntax("tr")
@@ -75,20 +79,26 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
     accountId: Any,
     issuedAt: DateTime,
     expiresAt: DateTime,
-    refreshToken: Option[Any] = None)(implicit session: DBSession = autoSession): TokenRepository = {
+    refreshToken: Option[Any] = None,
+    issuedOrgId: Any,
+    tokenType: String)(implicit session: DBSession = autoSession): TokenRepository = {
     withSQL {
       insert.into(TokenRepository).columns(
         column.id,
         column.accountId,
         column.issuedAt,
         column.expiresAt,
-        column.refreshToken
+        column.refreshToken,
+        column.issuedOrgId,
+        column.tokenType
       ).values(
         id,
         accountId,
         issuedAt,
         expiresAt,
-        refreshToken
+        refreshToken,
+        issuedOrgId,
+        tokenType
       )
     }.update.apply()
 
@@ -97,7 +107,9 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
       accountId = accountId,
       issuedAt = issuedAt,
       expiresAt = expiresAt,
-      refreshToken = refreshToken)
+      refreshToken = refreshToken,
+      issuedOrgId = issuedOrgId,
+      tokenType = tokenType)
   }
 
   def batchInsert(entities: Seq[TokenRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -107,19 +119,25 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         'accountId -> entity.accountId,
         'issuedAt -> entity.issuedAt,
         'expiresAt -> entity.expiresAt,
-        'refreshToken -> entity.refreshToken))
+        'refreshToken -> entity.refreshToken,
+        'issuedOrgId -> entity.issuedOrgId,
+        'tokenType -> entity.tokenType))
         SQL("""insert into token(
         id,
         account_id,
         issued_at,
         expires_at,
-        refresh_token
+        refresh_token,
+        issued_org_id,
+        token_type
       ) values (
         {id},
         {accountId},
         {issuedAt},
         {expiresAt},
-        {refreshToken}
+        {refreshToken},
+        {issuedOrgId},
+        {tokenType}
       )""").batchByName(params: _*).apply()
     }
 
@@ -130,7 +148,9 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         column.accountId -> entity.accountId,
         column.issuedAt -> entity.issuedAt,
         column.expiresAt -> entity.expiresAt,
-        column.refreshToken -> entity.refreshToken
+        column.refreshToken -> entity.refreshToken,
+        column.issuedOrgId -> entity.issuedOrgId,
+        column.tokenType -> entity.tokenType
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity
