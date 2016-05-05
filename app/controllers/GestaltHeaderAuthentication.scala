@@ -55,9 +55,8 @@ object GestaltHeaderAuthentication {
   def authenticateAgainstOrg(orgId: Option[UUID])(request: RequestHeader): Option[AccountWithOrgContext] = {
     val maybeCredOrToken = extractAuthToken(request) flatMap { _ match {
       case GestaltBearerCredentials(token) => for {
-        foundToken <- TokenFactory.findToken(token)
-        now = DateTime.now
-        if orgId.contains(foundToken.issuedOrgId) && (foundToken.issuedAt isBefore now) && (now isBefore foundToken.expiresAt)
+        foundToken <- TokenFactory.findValidToken(token)
+//        if orgId.contains(foundToken.issuedOrgId)
         account <- AccountFactory.find(foundToken.accountId.asInstanceOf[UUID])
         orgId = foundToken.issuedOrgId.asInstanceOf[UUID]
         serviceApp <- AppFactory.findServiceAppForOrg(orgId)

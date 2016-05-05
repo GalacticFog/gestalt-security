@@ -15,11 +15,20 @@ object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
 
   override val autoSession = AutoSession
 
-  def findToken(tokenStr: String)(implicit session: DBSession = autoSession): Option[TokenRepository] = {
-    for {
+  def isValid(token: TokenRepository): Boolean = token.issuedAt.isBeforeNow && token.expiresAt.isAfterNow
+
+  def findValidToken(tokenStr: String)(implicit session: DBSession = autoSession): Option[TokenRepository] = {
+    val token = for {
       tokenUUID <- Try{UUID.fromString(tokenStr)}.toOption
       token <- TokenRepository.find(tokenUUID)
     } yield token
+    token flatMap { t =>
+      if (isValid(t)) Some(t)
+      else {
+        TokenRepository.destroy(t)
+        None
+      }
+    }
   }
 
   def createToken(orgId: UUID, accountId: UUID, validForSeconds: Long, tokenType: TokenType)(implicit session: DBSession = autoSession): Try[TokenRepository] =
