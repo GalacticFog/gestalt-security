@@ -1205,7 +1205,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
       tokenAndAccount = for {
-        token <- TokenFactory.findToken(tokenStr)
+        token <- TokenFactory.findValidToken(tokenStr)
         account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
       } yield (token,account)
       intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
@@ -1234,7 +1234,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
       tokenAndAccount = for {
-        token <- TokenFactory.findToken(tokenStr)
+        token <- TokenFactory.findValidToken(tokenStr)
         account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
       } yield (token,account)
       intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
@@ -1256,7 +1256,36 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[TokenIntrospectionResponse](Ok)(introspection)
   }
 
+  def globalTokenIntro() = Action(parse.urlFormEncoded) { implicit request =>
+    val introspection = for {
+      tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
+      tokenAndAccountAndApp = for {
+        token <- TokenFactory.findValidToken(tokenStr)
+        serviceApp <- AppFactory.findServiceAppForOrg(token.issuedOrgId.asInstanceOf[UUID])
+        account <- AccountFactory.getAppAccount(serviceApp.id.asInstanceOf[UUID], token.accountId.asInstanceOf[UUID])
+      } yield (token,account,serviceApp)
+      intro = tokenAndAccountAndApp.fold[TokenIntrospectionResponse](INVALID_TOKEN){
+        case (token,orgAccount,serviceApp) =>
+          ValidTokenResponse(
+            username = orgAccount.username,
+            sub = orgAccount.href,
+            iss = "todo",
+            exp = token.expiresAt.getMillis/1000,
+            iat = token.issuedAt.getMillis/1000,
+            jti = token.id.asInstanceOf[UUID],
+            gestalt_token_href = token.href,
+            gestalt_org_id = token.issuedOrgId.asInstanceOf[UUID],
+            gestalt_account = orgAccount,
+            gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
+            gestalt_rights = RightGrantFactory.listAccountRights(serviceApp.id.asInstanceOf[UUID], orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
+          )
+      }
+    } yield intro
+    renderTry[TokenIntrospectionResponse](Ok)(introspection)
+  }
+
   def info() = Action {
     Ok(BuildInfo.toJson).withHeaders(CONTENT_TYPE -> MimeTypes.JSON)
   }
+
 }

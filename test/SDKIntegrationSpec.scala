@@ -6,8 +6,9 @@ import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.UserAccountRepository
+import com.galacticfog.gestalt.security.data.model.{TokenRepository, UserAccountRepository}
 import controllers.RESTAPIController
+import org.joda.time.DateTime
 import org.specs2.execute.{Results, Result}
 import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
 import org.specs2.specification.Fragments
@@ -665,6 +666,11 @@ class SDKIntegrationSpec extends PlaySpecification {
       token.get.tokenType must_== BEARER
     }
 
+    "accept valid access token for authentication" in {
+      val resp = await(GestaltOrg.getById(org.id, GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString)))
+      resp must beSome(org)
+    }
+
     "validate valid access tokens (UUID) against generating org" in {
       val resp = await(GestaltOrg.validateToken(org.id, token.get.accessToken))
       resp must beAnInstanceOf[ValidTokenResponse]
@@ -678,11 +684,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       validResp.gestalt_rights must contain(
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
-    }
-
-    "accept valid access token for authentication" in {
-      val resp = await(GestaltOrg.getById(org.id, GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString)))
-      resp must beSome(org)
+      validResp.gestalt_org_id must_== org.id
     }
 
     "validate valid access tokens (FQON) against generating org" in {
@@ -698,6 +700,23 @@ class SDKIntegrationSpec extends PlaySpecification {
       validResp.gestalt_rights must contain(
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
+      validResp.gestalt_org_id must_== org.id
+    }
+
+    "validate valid access tokens (global) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+      validResp.gestalt_org_id must_== org.id
     }
 
     "validate valid access tokens (UUID) against non-generating subscribed org" in {
@@ -709,6 +728,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       validResp.jti must_== token.get.accessToken.id
       validResp.active must beTrue
       validResp.gestalt_rights must beEmpty
+      validResp.gestalt_org_id must_== subOrg.id
     }
 
     "validate valid access tokens (FQON) against non-generating subscribed org" in {
@@ -720,6 +740,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       validResp.jti must_== token.get.accessToken.id
       validResp.active must beTrue
       validResp.gestalt_rights must beEmpty
+      validResp.gestalt_org_id must_== subOrg.id
     }
 
     "not validate invalid access tokens (UUID)" in {
@@ -732,6 +753,27 @@ class SDKIntegrationSpec extends PlaySpecification {
       val resp = await(GestaltOrg.validateToken(org.fqon, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
       resp must_== INVALID_TOKEN
       resp.active must beFalse
+    }
+
+    "not validate invalid access tokens (global)" in {
+      val resp = await(GestaltOrg.validateToken(OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "delete expired tokens on introspection" in {
+      val maybeTokenResponse = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
+      maybeTokenResponse must beSome
+      maybeTokenResponse.get.tokenType must_== BEARER
+      val accessToken = maybeTokenResponse.get.accessToken
+      await(GestaltOrg.validateToken(org.fqon, accessToken)) must beAnInstanceOf[ValidTokenResponse]
+      val tokendao = TokenRepository.find(accessToken.id)
+      tokendao must beSome
+      tokendao foreach { t => TokenRepository.save(t.copy(
+        expiresAt = DateTime.now.minusMillis(1)
+      ))}
+      await(GestaltOrg.validateToken(org.fqon, accessToken)) must_== INVALID_TOKEN
+      TokenRepository.find(accessToken.id) must beNone
     }
 
     "not validate token if account doesn't belong to org (UUID)" in {
