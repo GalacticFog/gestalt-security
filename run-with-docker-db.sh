@@ -43,7 +43,7 @@ echo $DBPASS | docker exec  -i gestaltdb  createdb -h $DOCKERIP -p $DBPORT -U $D
 
 cleanup_docker_db() {
 while true; do
-    read -p "Stop database container?" yn
+    read -p "Stop database container? " yn
     case $yn in
         [Yy]* ) 
 echo ""
