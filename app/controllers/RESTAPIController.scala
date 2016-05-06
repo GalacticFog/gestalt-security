@@ -132,6 +132,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     } yield dir.orgId
   }
 
+  private[this] def resolveTokenOrg(tokenId: UUID): Option[UUID] = {
+    for {
+      token <- TokenFactory.findValidById(tokenId)
+    } yield token.issuedOrgId.asInstanceOf[UUID]
+  }
+
   private[this] def resolveDirectoryOrg(dirId: UUID): Option[UUID] = for {
     dir <- DirectoryFactory.find(dirId)
   } yield dir.orgId
@@ -1286,6 +1292,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def info() = Action {
     Ok(BuildInfo.toJson).withHeaders(CONTENT_TYPE -> MimeTypes.JSON)
+  }
+
+  def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
+    val token = TokenFactory.findValidById(tokenId)
+    token foreach { t => TokenRepository.destroy(t) }
+    renderTry[DeleteResult](Ok)(Success(DeleteResult(token.isDefined)))
   }
 
 }

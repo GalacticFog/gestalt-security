@@ -13,9 +13,20 @@ import scala.util.{Failure, Try}
 
 object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
 
+
   override val autoSession = AutoSession
 
   def isValid(token: TokenRepository): Boolean = token.issuedAt.isBeforeNow && token.expiresAt.isAfterNow
+
+  def findValidById(tokenId: UUID)(implicit session: DBSession = autoSession): Option[TokenRepository] = {
+    TokenRepository.find(tokenId) flatMap { t =>
+      if (isValid(t)) Some(t)
+      else {
+        TokenRepository.destroy(t)
+        None
+      }
+    }
+  }
 
   def findValidToken(tokenStr: String)(implicit session: DBSession = autoSession): Option[TokenRepository] = {
     val token = for {
