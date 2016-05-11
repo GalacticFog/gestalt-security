@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.api.{GestaltAccountCredential, GestaltBasicCredsToken, GestaltPasswordCredential, GestaltAccountUpdate}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, ConflictException, BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication
@@ -217,12 +217,18 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def frameworkAuth(appId: UUID, request: RequestHeader)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val usernameAuths = for {
-      token <- GestaltHeaderAuthentication.extractAuthToken(request).toSeq
+      token <- GestaltHeaderAuthentication.extractAuthToken(request).flatMap {_ match {
+        case t: GestaltBasicCredentials => Some(t)
+        case _ => None
+      }}.toSeq
       acc <- findAppUsersByUsername(appId,token.username)
       if checkPassword(account = acc, plaintext = token.password)
     } yield acc
     lazy val emailAuths = for {
-      token <- GestaltHeaderAuthentication.extractAuthToken(request).toSeq
+      token <- GestaltHeaderAuthentication.extractAuthToken(request).flatMap {_ match {
+        case t: GestaltBasicCredentials => Some(t)
+        case _ => None
+      }}.toSeq
       acc <- findAppUsersByEmail(appId,token.username)
       if checkPassword(account = acc, plaintext = token.password)
     } yield acc

@@ -3,6 +3,7 @@ package controllers
 import java.util.UUID
 import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
+import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.{BuildInfo, Global}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
@@ -95,7 +96,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   private[this] def resolveFromCredentials(requestHeader: RequestHeader): Option[UUID] = {
     val keyRoot = for {
-      authToken <- GestaltHeaderAuthentication.extractAuthToken(requestHeader)
+      authToken <- GestaltHeaderAuthentication.extractAuthToken(requestHeader) flatMap {_ match {
+        case t: GestaltBasicCredentials => Some(t)
+        case _ => None
+      }}
       apiKey <- APICredentialFactory.findByAPIKey(authToken.username)
     } yield apiKey.orgId.asInstanceOf[UUID]
     keyRoot orElse resolveRoot
@@ -126,6 +130,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       group <- GroupFactory.find(groupId)
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID])
     } yield dir.orgId
+  }
+
+  private[this] def resolveTokenOrg(tokenId: UUID): Option[UUID] = {
+    for {
+      token <- TokenFactory.findValidById(tokenId)
+    } yield token.issuedOrgId.asInstanceOf[UUID]
   }
 
   private[this] def resolveDirectoryOrg(dirId: UUID): Option[UUID] = for {
@@ -1173,7 +1183,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username,password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
       account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
-      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration)
+      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
     } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")
     renderTry[AccessTokenResponse](Ok)(authResp)
   }
@@ -1190,18 +1200,18 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username = username, password = password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
       account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
-      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration)
+      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
     } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")
     renderTry[AccessTokenResponse](Ok)(authResp)
   }
 
-  def orgTokenIntroUUID(orgId: java.util.UUID) = Action(parse.urlFormEncoded) { implicit request =>
+  def orgTokenIntroUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
     val introspection = for {
       serviceApp <- o2t(AppFactory.findServiceAppForOrg(orgId))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
       tokenAndAccount = for {
-        token <- TokenFactory.findToken(tokenStr)
+        token <- TokenFactory.findValidToken(tokenStr)
         account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
       } yield (token,account)
       intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
@@ -1213,6 +1223,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           iat = token.issuedAt.getMillis/1000,
           jti = token.id.asInstanceOf[UUID],
           gestalt_token_href = token.href,
+          gestalt_org_id = orgId,
+          gestalt_account = orgAccount,
+          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
           gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
         )
       }
@@ -1222,11 +1235,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def orgTokenIntroFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
     val introspection = for {
-      serviceApp <- o2t(AppFactory.findServiceAppForFQON(fqon))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
+      org <- o2t(OrgFactory.findByFQON(fqon))(ResourceNotFoundException("","could not location org with the specified FQON",""))
+      serviceApp <- o2t(AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
       tokenAndAccount = for {
-        token <- TokenFactory.findToken(tokenStr)
+        token <- TokenFactory.findValidToken(tokenStr)
         account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
       } yield (token,account)
       intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
@@ -1238,8 +1252,39 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
           iat = token.issuedAt.getMillis/1000,
           jti = token.id.asInstanceOf[UUID],
           gestalt_token_href = token.href,
+          gestalt_org_id = org.id.asInstanceOf[UUID],
+          gestalt_account = orgAccount,
+          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
           gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
         )
+      }
+    } yield intro
+    renderTry[TokenIntrospectionResponse](Ok)(introspection)
+  }
+
+  def globalTokenIntro() = Action(parse.urlFormEncoded) { implicit request =>
+    val introspection = for {
+      tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
+      tokenAndAccountAndApp = for {
+        token <- TokenFactory.findValidToken(tokenStr)
+        serviceApp <- AppFactory.findServiceAppForOrg(token.issuedOrgId.asInstanceOf[UUID])
+        account <- AccountFactory.getAppAccount(serviceApp.id.asInstanceOf[UUID], token.accountId.asInstanceOf[UUID])
+      } yield (token,account,serviceApp)
+      intro = tokenAndAccountAndApp.fold[TokenIntrospectionResponse](INVALID_TOKEN){
+        case (token,orgAccount,serviceApp) =>
+          ValidTokenResponse(
+            username = orgAccount.username,
+            sub = orgAccount.href,
+            iss = "todo",
+            exp = token.expiresAt.getMillis/1000,
+            iat = token.issuedAt.getMillis/1000,
+            jti = token.id.asInstanceOf[UUID],
+            gestalt_token_href = token.href,
+            gestalt_org_id = token.issuedOrgId.asInstanceOf[UUID],
+            gestalt_account = orgAccount,
+            gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => g: GestaltGroup },
+            gestalt_rights = RightGrantFactory.listAccountRights(serviceApp.id.asInstanceOf[UUID], orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
+          )
       }
     } yield intro
     renderTry[TokenIntrospectionResponse](Ok)(introspection)
@@ -1248,4 +1293,15 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def info() = Action {
     Ok(BuildInfo.toJson).withHeaders(CONTENT_TYPE -> MimeTypes.JSON)
   }
+
+  def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
+    val token = TokenFactory.findValidById(tokenId)
+    if (! token.exists {_.accountId == request.user.identity.id}) requireAuthorization(DELETE_TOKEN)
+    token foreach { t =>
+      Logger.info(s"deleting token ${t.id}")
+      TokenRepository.destroy(t)
+    }
+    renderTry[DeleteResult](Ok)(Success(DeleteResult(token.isDefined)))
+  }
+
 }
