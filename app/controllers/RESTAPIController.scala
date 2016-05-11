@@ -1296,6 +1296,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
     val token = TokenFactory.findValidById(tokenId)
+    if (! token.exists {_.accountId == request.user.identity.id}) requireAuthorization(DELETE_TOKEN)
     token foreach { t => TokenRepository.destroy(t) }
     renderTry[DeleteResult](Ok)(Success(DeleteResult(token.isDefined)))
   }

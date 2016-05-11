@@ -58,6 +58,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val UPDATE_ACCOUNT_STORE = "updateAccountStore"
     val DELETE_ACCOUNT_STORE = "deleteAccountStore"
     val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
+    val DELETE_TOKEN = "deleteToken"
 
     val NEW_ORG_OWNER_RIGHTS = Seq(
       SUPERUSER
