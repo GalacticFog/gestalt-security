@@ -162,9 +162,8 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
             create = GestaltDirectoryCreate(
               name = newOrgId + "-user-dir",
               description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
-              config = Some(Json.obj(
-                "directoryType" -> "INTERNAL"
-              ))
+              config = None,
+              directoryType = DIRECTORY_TYPE_INTERNAL
             )
           )
           usersGroup <- GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)

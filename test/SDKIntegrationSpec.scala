@@ -1111,7 +1111,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     lazy val testDirInRootOrg = await(rootOrg.createDirectory(GestaltDirectoryCreate(
       name = "test-dir-in-root-org",
       description = None,
-      config = None
+      config = None,
+      directoryType = DIRECTORY_TYPE_INTERNAL
     )))
     lazy val testGroupInTestDir = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
       name = "test-group-in-test-dir"
