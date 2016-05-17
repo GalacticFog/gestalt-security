@@ -252,19 +252,6 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
-  "New Org with old API syntax" should {
-
-    "parse old syntax on org creation" in {
-      val newOrgName = "new-org-old-syntax"
-      val newOrg = await(sdk.post[GestaltOrg](rootOrg.href, Json.obj(
-        "orgName" -> newOrgName
-      ), Some(rootCreds)))
-      newOrg must haveName(newOrgName)
-      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
-    }
-
-  }
-
   "New Org Without Directory" should {
 
     lazy val newOrgName = "new-org-no-dir"
@@ -566,14 +553,17 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "list the group in the account memberships" in {
-      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
+      val grp = await(GestaltGroup.getById(testGroup2.id)).get
+      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(grp))
     }
 
     "allow accounts to be added to groups after creation" in {
       val testGroup3 = await(rootDir.createGroup(GestaltGroupCreate("testGroup3")))
       val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id), remove = Seq()))
       newMemberships must contain(exactly(testUser2.getLink()))
-      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
+      await(testUser2.listGroupMemberships()).map(_.id) must containTheSameElementsAs(
+        Seq(testGroup2.id, testGroup3.id)
+      )
     }
 
 //    "allow account to authenticate against an org via a manually added group" in { // TODO
@@ -953,26 +943,26 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "contain admins account and all local groups" in {
-      sync.groups must containAllOf(Seq(newOrgGroup, subOrgGroup1, subOrgGroup2))
+      sync.groups.map{_.id} must containAllOf(Seq(newOrgGroup.id, subOrgGroup1.id, subOrgGroup2.id))
       sync.groups.filter(g => g.directory.id == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
       sync.groups.filter(g => g.name.endsWith("users")) must haveSize(2)
     }
 
     "contain membership from admin groups to creator" in {
-      sync.groups.filter( _.name.endsWith("admins")).head.accounts must containTheSameElementsAs(
-        Seq(rootAccount.getLink())
+      sync.groups.filter(_.name.endsWith("admins")).map(_.accounts) must containTheSameElementsAs(
+        Seq(Seq(rootAccount.getLink()), Seq(rootAccount.getLink()))
       )
     }
 
     "contain membership from user groups to appropriate users" in {
-      sync.groups.filter( _.name.endsWith("users")).head.accounts must containTheSameElementsAs(
-        Seq(newOrgAccount.getLink(), subOrgAccount.getLink())
+      sync.groups.filter( _.name.endsWith("users")).map(_.accounts) must containTheSameElementsAs(
+        Seq(Seq(newOrgAccount.getLink()), Seq(subOrgAccount.getLink()))
       )
     }
 
     "contain membership from manual groups to appropriate users" in {
-      sync.groups.find(_.id == newOrgGroup.id).get.accounts must containTheSameElementsAs(Seq(newOrgAccount.id))
-      sync.groups.find(_.id == subOrgGroup1.id).get.accounts must containTheSameElementsAs(Seq(subOrgAccount.id))
+      sync.groups.find(_.id == newOrgGroup.id).get.accounts must containTheSameElementsAs(Seq(newOrgAccount.getLink()))
+      sync.groups.find(_.id == subOrgGroup1.id).get.accounts must containTheSameElementsAs(Seq(subOrgAccount.getLink()))
       sync.groups.find(_.id == subOrgGroup2.id).get.accounts must beEmpty
     }
 

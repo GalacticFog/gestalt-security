@@ -88,7 +88,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         GestaltAccount(
           id = uar.id.asInstanceOf[UUID],
           username = uar.username,
-          description = ???,
+          description = uar.description,
           firstName = uar.firstName,
           lastName = uar.lastName,
           email = uar.email getOrElse "",

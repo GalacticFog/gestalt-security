@@ -6,7 +6,8 @@ case class GestaltOrgRepository(
   id: Any,
   name: String,
   fqon: String,
-  parent: Option[Any] = None) {
+  parent: Option[Any] = None,
+  description: Option[String] = None) {
 
   def save()(implicit session: DBSession = GestaltOrgRepository.autoSession): GestaltOrgRepository = GestaltOrgRepository.save(this)(session)
 
@@ -21,14 +22,15 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
 
   override val tableName = "org"
 
-  override val columns = Seq("id", "name", "fqon", "parent")
+  override val columns = Seq("id", "name", "fqon", "parent", "description")
 
   def apply(gor: SyntaxProvider[GestaltOrgRepository])(rs: WrappedResultSet): GestaltOrgRepository = apply(gor.resultName)(rs)
   def apply(gor: ResultName[GestaltOrgRepository])(rs: WrappedResultSet): GestaltOrgRepository = new GestaltOrgRepository(
     id = rs.any(gor.id),
     name = rs.get(gor.name),
     fqon = rs.get(gor.fqon),
-    parent = rs.anyOpt(gor.parent)
+    parent = rs.anyOpt(gor.parent),
+    description = rs.get(gor.description)
   )
 
   val gor = GestaltOrgRepository.syntax("gor")
@@ -71,18 +73,21 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
     id: Any,
     name: String,
     fqon: String,
-    parent: Option[Any] = None)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
+    parent: Option[Any] = None,
+    description: Option[String] = None)(implicit session: DBSession = autoSession): GestaltOrgRepository = {
     withSQL {
       insert.into(GestaltOrgRepository).columns(
         column.id,
         column.name,
         column.fqon,
-        column.parent
+        column.parent,
+        column.description
       ).values(
         id,
         name,
         fqon,
-        parent
+        parent,
+        description
       )
     }.update.apply()
 
@@ -90,7 +95,8 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
       id = id,
       name = name,
       fqon = fqon,
-      parent = parent)
+      parent = parent,
+      description = description)
   }
 
   def batchInsert(entities: Seq[GestaltOrgRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -99,17 +105,20 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
         'id -> entity.id,
         'name -> entity.name,
         'fqon -> entity.fqon,
-        'parent -> entity.parent))
+        'parent -> entity.parent,
+        'description -> entity.description))
         SQL("""insert into org(
         id,
         name,
         fqon,
-        parent
+        parent,
+        description
       ) values (
         {id},
         {name},
         {fqon},
-        {parent}
+        {parent},
+        {description}
       )""").batchByName(params: _*).apply()
     }
 
@@ -119,7 +128,8 @@ object GestaltOrgRepository extends SQLSyntaxSupport[GestaltOrgRepository] {
         column.id -> entity.id,
         column.name -> entity.name,
         column.fqon -> entity.fqon,
-        column.parent -> entity.parent
+        column.parent -> entity.parent,
+        column.description -> entity.description
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity

@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, Directory, OrgFactory}
+import com.galacticfog.gestalt.security.data.domain.{GroupFactory, DirectoryFactory, Directory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
 
 object APIConversions {
@@ -17,7 +17,7 @@ object APIConversions {
       email = uar.email getOrElse "",
       phoneNumber  = uar.phoneNumber getOrElse "",
       directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get,
-      description = ???
+      description = uar.description
     )
   }
 
@@ -27,8 +27,8 @@ object APIConversions {
       name = ugr.name,
       directory = DirectoryFactory.find(ugr.dirId.asInstanceOf[UUID]).get,
       disabled = ugr.disabled,
-      description = ???,
-      accounts = ???
+      description = ugr.description,
+      accounts = GroupFactory.listGroupAccounts(ugr.id.asInstanceOf[UUID]) map {_.getLink()}
     )
   }
 
@@ -45,7 +45,7 @@ object APIConversions {
     GestaltOrg(
       id = org.id.asInstanceOf[UUID],
       name = org.name,
-      description = ???,
+      description = org.description,
       fqon = org.fqon,
       parent = org.parent.flatMap{pid => OrgFactory.findByOrgId(pid.asInstanceOf[UUID])}.map {p =>
         ResourceLink(
@@ -69,7 +69,7 @@ object APIConversions {
   implicit def appModelToApi(app: GestaltAppRepository): GestaltApp = {
     GestaltApp(
       id = app.id.asInstanceOf[UUID],
-      description = ???,
+      description = app.description,
       name = app.name,
       orgId = app.orgId.asInstanceOf[UUID],
       isServiceApp = app.serviceOrgId.isDefined
