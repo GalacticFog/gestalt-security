@@ -88,6 +88,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         GestaltAccount(
           id = uar.id.asInstanceOf[UUID],
           username = uar.username,
+          description = ???,
           firstName = uar.firstName,
           lastName = uar.lastName,
           email = uar.email getOrElse "",
@@ -105,8 +106,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgSync(
       accounts = orgUsers,
       groups = orgGroups,
-      orgs = orgTree map { case (o,_) => o: GestaltOrg },
-      groupMembership = memberships
+      orgs = orgTree map { case (o,_) => o: GestaltOrg }
     )
   }
 

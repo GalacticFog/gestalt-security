@@ -165,7 +165,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         storeType = create.storeType.label,
         accountStoreId = create.accountStoreId,
         name = Some(create.name),
-        description = Some(create.description),
+        description = create.description,
         defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
         defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
       ))
@@ -231,7 +231,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         storeType = create.storeType.label,
         accountStoreId = create.accountStoreId,
         name = Some(create.name),
-        description = Some(create.description),
+        description = create.description,
         defaultAccountStore = if (create.isDefaultAccountStore) Some(appId) else None,
         defaultGroupStore = if (create.isDefaultGroupStore) Some(appId) else None
       ))
