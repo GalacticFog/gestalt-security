@@ -282,6 +282,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         newUser <- AccountFactory.createAccount(
           dirId = dirId,
           username = create.username,
+          description = create.description,
           email = create.email.trim match {
             case "" => None
             case e => Some(e)
@@ -338,7 +339,8 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           id = UUID.randomUUID(),
           dirId = dirId,
           name = create.name,
-          disabled = false
+          disabled = false,
+          description = create.description
         ))
         newGroupId = newGroup.id.asInstanceOf[UUID]
         // add grants

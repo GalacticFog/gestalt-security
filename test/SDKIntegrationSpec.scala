@@ -94,17 +94,17 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "appear in list of all orgs" in {
-      val orgs = await(GestaltOrg.listOrgs(Some(rootCreds)))
+      val orgs = await(GestaltOrg.listOrgs())
       orgs must contain(exactly(rootOrg))
     }
 
     "be syncable via root admin" in {
-      val sync = await(GestaltOrg.syncOrgTree(None, Some(rootCreds)))
+      val sync = await(GestaltOrg.syncOrgTree(None))
       sync.orgs     must contain(exactly(rootOrg))
       sync.accounts must contain(exactly(rootAccount))
       sync.groups   must contain(exactly(rootAdminsGroup))
 
-      await(GestaltOrg.syncOrgTree(Some(rootOrg.id), Some(rootCreds))) must_== sync
+      await(GestaltOrg.syncOrgTree(Some(rootOrg.id))) must_== sync
     }
 
     "perform framework authorization equivalently" in {
@@ -121,7 +121,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltOrg.deleteOrg(rootOrg.id,Some(rootCreds))) must throwA[BadRequestException](".*cannot delete root org.*")
+      await(GestaltOrg.deleteOrg(rootOrg.id)) must throwA[BadRequestException](".*cannot delete root org.*")
     }
 
     "list root admin among accounts" in {
@@ -176,7 +176,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltApp.deleteApp(rootApp.id, Some(rootCreds))) must throwA[BadRequestException](".*cannot delete service app.*")
+      await(GestaltApp.deleteApp(rootApp.id)) must throwA[BadRequestException](".*cannot delete service app.*")
     }
 
     "authenticate equivalently to framework" in {
@@ -255,9 +255,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   "New Org Without Directory" should {
 
     lazy val newOrgName = "new-org-no-dir"
+    lazy val newOrgDesc = "this is a description of an org"
     lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
       name = newOrgName,
-      createDefaultUserGroup = false
+      createDefaultUserGroup = false,
+      description = Some(newOrgDesc)
     )))
     lazy val newOrgApp = await(newOrg.getServiceApp())
 
@@ -267,17 +269,21 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "show up in the root org tree" in {
-      await(rootOrg.listOrgs()) must containTheSameElementsAs(Seq(await(GestaltOrg.getById(rootOrg.id)).get,newOrg))
+      await(rootOrg.listOrgs).map(_.id) must containTheSameElementsAs(Seq(rootOrg.id,newOrg.id))
+    }
+
+    "return its created description" in {
+      await(GestaltOrg.getById(newOrg.id)).get.description must beSome(newOrgDesc)
     }
 
     "be alone in its own org tree" in {
-      await(newOrg.listOrgs()) must containTheSameElementsAs(Seq(newOrg))
+      await(newOrg.listOrgs()).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
     }
 
     "not contain a new directory" in {
-      val orgDirs = await(newOrg.listDirectories(Some(rootCreds)))
+      val orgDirs = await(newOrg.listDirectories)
       orgDirs must beEmpty
-      val rootDirs = await(rootOrg.listDirectories(Some(rootCreds)))
+      val rootDirs = await(rootOrg.listDirectories)
       rootDirs must haveSize(1) // no new dirs
       val dir = rootDirs.head
       val groups = await(dir.listGroups())
@@ -419,12 +425,16 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(rootDir.listAccounts()) must containTheSameElementsAs(Seq(await(GestaltAccount.getById(rootAccount.id)).get,testAccount))
     }
 
+    "return its created description" in {
+      await(GestaltAccount.getById(testAccount.id)).get.description must beSome("some user")
+    }
+
     "handle appropriately for non-existent lookup" in {
       await(rootOrg.getAccountById(UUID.randomUUID)) must beNone
     }
 
     "not be able to delete themselves" in {
-      await(GestaltAccount.deleteAccount(rootAccount.id, Some(rootCreds))) must throwA[BadRequestException](".*cannot delete self.*")
+      await(GestaltAccount.deleteAccount(rootAccount.id)) must throwA[BadRequestException](".*cannot delete self.*")
     }
 
     "be updated with an email address" in {
@@ -538,7 +548,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Directory" should {
 
     "allow a new group to be created" in {
-      await(rootDir.createGroup(GestaltGroupCreate("testGroup2"))) must haveName("testGroup2")
+      await(rootDir.createGroup(GestaltGroupCreate("testGroup2",Some("some group called testGroup2")))) must haveName("testGroup2")
+    }
+
+    "create group with specified description" in {
+      testGroup2.description must beSome("some group called testGroup2")
     }
 
     "allow a new user to be created in the group" in {
@@ -571,14 +585,14 @@ class SDKIntegrationSpec extends PlaySpecification {
 //    }
 
     "process group deletion" in {
-      await(GestaltGroup.deleteGroup(testGroup2.id, Some(rootCreds))) must beTrue
+      await(GestaltGroup.deleteGroup(testGroup2.id)) must beTrue
       await(GestaltGroup.getById(testGroup2.id)) must throwA[UnauthorizedAPIException]
       await(rootDir.getGroupByName("testGroup2")) must beNone
       await(testUser2.listGroupMemberships()) must not contain(hasName("testGroup2"))
     }
 
     "process account deletion" in {
-      await(GestaltAccount.deleteAccount(testUser2.id, Some(rootCreds))) must beTrue
+      await(GestaltAccount.deleteAccount(testUser2.id)) must beTrue
       await(GestaltAccount.getById(testUser2.id)) must beSome(testUser2)
       await(rootDir.getAccountByUsername("testAccount2")) must beSome(testUser2)
     }
@@ -656,7 +670,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "accept valid access token for authentication" in {
-      val resp = await(GestaltOrg.getById(org.id, Some(GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString))))
+      val resp = await(GestaltOrg.getById(org.id)(sdk.withCreds(GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString))))
       resp must beSome(org)
     }
 
@@ -924,7 +938,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(subOrgGroup1.id)), rights = None
       )))
-    lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id), Some(rootCreds)))
+    lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id)))
 
     "precheck" in {
       newOrgAccount.directory.orgId must_== newOrg.id
@@ -1085,7 +1099,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
 
     "cleanup" in {
-      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,Some(rootCreds))) must beTrue
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id)) must beTrue
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
     }
 
@@ -1487,7 +1501,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "cleanup" in {
-      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,Some(rootCreds))) must beTrue
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id)) must beTrue
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
     }
 
@@ -1539,7 +1553,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "be capable of deletion" in {
-      await(GestaltApp.deleteApp(testApp.id, Some(rootCreds))) must beTrue
+      await(GestaltApp.deleteApp(testApp.id)) must beTrue
     }
 
     "not show up after deletion in org app listing" in {

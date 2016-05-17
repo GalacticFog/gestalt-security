@@ -74,6 +74,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   def createAccount(dirId: UUID,
                     username: String,
+                    description: Option[String] = None,
                     email: Option[String] = None,
                     phoneNumber: Option[String] = None,
                     firstName: String,
@@ -96,7 +97,8 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         hashMethod = hashMethod,
         salt = salt,
         secret = secret,
-        disabled = disabled
+        disabled = disabled,
+        description = description
       )
     } recoverWith {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>

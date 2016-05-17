@@ -134,13 +134,18 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     DB localTx { implicit session =>
       // create org
       val newOrgAndAppIdTry = for {
-        newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name)
+        newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name, description = create.description)
         newOrgId = newOrg.id.asInstanceOf[UUID]
         // create system app
         newApp <- AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
         newAppId = newApp.id.asInstanceOf[UUID]
         // create admins group, add user
-        adminGroup <- GroupFactory.create(name = newOrgId + "-admins", dirId = creator.dirId.asInstanceOf[UUID], parentOrg = newOrgId)
+        adminGroup <- GroupFactory.create(
+          name = newOrgId + "-admins",
+          dirId = creator.dirId.asInstanceOf[UUID],
+          parentOrg = newOrgId,
+          description = Some(s"automatically created admin group for ${newOrg.fqon} to house creator")
+        )
         adminGroupId = adminGroup.id.asInstanceOf[UUID]
         _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
         _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
@@ -161,12 +166,17 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
             orgId = newOrgId,
             create = GestaltDirectoryCreate(
               name = newOrgId + "-user-dir",
-              description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users"),
+              description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users and groups"),
               config = None,
               directoryType = DIRECTORY_TYPE_INTERNAL
             )
           )
-          usersGroup <- GroupFactory.create(name = newOrg.fqon + "-users", dirId = newDir.id, parentOrg = newOrgId)
+          usersGroup <- GroupFactory.create(
+            name = newOrg.fqon + "-users",
+            dirId = newDir.id,
+            parentOrg = newOrgId,
+            description = Some(s"automatically created user group for ${newOrg.fqon} to house users")
+          )
           usersGroupId = usersGroup.id.asInstanceOf[UUID]
           _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
           _ <- AppFactory.mapDirToApp(appId = newAppId, dirId = newDir.id, defaultAccountStore = false, defaultGroupStore = true)
@@ -180,7 +190,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.findBy(sqls"parent is null")
   }
 
-  def createOrg(parentOrgId: UUID, name: String)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
+  def createOrg(parentOrgId: UUID, name: String, description: Option[String])(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
     val newOrg = for {
       validName <- validateOrgName(name)
       parentOrg <- OrgFactory.find(parentOrgId) match {
@@ -195,7 +205,8 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         id = UUID.randomUUID(),
         name = name,
         fqon = newfqon,
-        parent = Some(parentOrg.id)
+        parent = Some(parentOrg.id),
+        description = description
       ))
     } yield newOrg
     newOrg recoverWith {
