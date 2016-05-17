@@ -16,7 +16,8 @@ object APIConversions {
       lastName = uar.lastName,
       email = uar.email getOrElse "",
       phoneNumber  = uar.phoneNumber getOrElse "",
-      directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get
+      directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get,
+      description = ???
     )
   }
 
@@ -25,7 +26,9 @@ object APIConversions {
       id = ugr.id.asInstanceOf[UUID],
       name = ugr.name,
       directory = DirectoryFactory.find(ugr.dirId.asInstanceOf[UUID]).get,
-      disabled = ugr.disabled
+      disabled = ugr.disabled,
+      description = ???,
+      accounts = ???
     )
   }
 
@@ -42,6 +45,7 @@ object APIConversions {
     GestaltOrg(
       id = org.id.asInstanceOf[UUID],
       name = org.name,
+      description = ???,
       fqon = org.fqon,
       parent = org.parent.flatMap{pid => OrgFactory.findByOrgId(pid.asInstanceOf[UUID])}.map {p =>
         ResourceLink(
@@ -65,6 +69,7 @@ object APIConversions {
   implicit def appModelToApi(app: GestaltAppRepository): GestaltApp = {
     GestaltApp(
       id = app.id.asInstanceOf[UUID],
+      description = ???,
       name = app.name,
       orgId = app.orgId.asInstanceOf[UUID],
       isServiceApp = app.serviceOrgId.isDefined
@@ -75,7 +80,7 @@ object APIConversions {
     GestaltDirectory(
       id = dir.id,
       name = dir.name,
-      description = dir.description getOrElse "",
+      description = dir.description,
       orgId = dir.orgId
     )
   }
@@ -84,7 +89,7 @@ object APIConversions {
     GestaltAccountStoreMapping(
       id = asm.id.asInstanceOf[UUID],
       name = asm.name getOrElse "",
-      description = asm.description getOrElse s"mapping between app ${asm.appId} and ${asm.storeType} ${asm.accountStoreId}",
+      description = asm.description orElse Some(s"mapping between app ${asm.appId} and ${asm.storeType} ${asm.accountStoreId}"),
       storeType = if (asm.storeType == GROUP.label) GROUP else DIRECTORY,
       storeId = asm.accountStoreId.asInstanceOf[UUID],
       appId = asm.appId.asInstanceOf[UUID],
