@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "2.1.0-SNAPSHOT"
+version := "2.1.1-SNAPSHOT"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
