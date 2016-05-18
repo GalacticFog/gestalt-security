@@ -17,6 +17,7 @@ import play.api.libs.json.Json
 import play.api.mvc.{Result, RequestHeader}
 import scala.util.{Failure, Success, Try}
 import play.api.mvc.Results._
+import scalikejdbc._
 
 object EnvConfig {
   val DEFAULT_ROOT_USERNAME = "root"
@@ -130,6 +131,8 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
   override def onStart(app: Application): Unit = {
+    scalikejdbc.GlobalSettings.loggingSQLErrors = false
+
     val connection = EnvConfig.dbConnection getOrElse {
       throw new RuntimeException("FATAL: Database configuration not found.")
     }

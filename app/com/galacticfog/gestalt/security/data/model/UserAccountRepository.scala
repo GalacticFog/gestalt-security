@@ -13,7 +13,8 @@ case class UserAccountRepository(
   hashMethod: String,
   salt: String,
   secret: String,
-  disabled: Boolean) {
+  disabled: Boolean,
+  description: Option[String] = None) {
 
   def save()(implicit session: DBSession = UserAccountRepository.autoSession): UserAccountRepository = UserAccountRepository.save(this)(session)
 
@@ -28,7 +29,7 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
 
   override val tableName = "account"
 
-  override val columns = Seq("id", "dir_id", "username", "email", "phone_number", "first_name", "last_name", "hash_method", "salt", "secret", "disabled")
+  override val columns = Seq("id", "dir_id", "username", "email", "phone_number", "first_name", "last_name", "hash_method", "salt", "secret", "disabled", "description")
 
   def apply(uar: SyntaxProvider[UserAccountRepository])(rs: WrappedResultSet): UserAccountRepository = apply(uar.resultName)(rs)
   def apply(uar: ResultName[UserAccountRepository])(rs: WrappedResultSet): UserAccountRepository = new UserAccountRepository(
@@ -42,7 +43,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
     hashMethod = rs.get(uar.hashMethod),
     salt = rs.get(uar.salt),
     secret = rs.get(uar.secret),
-    disabled = rs.get(uar.disabled)
+    disabled = rs.get(uar.disabled),
+    description = rs.get(uar.description)
   )
 
   val uar = UserAccountRepository.syntax("uar")
@@ -92,7 +94,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
     hashMethod: String,
     salt: String,
     secret: String,
-    disabled: Boolean)(implicit session: DBSession = autoSession): UserAccountRepository = {
+    disabled: Boolean,
+    description: Option[String] = None)(implicit session: DBSession = autoSession): UserAccountRepository = {
     withSQL {
       insert.into(UserAccountRepository).columns(
         column.id,
@@ -105,7 +108,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         column.hashMethod,
         column.salt,
         column.secret,
-        column.disabled
+        column.disabled,
+        column.description
       ).values(
         id,
         dirId,
@@ -117,7 +121,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         hashMethod,
         salt,
         secret,
-        disabled
+        disabled,
+        description
       )
     }.update.apply()
 
@@ -132,7 +137,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
       hashMethod = hashMethod,
       salt = salt,
       secret = secret,
-      disabled = disabled)
+      disabled = disabled,
+      description = description)
   }
 
   def batchInsert(entities: Seq[UserAccountRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -148,7 +154,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         'hashMethod -> entity.hashMethod,
         'salt -> entity.salt,
         'secret -> entity.secret,
-        'disabled -> entity.disabled))
+        'disabled -> entity.disabled,
+        'description -> entity.description))
         SQL("""insert into account(
         id,
         dir_id,
@@ -160,7 +167,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         hash_method,
         salt,
         secret,
-        disabled
+        disabled,
+        description
       ) values (
         {id},
         {dirId},
@@ -172,7 +180,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         {hashMethod},
         {salt},
         {secret},
-        {disabled}
+        {disabled},
+        {description}
       )""").batchByName(params: _*).apply()
     }
 
@@ -189,7 +198,8 @@ object UserAccountRepository extends SQLSyntaxSupport[UserAccountRepository] {
         column.hashMethod -> entity.hashMethod,
         column.salt -> entity.salt,
         column.secret -> entity.secret,
-        column.disabled -> entity.disabled
+        column.disabled -> entity.disabled,
+        column.description -> entity.description
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity

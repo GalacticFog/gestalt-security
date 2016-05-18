@@ -90,23 +90,21 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "be accessible as current" in {
-      await(GestaltOrg.getCurrentOrg) must_== rootOrg
+      await(GestaltOrg.getCurrentOrg()) must_== rootOrg
     }
 
     "appear in list of all orgs" in {
-      val orgs = await(GestaltOrg.listOrgs(rootCreds))
+      val orgs = await(GestaltOrg.listOrgs())
       orgs must contain(exactly(rootOrg))
     }
 
     "be syncable via root admin" in {
-      val sync = await(GestaltOrg.syncOrgTree(None, rootCreds))
+      val sync = await(GestaltOrg.syncOrgTree(None))
       sync.orgs     must contain(exactly(rootOrg))
       sync.accounts must contain(exactly(rootAccount))
       sync.groups   must contain(exactly(rootAdminsGroup))
-      sync.groupMembership must haveKeys(rootAdminsGroup.id)
-      sync.groupMembership(rootAdminsGroup.id) must contain(exactly(rootAccount.id))
 
-      await(GestaltOrg.syncOrgTree(Some(rootOrg.id), rootCreds)) must_== sync
+      await(GestaltOrg.syncOrgTree(Some(rootOrg.id))) must_== sync
     }
 
     "perform framework authorization equivalently" in {
@@ -123,7 +121,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltOrg.deleteOrg(rootOrg.id,rootCreds)) must throwA[BadRequestException](".*cannot delete root org.*")
+      await(GestaltOrg.deleteOrg(rootOrg.id)) must throwA[BadRequestException](".*cannot delete root org.*")
     }
 
     "list root admin among accounts" in {
@@ -178,7 +176,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be capable of deletion" in {
-      await(GestaltApp.deleteApp(rootApp.id, rootCreds)) must throwA[BadRequestException](".*cannot delete service app.*")
+      await(GestaltApp.deleteApp(rootApp.id)) must throwA[BadRequestException](".*cannot delete service app.*")
     }
 
     "authenticate equivalently to framework" in {
@@ -194,27 +192,27 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Org naming constraints" should {
 
     "prohibit a mixed case name" in {
-      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "hasAcapitalletter")
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("hasAcapitalletter"))
       await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with a space" in {
-      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "has space")
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("has space"))
       await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with preceding dash" in {
-      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "-good-but-for-the-dash")
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("-good-but-for-the-dash"))
       await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with a trailing dash" in {
-      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for-the-dash-")
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("good-but-for-the-dash-"))
       await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
     "prohibit a name with consecutive dash" in {
-      val failure = GestaltOrg.createSubOrg(rootOrg.id, name = "good-but-for--the-dash")
+      val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("good-but-for--the-dash"))
       await(failure) must throwA[BadRequestException](".*org name is invalid.*")
     }
 
@@ -254,25 +252,14 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
-  "New Org with old API syntax" should {
-
-    "parse old syntax on org creation" in {
-      val newOrgName = "new-org-old-syntax"
-      val newOrg = await(sdk.postWithAuth[GestaltOrg](rootOrg.href, Json.obj(
-        "orgName" -> newOrgName
-      ), rootCreds))
-      newOrg must haveName(newOrgName)
-      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
-    }
-
-  }
-
   "New Org Without Directory" should {
 
     lazy val newOrgName = "new-org-no-dir"
+    lazy val newOrgDesc = "this is a description of an org"
     lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
       name = newOrgName,
-      createDefaultUserGroup = false
+      createDefaultUserGroup = false,
+      description = Some(newOrgDesc)
     )))
     lazy val newOrgApp = await(newOrg.getServiceApp())
 
@@ -282,20 +269,24 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "show up in the root org tree" in {
-      await(rootOrg.listOrgs()) must containTheSameElementsAs(Seq(await(GestaltOrg.getById(rootOrg.id)).get,newOrg))
+      await(rootOrg.listOrgs).map(_.id) must containTheSameElementsAs(Seq(rootOrg.id,newOrg.id))
+    }
+
+    "return its created description" in {
+      await(GestaltOrg.getById(newOrg.id)).get.description must beSome(newOrgDesc)
     }
 
     "be alone in its own org tree" in {
-      await(newOrg.listOrgs()) must containTheSameElementsAs(Seq(newOrg))
+      await(newOrg.listOrgs()).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
     }
 
     "not contain a new directory" in {
-      val orgDirs = await(newOrg.listDirectories(rootCreds))
+      val orgDirs = await(newOrg.listDirectories)
       orgDirs must beEmpty
-      val rootDirs = await(rootOrg.listDirectories(rootCreds))
+      val rootDirs = await(rootOrg.listDirectories)
       rootDirs must haveSize(1) // no new dirs
       val dir = rootDirs.head
-      val groups = await(dir.listGroups)
+      val groups = await(dir.listGroups())
       groups must haveSize(2) // dir has a new group
     }
 
@@ -396,7 +387,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "include the root admin in the new org admin group" in {
-      await(newOrgAdminGroup.get.listAccounts) must contain(rootAccount)
+      await(newOrgAdminGroup.get.listAccounts()) must contain(rootAccount)
     }
 
     "allow creator to delete org" in {
@@ -408,7 +399,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "automatically remove admin group on deletion" in {
-      val rootDirGroups = await(rootOrg.listDirectories flatMap {_.head.listGroups})
+      val rootDirGroups = await(rootOrg.listDirectories() flatMap {_.head.listGroups()})
       rootDirGroups must haveSize(1)
     }
 
@@ -417,6 +408,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val testAccount = await(rootDir.createAccount(GestaltAccountCreate(
     username = "test",
     firstName = "test",
+    description = Some("some user"),
     lastName = "user",
     email = "test@root",
     phoneNumber = "+1.555.555.5555",
@@ -433,12 +425,16 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(rootDir.listAccounts()) must containTheSameElementsAs(Seq(await(GestaltAccount.getById(rootAccount.id)).get,testAccount))
     }
 
+    "return its created description" in {
+      await(GestaltAccount.getById(testAccount.id)).get.description must beSome("some user")
+    }
+
     "handle appropriately for non-existent lookup" in {
       await(rootOrg.getAccountById(UUID.randomUUID)) must beNone
     }
 
     "not be able to delete themselves" in {
-      await(GestaltAccount.deleteAccount(rootAccount.id, rootCreds)) must throwA[BadRequestException](".*cannot delete self.*")
+      await(GestaltAccount.deleteAccount(rootAccount.id)) must throwA[BadRequestException](".*cannot delete self.*")
     }
 
     "be updated with an email address" in {
@@ -552,7 +548,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Directory" should {
 
     "allow a new group to be created" in {
-      await(rootDir.createGroup(GestaltGroupCreate("testGroup2"))) must haveName("testGroup2")
+      await(rootDir.createGroup(GestaltGroupCreate("testGroup2",Some("some group called testGroup2")))) must haveName("testGroup2")
+    }
+
+    "create group with specified description" in {
+      testGroup2.description must beSome("some group called testGroup2")
     }
 
     "allow a new user to be created in the group" in {
@@ -567,14 +567,17 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "list the group in the account memberships" in {
-      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
+      val grp = await(GestaltGroup.getById(testGroup2.id)).get
+      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(grp))
     }
 
     "allow accounts to be added to groups after creation" in {
       val testGroup3 = await(rootDir.createGroup(GestaltGroupCreate("testGroup3")))
-      val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id)))
-      newMemberships must contain(exactly(testUser2))
-      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
+      val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id), remove = Seq()))
+      newMemberships must contain(exactly(testUser2.getLink()))
+      await(testUser2.listGroupMemberships()).map(_.id) must containTheSameElementsAs(
+        Seq(testGroup2.id, testGroup3.id)
+      )
     }
 
 //    "allow account to authenticate against an org via a manually added group" in { // TODO
@@ -582,14 +585,14 @@ class SDKIntegrationSpec extends PlaySpecification {
 //    }
 
     "process group deletion" in {
-      await(GestaltGroup.deleteGroup(testGroup2.id, rootCreds)) must beTrue
+      await(GestaltGroup.deleteGroup(testGroup2.id)) must beTrue
       await(GestaltGroup.getById(testGroup2.id)) must throwA[UnauthorizedAPIException]
       await(rootDir.getGroupByName("testGroup2")) must beNone
       await(testUser2.listGroupMemberships()) must not contain(hasName("testGroup2"))
     }
 
     "process account deletion" in {
-      await(GestaltAccount.deleteAccount(testUser2.id, rootCreds)) must beTrue
+      await(GestaltAccount.deleteAccount(testUser2.id)) must beTrue
       await(GestaltAccount.getById(testUser2.id)) must beSome(testUser2)
       await(rootDir.getAccountByUsername("testAccount2")) must beSome(testUser2)
     }
@@ -622,7 +625,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     )))
     lazy val subOrgMapping = await(subOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
       name = "mapping",
-      description = "",
+      description = None,
       storeType = GROUP,
       accountStoreId = group.id,
       isDefaultAccountStore = false,
@@ -667,7 +670,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "accept valid access token for authentication" in {
-      val resp = await(GestaltOrg.getById(org.id, GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString)))
+      val resp = await(GestaltOrg.getById(org.id)(sdk.withCreds(GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString))))
       resp must beSome(org)
     }
 
@@ -813,7 +816,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "have a new group in the new directory with a procedural name with a mapping as the default account store" in {
-      val dirGroups = await(newOrgDir.listGroups)
+      val dirGroups = await(newOrgDir.listGroups())
       dirGroups must haveSize(1)
       val newGroup = dirGroups.head
       newGroup.name must contain(newOrg.name)
@@ -935,7 +938,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(subOrgGroup1.id)), rights = None
       )))
-    lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id), rootCreds))
+    lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id)))
 
     "precheck" in {
       newOrgAccount.directory.orgId must_== newOrg.id
@@ -954,31 +957,27 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "contain admins account and all local groups" in {
-      sync.groups must containAllOf(Seq(newOrgGroup, subOrgGroup1, subOrgGroup2))
+      sync.groups.map{_.id} must containAllOf(Seq(newOrgGroup.id, subOrgGroup1.id, subOrgGroup2.id))
       sync.groups.filter(g => g.directory.id == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
       sync.groups.filter(g => g.name.endsWith("users")) must haveSize(2)
     }
 
-    "contain membership data for all groups in the sync" in {
-      sync.groupMembership must haveKeys( sync.groups map {_.id}:_* )
-    }
-
     "contain membership from admin groups to creator" in {
-      sync.groupMembership.filterKeys(
-        gid => sync.groups.find(_.id == gid).exists(_.name.endsWith("admins"))
-      ).values must containTheSameElementsAs(Seq(Seq(rootAccount.id),Seq(rootAccount.id)))
+      sync.groups.filter(_.name.endsWith("admins")).map(_.accounts) must containTheSameElementsAs(
+        Seq(Seq(rootAccount.getLink()), Seq(rootAccount.getLink()))
+      )
     }
 
     "contain membership from user groups to appropriate users" in {
-      sync.groupMembership.filterKeys(
-        gid => sync.groups.find(_.id == gid).exists(_.name.endsWith("users"))
-      ).values must containTheSameElementsAs(Seq(Seq(newOrgAccount.id),Seq(subOrgAccount.id)))
+      sync.groups.filter( _.name.endsWith("users")).map(_.accounts) must containTheSameElementsAs(
+        Seq(Seq(newOrgAccount.getLink()), Seq(subOrgAccount.getLink()))
+      )
     }
 
     "contain membership from manual groups to appropriate users" in {
-      sync.groupMembership(newOrgGroup.id) must containTheSameElementsAs(Seq(newOrgAccount.id))
-      sync.groupMembership(subOrgGroup1.id) must containTheSameElementsAs(Seq(subOrgAccount.id))
-      sync.groupMembership(subOrgGroup2.id) must beEmpty
+      sync.groups.find(_.id == newOrgGroup.id).get.accounts must containTheSameElementsAs(Seq(newOrgAccount.getLink()))
+      sync.groups.find(_.id == subOrgGroup1.id).get.accounts must containTheSameElementsAs(Seq(subOrgAccount.getLink()))
+      sync.groups.find(_.id == subOrgGroup2.id).get.accounts must beEmpty
     }
 
     "cleanup" in {
@@ -1003,7 +1002,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "precheck" in {
       await(rootDir.getGroupByName(unmappedGrpFromRootDir.name)) must beSome(unmappedGrpFromRootDir)
       await(GestaltGroup.getById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
-      await(rootDir.listGroups) must contain(unmappedGrpFromRootDir)
+      await(rootDir.listGroups()) must contain(unmappedGrpFromRootDir)
     }
 
     "not list an unmapped group in the org" in {
@@ -1033,7 +1032,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "successfully list/get in the org/app after being mapped to the org" in {
       val mapping = await(newOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "test-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = unmappedGrpFromRootDir.id,
         isDefaultAccountStore = false,
@@ -1056,7 +1055,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "successfully list/get in the org/app after being mapped to the service app" in {
       val mapping = await(newOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "test-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = unmappedGrpFromRootDir.id,
         isDefaultAccountStore = false,
@@ -1100,7 +1099,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
 
     "cleanup" in {
-      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,rootCreds)) must beTrue
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id)) must beTrue
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
     }
 
@@ -1111,7 +1110,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     lazy val testDirInRootOrg = await(rootOrg.createDirectory(GestaltDirectoryCreate(
       name = "test-dir-in-root-org",
       description = None,
-      config = None
+      config = None,
+      directoryType = DIRECTORY_TYPE_INTERNAL
     )))
     lazy val testGroupInTestDir = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
       name = "test-group-in-test-dir"
@@ -1128,7 +1128,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for non-existent directory store on org" in {
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = UUID.randomUUID(),
       isDefaultAccountStore = false,
@@ -1139,7 +1139,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for non-existent directory store on app" in {
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = UUID.randomUUID(),
         isDefaultAccountStore = false,
@@ -1150,7 +1150,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for non-existent group store on org" in {
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = UUID.randomUUID(),
         isDefaultAccountStore = false,
@@ -1161,7 +1161,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for non-existent group store on app" in {
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = UUID.randomUUID(),
         isDefaultAccountStore = false,
@@ -1172,7 +1172,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting group as default group store in org" in {
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1183,7 +1183,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting group as default group store in app" in {
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "failed-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1194,7 +1194,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for redundant dir mapping against org" in {
       val newMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1202,7 +1202,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "second-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1214,7 +1214,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for redundant dir mapping against app" in {
       val newMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1222,7 +1222,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "second-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1234,7 +1234,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for redundant group mapping against org" in {
       val newMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1242,7 +1242,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "second-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1254,7 +1254,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately for redundant group mapping against app" in {
       val newMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1262,7 +1262,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "second-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = false,
@@ -1274,7 +1274,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting conflicting default account store on app" in {
       val firstMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-default-account-store-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = true,
@@ -1282,7 +1282,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "conflicting-default-account-store-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroup2InTestDir.id,
         isDefaultAccountStore = true,
@@ -1297,7 +1297,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting conflicting default account store on org" in {
       val firstMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-default-account-store-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroupInTestDir.id,
         isDefaultAccountStore = true,
@@ -1305,7 +1305,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "conflicting-default-account-store-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = testGroup2InTestDir.id,
         isDefaultAccountStore = true,
@@ -1320,7 +1320,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting conflicting default group store on org" in {
       val firstMapping = await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-default-group-store-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1328,7 +1328,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "conflicting-default-group-store-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = rootDir.id,
         isDefaultAccountStore = false,
@@ -1343,7 +1343,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "fail appropriately when setting conflicting default group store on app" in {
       val firstMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "first-default-group-store-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = testDirInRootOrg.id,
         isDefaultAccountStore = false,
@@ -1351,7 +1351,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       )))
       await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "conflicting-default-group-store-mapping",
-        description = "",
+        description = None,
         storeType = DIRECTORY,
         accountStoreId = rootDir.id,
         isDefaultAccountStore = false,
@@ -1395,11 +1395,11 @@ class SDKIntegrationSpec extends PlaySpecification {
     "precheck" in {
       await(rootDir.getGroupByName(unmappedGrpFromRootDir.name)) must beSome(unmappedGrpFromRootDir)
       await(GestaltGroup.getById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
-      await(rootDir.listGroups) must contain(unmappedGrpFromRootDir)
+      await(rootDir.listGroups()) must contain(unmappedGrpFromRootDir)
       await(rootDir.getAccountByUsername(unmappedActFromRootDir.username)) must beSome(unmappedActFromRootDir)
       await(GestaltAccount.getById(unmappedActFromRootDir.id)) must beSome(unmappedActFromRootDir)
-      await(rootDir.listAccounts) must contain(unmappedActFromRootDir)
-      await(unmappedGrpFromRootDir.listAccounts) must containTheSameElementsAs(Seq(unmappedActFromRootDir))
+      await(rootDir.listAccounts()) must contain(unmappedActFromRootDir)
+      await(unmappedGrpFromRootDir.listAccounts()) must containTheSameElementsAs(Seq(unmappedActFromRootDir))
     }
 
     "not list an unmapped account in the org" in {
@@ -1429,7 +1429,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "successfully list/get in the org/app after being mapped to the org" in {
       val mapping = await(newOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "test-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = unmappedGrpFromRootDir.id,
         isDefaultAccountStore = false,
@@ -1452,7 +1452,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     "successfully list/get in the org/app after being mapped to the org app" in {
       val mapping = await(newOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
         name = "test-mapping",
-        description = "",
+        description = None,
         storeType = GROUP,
         accountStoreId = unmappedGrpFromRootDir.id,
         isDefaultAccountStore = false,
@@ -1501,7 +1501,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "cleanup" in {
-      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id,rootCreds)) must beTrue
+      await(GestaltGroup.deleteGroup(unmappedGrpFromRootDir.id)) must beTrue
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
     }
 
@@ -1553,7 +1553,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "be capable of deletion" in {
-      await(GestaltApp.deleteApp(testApp.id, rootCreds)) must beTrue
+      await(GestaltApp.deleteApp(testApp.id)) must beTrue
     }
 
     "not show up after deletion in org app listing" in {

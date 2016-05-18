@@ -6,7 +6,8 @@ case class GestaltAppRepository(
   id: Any,
   name: String,
   orgId: Any,
-  serviceOrgId: Option[Any] = None) {
+  serviceOrgId: Option[Any] = None,
+  description: Option[String] = None) {
 
   def save()(implicit session: DBSession = GestaltAppRepository.autoSession): GestaltAppRepository = GestaltAppRepository.save(this)(session)
 
@@ -21,14 +22,15 @@ object GestaltAppRepository extends SQLSyntaxSupport[GestaltAppRepository] {
 
   override val tableName = "app"
 
-  override val columns = Seq("id", "name", "org_id", "service_org_id")
+  override val columns = Seq("id", "name", "org_id", "service_org_id", "description")
 
   def apply(gar: SyntaxProvider[GestaltAppRepository])(rs: WrappedResultSet): GestaltAppRepository = apply(gar.resultName)(rs)
   def apply(gar: ResultName[GestaltAppRepository])(rs: WrappedResultSet): GestaltAppRepository = new GestaltAppRepository(
     id = rs.any(gar.id),
     name = rs.get(gar.name),
     orgId = rs.any(gar.orgId),
-    serviceOrgId = rs.anyOpt(gar.serviceOrgId)
+    serviceOrgId = rs.anyOpt(gar.serviceOrgId),
+    description = rs.get(gar.description)
   )
 
   val gar = GestaltAppRepository.syntax("gar")
@@ -71,18 +73,21 @@ object GestaltAppRepository extends SQLSyntaxSupport[GestaltAppRepository] {
     id: Any,
     name: String,
     orgId: Any,
-    serviceOrgId: Option[Any] = None)(implicit session: DBSession = autoSession): GestaltAppRepository = {
+    serviceOrgId: Option[Any] = None,
+    description: Option[String] = None)(implicit session: DBSession = autoSession): GestaltAppRepository = {
     withSQL {
       insert.into(GestaltAppRepository).columns(
         column.id,
         column.name,
         column.orgId,
-        column.serviceOrgId
+        column.serviceOrgId,
+        column.description
       ).values(
         id,
         name,
         orgId,
-        serviceOrgId
+        serviceOrgId,
+        description
       )
     }.update.apply()
 
@@ -90,7 +95,8 @@ object GestaltAppRepository extends SQLSyntaxSupport[GestaltAppRepository] {
       id = id,
       name = name,
       orgId = orgId,
-      serviceOrgId = serviceOrgId)
+      serviceOrgId = serviceOrgId,
+      description = description)
   }
 
   def batchInsert(entities: Seq[GestaltAppRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -99,17 +105,20 @@ object GestaltAppRepository extends SQLSyntaxSupport[GestaltAppRepository] {
         'id -> entity.id,
         'name -> entity.name,
         'orgId -> entity.orgId,
-        'serviceOrgId -> entity.serviceOrgId))
+        'serviceOrgId -> entity.serviceOrgId,
+        'description -> entity.description))
         SQL("""insert into app(
         id,
         name,
         org_id,
-        service_org_id
+        service_org_id,
+        description
       ) values (
         {id},
         {name},
         {orgId},
-        {serviceOrgId}
+        {serviceOrgId},
+        {description}
       )""").batchByName(params: _*).apply()
     }
 
@@ -119,7 +128,8 @@ object GestaltAppRepository extends SQLSyntaxSupport[GestaltAppRepository] {
         column.id -> entity.id,
         column.name -> entity.name,
         column.orgId -> entity.orgId,
-        column.serviceOrgId -> entity.serviceOrgId
+        column.serviceOrgId -> entity.serviceOrgId,
+        column.description -> entity.description
       ).where.eq(column.id, entity.id)
     }.update.apply()
     entity

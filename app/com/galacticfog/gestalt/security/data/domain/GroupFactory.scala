@@ -29,8 +29,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   }
 
 
-  def create(name: String, dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
-    Try(UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg)))
+  def create(name: String, description: Option[String], dirId: UUID, parentOrg: UUID)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    Try(UserGroupRepository.create(id = UUID.randomUUID(), dirId = dirId, name = name, disabled = false, parentOrg = Some(parentOrg), description = description))
   }
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {

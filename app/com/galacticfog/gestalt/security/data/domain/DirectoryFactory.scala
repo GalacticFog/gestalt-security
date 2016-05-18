@@ -13,6 +13,7 @@ import scala.util.{Success, Failure, Try}
 
 trait Directory {
   def createAccount(username: String,
+                    description: Option[String],
                     firstName: String,
                     lastName: String,
                     email: Option[String],
@@ -62,10 +63,11 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     GroupFactory.delete(groupId)
   }
 
-  override def createAccount(username: String, firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
+  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
     AccountFactory.createAccount(
       dirId = id,
       username = username,
+      description = description,
       firstName = firstName,
       lastName = lastName,
       email = email,
@@ -166,6 +168,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
             cred <- Try(create.credential.asInstanceOf[GestaltPasswordCredential])
             newAccount <- dir.createAccount(
               username = create.username,
+              description = create.description,
               email = if (create.email.trim.isEmpty) None else Some(create.email),
               phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
               firstName = create.firstName,
@@ -193,7 +196,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       case Some(dir) => GroupFactory.create(
         name = create.name,
         dirId = dir.id.asInstanceOf[UUID],
-        parentOrg = dir.orgId.asInstanceOf[UUID]
+        parentOrg = dir.orgId.asInstanceOf[UUID],
+        description = create.description
       )
     }
   }
