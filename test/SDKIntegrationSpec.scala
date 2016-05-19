@@ -634,6 +634,195 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
+  "Org API credentials" should {
+
+    lazy val orgName = "new-org-for-api-creds"
+    lazy val org = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = orgName,
+      createDefaultUserGroup = true
+    )))
+    lazy val subOrg = await(org.createSubOrg(GestaltOrgCreate(
+      name = "sub",
+      createDefaultUserGroup = false // will map group from existing directory
+    )))
+    lazy val subSubOrg = await(subOrg.createSubOrg(GestaltOrgCreate(
+      name = "sub",
+      createDefaultUserGroup = false // will map group from existing directory
+    )))
+    lazy val orgDir = await(org.listDirectories()).head
+    lazy val group = await(orgDir.createGroup(GestaltGroupCreate(
+      name = "users"
+    )))
+    lazy val subOrgMapping = await(subOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+      name = "mapping",
+      description = None,
+      storeType = GROUP,
+      accountStoreId = group.id,
+      isDefaultAccountStore = false,
+      isDefaultGroupStore = false
+    )))
+    lazy val rights = Seq(GestaltGrantCreate(
+      grantName = "grantA"
+    ), GestaltGrantCreate(
+      grantName = "grantB", grantValue = Some("grantBvalue")
+    ))
+    lazy val account = await(GestaltOrg.createAccount(org.id, GestaltAccountCreateWithRights(
+      username = "new-org-account",
+      firstName = "Account",
+      lastName = "InNewOrg",
+      email = "",
+      phoneNumber = "",
+      groups = Some(Seq(group.id)),
+      rights = Some(rights),
+      credential = GestaltPasswordCredential("letmein")
+    )))
+
+    lazy val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
+
+    "not issue access tokens on invalid credentials (UUID)" in {
+      await(account.generateAPICredentials()(sdk.withCreds(GestaltBasicCredentials(account.username, "bad password")))) must beNone
+    }
+
+    "not issue access tokens on invalid credentials (FQON)" in {
+      await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "bad password")) must beNone
+    }
+
+    "issue access tokens on valid credentials (UUID)" in {
+      val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
+      token must beSome
+      token.get.tokenType must_== BEARER
+    }
+
+    "issue access tokens on valid credentials (FQON)" in {
+      val token = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
+      token must beSome
+      token.get.tokenType must_== BEARER
+    }
+
+    "accept valid access token for authentication" in {
+      val resp = await(GestaltOrg.getById(org.id)(sdk.withCreds(GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString))))
+      resp must beSome(org)
+    }
+
+    "validate valid access tokens (UUID) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(org.id, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+      validResp.gestalt_org_id must_== org.id
+    }
+
+    "validate valid access tokens (FQON) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(org.fqon, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+      validResp.gestalt_org_id must_== org.id
+    }
+
+    "validate valid access tokens (global) against generating org" in {
+      val resp = await(GestaltOrg.validateToken(token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      )
+      validResp.gestalt_rights must contain(
+        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      )
+      validResp.gestalt_org_id must_== org.id
+    }
+
+    "validate valid access tokens (UUID) against non-generating subscribed org" in {
+      subOrgMapping.storeId must_== group.id
+      val resp = await(GestaltOrg.validateToken(subOrg.id, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must beEmpty
+      validResp.gestalt_org_id must_== subOrg.id
+    }
+
+    "validate valid access tokens (FQON) against non-generating subscribed org" in {
+      subOrgMapping.storeId must_== group.id
+      val resp = await(GestaltOrg.validateToken(subOrg.fqon, token.get.accessToken))
+      resp must beAnInstanceOf[ValidTokenResponse]
+      resp.active must beTrue
+      val validResp = resp.asInstanceOf[ValidTokenResponse]
+      validResp.jti must_== token.get.accessToken.id
+      validResp.active must beTrue
+      validResp.gestalt_rights must beEmpty
+      validResp.gestalt_org_id must_== subOrg.id
+    }
+
+    "not validate invalid access tokens (UUID)" in {
+      val resp = await(GestaltOrg.validateToken(org.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate invalid access tokens (FQON)" in {
+      val resp = await(GestaltOrg.validateToken(org.fqon, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate invalid access tokens (global)" in {
+      val resp = await(GestaltOrg.validateToken(OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "delete expired tokens on introspection" in {
+      val maybeTokenResponse = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
+      maybeTokenResponse must beSome
+      maybeTokenResponse.get.tokenType must_== BEARER
+      val accessToken = maybeTokenResponse.get.accessToken
+      await(GestaltOrg.validateToken(org.fqon, accessToken)) must beAnInstanceOf[ValidTokenResponse]
+      val tokendao = TokenRepository.find(accessToken.id)
+      tokendao must beSome
+      tokendao foreach { t => TokenRepository.save(t.copy(
+        expiresAt = DateTime.now.minusMillis(1)
+      ))}
+      await(GestaltOrg.validateToken(org.fqon, accessToken)) must_== INVALID_TOKEN
+      TokenRepository.find(accessToken.id) must beNone
+    }
+
+    "not validate token if account doesn't belong to org (UUID)" in {
+      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+    "not validate token if account doesn't belong to org (FQON)" in {
+      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
+      resp must_== INVALID_TOKEN
+      resp.active must beFalse
+    }
+
+  }
+
   "Org oauth2" should {
 
     lazy val orgName = "new-org-for-oauth"
