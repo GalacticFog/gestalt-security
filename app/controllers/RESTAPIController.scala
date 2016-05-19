@@ -1295,7 +1295,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def info() = Action {
-    Ok(BuildInfo.toJson).withHeaders(CONTENT_TYPE -> MimeTypes.JSON)
+    Ok(Json.toJson(BuildInfo.toMap + ("sdkVersion" -> GestaltSecurityClient.getVersion)))
   }
 
   def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
