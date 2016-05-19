@@ -789,6 +789,81 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
+  lazy val testUser3 = await(rootDir.getAccountByUsername("testAccount2")).get
+
+//  "LDAP Directory" should {
+//
+//    "exist in the rootOrg" in {
+//      val orgDirs = await(rootOrg.listDirectories(rootCreds))
+//      orgDirs must beEmpty
+//      val rootDirs = await(rootOrg.listDirectories(rootCreds))
+//      val ldapDirs = rootDirs.filter( _.isInstanceOf[LDAPDirectory])
+//      ldapDirs must haveSize(1)
+//      val ldapDir = ldapDirs.head
+//    }
+//
+//    "NOT allow a new group to be created" in {
+//      await(ldapDir.createGroup(GestaltGroupCreate("testGroup2"))) must beFailedTry[GestaltGroup]
+//    }
+//
+//    "NOT allow a new user to be created" in {
+//      await(ldapDir.createAccount(GestaltAccountCreate(
+//        username = "testAccount2",
+//        firstName = "test",
+//        lastName = "account3",
+//        email = "taccount3@test.com", phoneNumber = "",
+//        groups = None,
+//        credential = GestaltPasswordCredential(password = "letmein")
+//      ))) must haveName("testAccount3")
+//    }
+//
+//    "allow lookup and shadow of a user found in LDAP" in {
+//      await(ldapDir.createAccount(GestaltAccountCreate(
+//        username = "testAccount3",
+//        firstName = "test",
+//        lastName = "account3",
+//        email = "taccount3@test.com", phoneNumber = "",
+//        groups = None,
+//        credential = GestaltPasswordCredential(password = "letmein")
+//      ))) must haveName("testAccount3")
+//    }
+//
+//    "fail on lookup of a non-existing user in LDAP" in {
+//      await(ldapDir.createAccount(GestaltAccountCreate(
+//        username = "testAccount3",
+//        firstName = "test",
+//        lastName = "account3",
+//        email = "taccount3@test.com", phoneNumber = "",
+//        groups = None,
+//        credential = GestaltPasswordCredential(password = "letmein")
+//      ))) must haveName("testAccount3")
+//    }
+//
+//    "list the group in the account memberships" in {
+//      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
+//    }
+//
+//// TODO - not yet.  If groups are not allowed to be added to LDAP (eventually), then turn this into a not allowed test
+////    "allow accounts to be added to groups after creation" in {
+////      val testGroup3 = await(rootDir.createGroup(GestaltGroupCreate("testGroup3")))
+////      val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id)))
+////      newMemberships must contain(exactly(testUser2))
+////      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
+////    }
+//
+//    "allow account to authenticate against a user found in LDAP" in {
+//      // TODO
+//      false must beTrue
+//    }
+//
+//    "NOT allow account deletion" in {
+//      await(GestaltAccount.deleteAccount(testUser3.id, rootCreds)) must beTrue
+//      await(GestaltAccount.getById(testUser3.id)) must beSome(testUser3)
+//      await(ldapDir.getAccountByUsername("testAccount3")) must beSome(testUser3)
+//    }
+//
+//  }
+
   "Org oauth2" should {
 
     lazy val orgName = "new-org-for-oauth"
@@ -1315,9 +1390,9 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     lazy val testDirInRootOrg = await(rootOrg.createDirectory(GestaltDirectoryCreate(
       name = "test-dir-in-root-org",
+      directoryType = DIRECTORY_TYPE_INTERNAL,
       description = None,
-      config = None,
-      directoryType = DIRECTORY_TYPE_INTERNAL
+      config = None
     )))
     lazy val testGroupInTestDir = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
       name = "test-group-in-test-dir"
