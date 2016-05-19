@@ -157,16 +157,17 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
 //    constraints.setReturningAttributes( Array("username", "mail") )
 
     val answer: NamingEnumeration[SearchResult] = context.search(searchBase, primaryField + "=" + primary, constraints)
+    Logger.debug("Sending search to LDAP: " + searchBase + " - " + primaryField + "=" + primary + " => " + answer.hasMore())
 
     if (answer.hasMore()) {
       val current = answer.next()
       val attrs = current.getAttributes
-      val username = attrs.get("username").toString
+      val username = primary
       val firstname = attrs.get("firstName").toString
       val lastname = attrs.get("lastName").toString
       val description = if (attrs.get("description").toString != "") Some(attrs.get("description").toString) else None
       // Create subject in shadow directory for auth
-      println("...creating account for email found in LDAP...")
+      Logger.debug("...shadowing account for user found in LDAP: " + username)
       for {
         account <- this.shadowAccount(username, description, firstname, lastname, Some(primary), None, GestaltPasswordCredential("Notused")).toOption
       } yield account

@@ -17,6 +17,9 @@ import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
+import com.galacticfog.gestalt.security.data.APIConversions._
+import com.galacticfog.gestalt.security.api.json.JsonImports._
+import com.galacticfog.gestalt.security.api.GestaltOrg
 
 class SDKIntegrationSpec extends PlaySpecification {
 
@@ -790,79 +793,56 @@ class SDKIntegrationSpec extends PlaySpecification {
   }
 
   lazy val testUser3 = await(rootDir.getAccountByUsername("testAccount2")).get
+  lazy val ldapDir = await(rootOrg.listDirectories()).filter { d => d.name == "LdapTestDir"}.head
 
-//  "LDAP Directory" should {
-//
-//    "exist in the rootOrg" in {
-//      val orgDirs = await(rootOrg.listDirectories(rootCreds))
-//      orgDirs must beEmpty
-//      val rootDirs = await(rootOrg.listDirectories(rootCreds))
-//      val ldapDirs = rootDirs.filter( _.isInstanceOf[LDAPDirectory])
-//      ldapDirs must haveSize(1)
-//      val ldapDir = ldapDirs.head
+  "LDAP Directory" should {
+
+    "be addable to the root org" in {
+      val dir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP)))
+      ldapDir must haveName("LdapTestDir")
+    }
+
+//    "allow user to create sub-org with LDAP directory" in {
+//      val ldapOrg = rootOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
+//      val ldapDir = rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP))
 //    }
-//
+
 //    "NOT allow a new group to be created" in {
-//      await(ldapDir.createGroup(GestaltGroupCreate("testGroup2"))) must beFailedTry[GestaltGroup]
+//      val ldapDir = await(rootOrg.listDirectories()).filter { d => d.name == "LdapTestDir"}.head
+//      await(ldapDir.createGroup(GestaltGroupCreate("testGroup3"))) must beFailedTry[GestaltGroup]
 //    }
-//
+
 //    "NOT allow a new user to be created" in {
 //      await(ldapDir.createAccount(GestaltAccountCreate(
-//        username = "testAccount2",
-//        firstName = "test",
-//        lastName = "account3",
-//        email = "taccount3@test.com", phoneNumber = "",
-//        groups = None,
-//        credential = GestaltPasswordCredential(password = "letmein")
-//      ))) must haveName("testAccount3")
-//    }
-//
-//    "allow lookup and shadow of a user found in LDAP" in {
-//      await(ldapDir.createAccount(GestaltAccountCreate(
 //        username = "testAccount3",
 //        firstName = "test",
 //        lastName = "account3",
 //        email = "taccount3@test.com", phoneNumber = "",
 //        groups = None,
 //        credential = GestaltPasswordCredential(password = "letmein")
-//      ))) must haveName("testAccount3")
+//      ))) must beFailedTry[GestaltAccount]
 //    }
-//
-//    "fail on lookup of a non-existing user in LDAP" in {
-//      await(ldapDir.createAccount(GestaltAccountCreate(
-//        username = "testAccount3",
-//        firstName = "test",
-//        lastName = "account3",
-//        email = "taccount3@test.com", phoneNumber = "",
-//        groups = None,
-//        credential = GestaltPasswordCredential(password = "letmein")
-//      ))) must haveName("testAccount3")
-//    }
-//
-//    "list the group in the account memberships" in {
-//      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2))
-//    }
-//
-//// TODO - not yet.  If groups are not allowed to be added to LDAP (eventually), then turn this into a not allowed test
-////    "allow accounts to be added to groups after creation" in {
-////      val testGroup3 = await(rootDir.createGroup(GestaltGroupCreate("testGroup3")))
-////      val newMemberships = await(testGroup3.updateMembership(add = Seq(testUser2.id)))
-////      newMemberships must contain(exactly(testUser2))
-////      await(testUser2.listGroupMemberships()) must containTheSameElementsAs(Seq(testGroup2, testGroup3))
-////    }
-//
-//    "allow account to authenticate against a user found in LDAP" in {
-//      // TODO
-//      false must beTrue
-//    }
-//
-//    "NOT allow account deletion" in {
-//      await(GestaltAccount.deleteAccount(testUser3.id, rootCreds)) must beTrue
-//      await(GestaltAccount.getById(testUser3.id)) must beSome(testUser3)
-//      await(ldapDir.getAccountByUsername("testAccount3")) must beSome(testUser3)
-//    }
-//
-//  }
+
+    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
+
+      val creds = GestaltBasicCredentials("newton", "password")
+      // Account must not be already shadowed
+      await(rootOrg.getAccountByUsername("newton")) must beNone
+      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
+      // Check account is shadowed
+      await(rootOrg.getAccountByUsername("newton")) must beSome
+      // Check that already shadowed account can be authenticated
+      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
+    }
+
+    "NOT allow account to authenticate against a password not in LDAP" in {
+      await(rootOrg.getAccountByUsername("einstein")) must beNone
+      await(GestaltOrg.grantPasswordToken(rootOrg.id, "einstein", "NotUsed")) must beNone
+      // Check for shadowed account
+      await(rootOrg.getAccountByUsername("einstein")) must beSome
+    }
+
+  }
 
   "Org oauth2" should {
 
