@@ -153,4 +153,11 @@ lazy val migration = (project in file("migration")).
   settings(
     libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
   )
-  
+
+// ----------------------------------------------------------------------------
+// Apache Shiro
+// ----------------------------------------------------------------------------
+
+libraryDependencies += "org.apache.shiro" % "shiro-core" % "1.1.0"
+
+libraryDependencies += "org.slf4j" % "slf4j-simple"   % "1.6.1" % "test"
