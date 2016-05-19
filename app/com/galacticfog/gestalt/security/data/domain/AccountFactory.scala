@@ -62,6 +62,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
   }
 
+  // TODO - check for deprecation or removal - moved to InternalDirectory.authenticateAccount()
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
@@ -244,9 +245,19 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val authAttempt = for {
       acc <- findAppUsersByUsername(appId,creds.username)
-      if checkPassword(account=acc, plaintext=creds.password)
-    } yield acc
-    authAttempt.headOption // first success is good enough
+      dir <- DirectoryFactory.find(acc.dirId.asInstanceOf[java.util.UUID])
+      authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+    } yield authedAcc
+    authAttempt.headOption match {   // first success is good enough
+      case Some(attempt) => Some(attempt)
+      case None =>   // Authentication failed, if an LDAPDirectory exists we might need to shadow the account and re-authenticate
+        val shadowedAccounts = for {
+            app <- AppFactory.findByAppId(appId).toSeq
+            dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID])
+            saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
+        } yield saccount
+        shadowedAccounts.headOption
+    }
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
