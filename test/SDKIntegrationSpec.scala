@@ -51,20 +51,26 @@ class SDKIntegrationSpec extends PlaySpecification {
   })
 
   val client = WS.client(fakeApp)
-  implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
-    wsclient = client,
-    protocol = HTTP,
-    hostname = "localhost",
-    port = testServerPort,
-    creds = rootCreds
-  )
+
   lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
-  lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
   lazy val daoRootDir: Directory = DirectoryFactory.listByOrgId(rootOrg.id).head
   lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
   lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroupByName("admins").get
   val rootPhone = "+1.505.867.5309"
   val rootEmail = "root@root"
+
+  // create a token for testing use
+  lazy val rootAccessToken = TokenFactory.createToken(rootOrg.id, rootAccount.id, 28800, ACCESS_TOKEN).get
+
+  implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
+    wsclient = client,
+    protocol = HTTP,
+    hostname = "localhost",
+    port = testServerPort,
+    creds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
+  )
+
+  lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
 
   "Service" should {
 
@@ -151,7 +157,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Root app" should {
 
     lazy val rootApp: GestaltApp = AppFactory.findServiceAppForOrg(rootOrg.id).get
-    lazy val appAuth = await(GestaltApp.authorizeUser(rootApp.id, GestaltBasicCredsToken(ru, rp))).get
+    lazy val appAuth = await(GestaltApp.authorizeUser(rootApp.id, GestaltBasicCredsToken(ru,rp))).get
 
     "be accessible from root org endpoint" in {
       await(rootOrg.getServiceApp) must_== rootApp
@@ -419,6 +425,10 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "be listed in dirs by username" in {
       await(rootDir.getAccountByUsername(testAccount.username)) must beSome(testAccount)
+    }
+
+    "be able to get self" in {
+      await(GestaltAccount.getSelf()).id must_== testAccount.id
     }
 
     "be listed among directory account listing" in {
@@ -900,6 +910,13 @@ class SDKIntegrationSpec extends PlaySpecification {
         )))
       ))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
       await(newOrg.listGroups) must not contain((g: GestaltGroup) => g.name == failGroupName)
+    }
+
+    "should create new groups in the new directory owned by the org" in {
+      val newGroup = await(GestaltOrg.createGroup( newOrg.id, GestaltGroupCreateWithRights(
+        name = "group-should-belong-to-new-org"
+      )))
+      newGroup.directory.orgId must_== newOrg.id
     }
 
     "cleanup" in {

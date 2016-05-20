@@ -21,9 +21,7 @@ trait GestaltHeaderAuthentication {
 
   class AuthenticatedActionBuilder(maybeGenFQON: Option[RequestHeader => Option[UUID]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
-      AuthenticatedBuilder(authenticateAgainstOrg(maybeGenFQON flatMap {
-        _.apply(request)
-      }), onUnauthorized = onUnauthorized).invokeBlock(request, block)
+      AuthenticatedBuilder(authenticateHeader, onUnauthorized = onUnauthorized).invokeBlock(request, block)
     }
   }
 
@@ -52,33 +50,24 @@ object GestaltHeaderAuthentication {
     request.headers.get("Authorization") flatMap GestaltAPICredentials.getCredentials
   }
 
-  def authenticateAgainstOrg(orgId: Option[UUID])(request: RequestHeader): Option[AccountWithOrgContext] = {
-    val maybeCredOrToken = extractAuthToken(request) flatMap { _ match {
-      case GestaltBearerCredentials(token) => for {
-        foundToken <- TokenFactory.findValidToken(token)
-//        if orgId.contains(foundToken.issuedOrgId)
-        account <- AccountFactory.find(foundToken.accountId.asInstanceOf[UUID])
-        orgId = foundToken.issuedOrgId.asInstanceOf[UUID]
-        serviceApp <- AppFactory.findServiceAppForOrg(orgId)
-        serviceAppId = serviceApp.id.asInstanceOf[UUID]
-      } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
-      case GestaltBasicCredentials(apiKey,apiSecret) => for {
-        foundKey <- APICredentialFactory.findByAPIKey(apiKey)
-        if foundKey.apiSecret == apiSecret && orgId.contains(foundKey.orgId) && !foundKey.disabled
-        orgId = foundKey.orgId.asInstanceOf[UUID]
-        serviceApp <- AppFactory.findServiceAppForOrg(orgId)
-        serviceAppId = serviceApp.id.asInstanceOf[UUID]
-        account <- UserAccountRepository.find(foundKey.accountId)
-      } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
-    }}
-    lazy val maybeAccountAuth = for {
-      orgId <- orgId
+  // find the account by credentials and verify that they are still part of the associated app
+  def authenticateHeader(request: RequestHeader): Option[AccountWithOrgContext] = {
+    // TODO: add more debugging
+    for {
+      tokenHeader <- extractAuthToken(request)
+      apiCred <- tokenHeader match {
+        case GestaltBearerCredentials(token) =>
+          Logger.info("found Bearer credential, will attempt to validate as token")
+          TokenFactory.findValidToken(token) map Right.apply
+        case GestaltBasicCredentials(apiKey,apiSecret) =>
+          Logger.info("found Basic credential, will attempt to validate as apiKey")
+          APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && found.disabled == false) map Left.apply
+      }
+      orgId = apiCred.fold(_.orgId.asInstanceOf[UUID], _.issuedOrgId.asInstanceOf[UUID])
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
-      account <- AccountFactory.frameworkAuth(serviceAppId, request)
+      account <- AccountFactory.getAppAccount(serviceAppId, apiCred.fold(_.accountId,_.accountId).asInstanceOf[UUID])
     } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
-    // give token auth a chance first, because it doesn't require org context
-    maybeCredOrToken orElse maybeAccountAuth
   }
 
 }

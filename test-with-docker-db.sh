@@ -15,9 +15,13 @@ db=$(docker run -P -d -e DB_NAME="$DBNAME" -e DB_USER=$DBUSER -e DB_PASS=$DBPASS
 
 DBPORT=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].HostPort')
 DOCKERIP=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].HostIp')
+if [ "$DOCKERIP" == "0.0.0.0" ]; then 
+  DOCKERIP="localhost"
+fi
 
-echo ""
-echo DB running at $DOCKERIP:$DBPORT
+echo "
+DB running at $DOCKERIP:$DBPORT/$DBNAME
+"
 
 cleanup_docker_db() {
 echo ""

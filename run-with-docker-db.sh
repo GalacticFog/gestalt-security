@@ -27,19 +27,23 @@ false)
   ;;
 *)
   echo Starting DB container
-  db=$(docker run -P -d --name=$DOCKERDBCONTAINER -e DB_NAME=$DBNAME -e DB_USER=$DBUSER -e DB_PASS=$DBPASS galacticfog.artifactoryonline.com/centos7postgresql944:latest)
+  db=$(docker run -p 5432:5432 -d --name=$DOCKERDBCONTAINER -e DB_NAME=$DBNAME -e DB_USER=$DBUSER -e DB_PASS=$DBPASS galacticfog.artifactoryonline.com/centos7postgresql944:latest)
   ;;
 esac
 
 DBPORT=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].HostPort')
 DOCKERIP=$(docker inspect $db | jq -r '.[0].NetworkSettings.Ports."5432/tcp"[0].HostIp')
+if [ "$DOCKERIP" == "0.0.0.0" ]; then 
+  DOCKERIP="localhost"
+fi
 
 echo "
 DB running at $DOCKERIP:$DBPORT/$DBNAME
 "
 
 sleep 5
-echo $DBPASS | docker exec  -i gestaltdb  createdb -h $DOCKERIP -p $DBPORT -U $DBUSER -W $DBNAME || true
+export PGPASSWORD=$DBPASS
+psql -h $DOCKERIP -p $DBPORT -U $DBUSER postgres -c "create database $DBNAME" || true
 
 cleanup_docker_db() {
 while true; do
@@ -84,6 +88,6 @@ or run
   ./examples/loadTestData.sh
 
 "
-./activator run -Dhttp.port=9455
+./activator run -Dhttp.port=9455 -jvm-debug 9999
 
 exit 0
