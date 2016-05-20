@@ -57,6 +57,7 @@ GET           /orgs/:orgId/groupnames/:groupName                        controll
 ##########################################
 # accounts
 ##########################################
+GET           /accounts/self                                            controllers.RESTAPIController.getSelf()
 GET           /accounts/:accountId                                      controllers.RESTAPIController.getAccount(accountId: java.util.UUID)
 PATCH         /accounts/:accountId                                      controllers.RESTAPIController.updateAccount(accountId: java.util.UUID)
 DELETE        /accounts/:accountId                                      controllers.RESTAPIController.disableAccount(accountId: java.util.UUID)
