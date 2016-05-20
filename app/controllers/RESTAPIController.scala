@@ -234,6 +234,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def getSelf() = AuthenticatedAction(None) { implicit request =>
+    Ok(Json.toJson[GestaltAccount](request.user.identity))
+  }
+
   def getOrgByFQON(fqon: String) = AuthenticatedAction(resolveFQON(fqon)) { implicit request =>
     OrgFactory.findByFQON(fqon) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))

@@ -2,7 +2,7 @@ package controllers
 
 import java.util.{UUID, Base64}
 import com.galacticfog.gestalt.security.api.{GestaltBearerCredentials, GestaltBasicCredentials, GestaltBasicCredsToken, GestaltAPICredentials}
-import com.galacticfog.gestalt.security.api.errors.UnauthorizedAPIException
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException}
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import org.joda.time.DateTime
@@ -21,7 +21,34 @@ trait GestaltHeaderAuthentication {
 
   class AuthenticatedActionBuilder(maybeGenFQON: Option[RequestHeader => Option[UUID]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
-      AuthenticatedBuilder(authenticateHeader, onUnauthorized = onUnauthorized).invokeBlock(request, block)
+      def checkingBlock: (AuthenticatedRequest[B, AccountWithOrgContext]) => Future[Result] = { request =>
+        maybeGenFQON flatMap {_.apply(request)} match {
+          case Some(orgId) =>
+            // controller specified an orgId, so we will enforce that the account belongs to the specified org
+            val serviceAppId = for {
+              serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+              serviceAppId = serviceApp.id.asInstanceOf[UUID]
+              orgAccount <- AccountFactory.getAppAccount(serviceAppId, request.user.identity.id.asInstanceOf[UUID])
+            } yield serviceAppId
+            serviceAppId match {
+              case Some(srvAppId) =>
+                // authenticated in the requested app, proceed with the user block but using the appropriate login org
+                block(new AuthenticatedRequest[B,AccountWithOrgContext](
+                  request.user.copy(
+                    orgId = orgId,
+                    serviceAppId = srvAppId
+                  ), request
+                ))
+              case None =>
+                // did not authenticate with the requested app, we could 403 or 404, we will 403
+                throw UnauthorizedAPIException("", message = "insufficient permissions", developerMessage = "Insufficient permissions in the authenticated account to perform the requested action.")
+            }
+          case None =>
+            // controller didn't specify an orgId, so we don't enforce that the account belongs to an orgId. just return auth information from the token.
+            block(request)
+        }
+      }
+      AuthenticatedBuilder(authenticateHeader, onUnauthorized = onUnauthorized).invokeBlock(request, checkingBlock)
     }
   }
 

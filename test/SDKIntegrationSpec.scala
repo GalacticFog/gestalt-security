@@ -61,13 +61,14 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   // create a token for testing use
   lazy val rootAccessToken = TokenFactory.createToken(rootOrg.id, rootAccount.id, 28800, ACCESS_TOKEN).get
+  lazy val rootBearerCreds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
 
-  implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
+  lazy implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
     wsclient = client,
     protocol = HTTP,
     hostname = "localhost",
     port = testServerPort,
-    creds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
+    creds = rootBearerCreds
   )
 
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
@@ -113,16 +114,28 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(GestaltOrg.syncOrgTree(Some(rootOrg.id))) must_== sync
     }
 
-    "perform framework authorization equivalently" in {
+    "not perform framework authorization with username,password credentials" in {
       // against implicit root org
       val auth1 = await(GestaltOrg.authorizeFrameworkUser(rootCreds))
+      auth1 must beNone
+      // against explicit root org
+      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, rootCreds))
+      auth2 must beNone
+      // against explicit org id
+      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, rootCreds))
+      auth3 must beNone
+    }
+
+    "perform framework authorization equivalently" in {
+      // against implicit root org
+      val auth1 = await(GestaltOrg.authorizeFrameworkUser(rootBearerCreds))
       auth1 must beSome
       val ar = auth1.get
       // against explicit root org
-      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, rootCreds))
+      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, rootBearerCreds))
       auth2 must beSome(ar)
       // against explicit org id
-      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, rootCreds))
+      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, rootBearerCreds))
       auth3 must beSome(ar)
     }
 
@@ -186,7 +199,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "authenticate equivalently to framework" in {
-      appAuth must_== await(GestaltOrg.authorizeFrameworkUser(rootCreds)).get
+      appAuth must_== await(GestaltOrg.authorizeFrameworkUser(rootBearerCreds)).get
     }
 
     "get the root user by username" in {
@@ -297,7 +310,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "allow creator to authenticate by name" in {
-      val authAttempt = await(GestaltOrg.authorizeFrameworkUser(newOrg.fqon, rootCreds))
+      val authAttempt = await(GestaltOrg.authorizeFrameworkUser(newOrg.fqon, rootBearerCreds))
       authAttempt must beSome
       val auth = authAttempt.get
       auth.account must_== rootAccount
@@ -401,7 +414,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not exist after deletion" in {
-      await(GestaltOrg.getByFQON(newOrgName)) must throwA[UnauthorizedAPIException]
+      await(GestaltOrg.getByFQON(newOrgName)) must beNone
     }
 
     "automatically remove admin group on deletion" in {
@@ -428,7 +441,14 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "be able to get self" in {
-      await(GestaltAccount.getSelf()).id must_== testAccount.id
+      await(GestaltAccount.getSelf()).id must_== rootAccount.id
+    }
+
+    "be able to get self (a different account)" in {
+      val token = TokenFactory.createToken(rootDir.orgId, testAccount.id, 60, ACCESS_TOKEN).get
+      await(GestaltAccount.getSelf()(sdk.withCreds(
+        GestaltBearerCredentials(OpaqueToken(token.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
+      ))).id must_== testAccount.id
     }
 
     "be listed among directory account listing" in {
@@ -596,7 +616,7 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "process group deletion" in {
       await(GestaltGroup.deleteGroup(testGroup2.id)) must beTrue
-      await(GestaltGroup.getById(testGroup2.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltGroup.getById(testGroup2.id)) must beNone
       await(rootDir.getGroupByName("testGroup2")) must beNone
       await(testUser2.listGroupMemberships()) must not contain(hasName("testGroup2"))
     }

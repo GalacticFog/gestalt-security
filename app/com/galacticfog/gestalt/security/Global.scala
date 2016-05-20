@@ -131,7 +131,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   }
 
   override def onStart(app: Application): Unit = {
-//    scalikejdbc.GlobalSettings.loggingSQLErrors = false
+    scalikejdbc.GlobalSettings.loggingSQLErrors = false
 
     val connection = EnvConfig.dbConnection getOrElse {
       throw new RuntimeException("FATAL: Database configuration not found.")
