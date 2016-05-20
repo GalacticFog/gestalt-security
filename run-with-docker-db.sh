@@ -41,9 +41,8 @@ echo "
 DB running at $DOCKERIP:$DBPORT/$DBNAME
 "
 
-sleep 5
-export PGPASSWORD=$DBPASS
-psql -h $DOCKERIP -p $DBPORT -U $DBUSER postgres -c "create database $DBNAME" || true
+sleep 3
+docker exec $DOCKERDBCONTAINER su postgres -c createdb $DBNAME || true
 
 cleanup_docker_db() {
 while true; do
