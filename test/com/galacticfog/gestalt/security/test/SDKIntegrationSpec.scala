@@ -800,6 +800,9 @@ class SDKIntegrationSpec extends PlaySpecification {
     "be addable to the root org" in {
       val dir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP)))
       ldapDir must haveName("LdapTestDir")
+      rootOrg.create
+      val rootApp = await(rootOrg.getServiceApp())
+      val asm = await(rootApp.create)
     }
 
 //    "allow user to create sub-org with LDAP directory" in {

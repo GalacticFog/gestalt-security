@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import com.galacticfog.gestalt.security.api.{GestaltAccountCreate, GestaltDirectoryCreate, GestaltGroupCreate, GestaltPasswordCredential}
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
 import org.mindrot.jbcrypt.BCrypt
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, JsValue, Json}
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
@@ -111,18 +111,18 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
   override def name: String = daoDir.name
   override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
   override def description: Option[String] = daoDir.description
-  def config = Json.toJson(daoDir.config)
 
-  val activeDirectory: Boolean = (config \ "active_directory").asOpt[Boolean].getOrElse(false)
-  val url: String = (config \ "url").asOpt[String].getOrElse("ldap://ldap.forumsys.com:389")
-  val searchBase: String = (config \ "search_base").asOpt[String].getOrElse("ou=Users,dc=example,dc=com")
-  val systemUsername: String = (config \ "system_username").asOpt[String].getOrElse("read-only-admin")
-  val systemPassword: String = (config \ "system_password").asOpt[String].getOrElse("password")
-  var connectionTimeout: Option[Int] = (config \ "connection_timeout").asOpt[Int]
-  var globalSessionTimeout: Option[Int] = (config \ "global_session_timeout").asOpt[Int]
-  var credentialsMatcher: Option[String] = (config \ "credentials_matcher").asOpt[String]
-  var authenticationMechanism: Option[String] = (config \ "authentication_mechanism").asOpt[String]
-  var primaryField: String = (config \ "primary_field").asOpt[String].getOrElse("uid")
+  val config = Json.parse(daoDir.config.getOrElse("{}"))
+  val activeDirectory = (config \ "activeDirectory").asOpt[Boolean].getOrElse(false)
+  val url = (config \ "url").asOpt[String].getOrElse("")
+  val searchBase = (config \ "searchBase").asOpt[String].getOrElse("")
+  val systemUsername = (config \ "systemUsername").asOpt[String].getOrElse("")
+  val systemPassword = (config \ "systemPassword").asOpt[String].getOrElse("")
+  var connectionTimeout = (config \ "connectionTimeout").asOpt[Int]
+  var globalSessionTimeout = (config \ "globalSessionTimeout").asOpt[Int]
+  var credentialsMatcher = (config \ "credentialsMatcher").asOpt[String]
+  var authenticationMechanism = (config \ "authenticationMechanism").asOpt[String]
+  var primaryField = (config \ "primaryField").asOpt[String].getOrElse("uid")
 
   val ldapRealm = new ActiveDirectoryRealm()
   ldapRealm.setUrl(url)
@@ -134,45 +134,57 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
 
   override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
     var result = true
-    val dn = primaryField + "=" + account.username
+    val sep = if (searchBase.startsWith(",")) "" else ","
+    val dn = primaryField + "=" + account.username + sep + searchBase
     val token = new UsernamePasswordToken(dn, plaintext)
-    val subject: Subject = SecurityUtils.getSubject
-    subject.login(token)
     try {
+      val subject: Subject = SecurityUtils.getSubject
       subject.login(token)
     } catch {
       case _: Throwable => result = false
+        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
+          Logger.error("Error: LDAP configuration was not setup.")
+        }
     }
     result
   }
 
   override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = {
-    val contextFactory = new JndiLdapContextFactory()
-    contextFactory.setUrl(url)
-    contextFactory.setSystemUsername(systemUsername)
-    contextFactory.setSystemPassword(systemPassword)
-    val context = contextFactory.getLdapContext(systemUsername.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
-    val constraints = new SearchControls()
-    constraints.setSearchScope(SearchControls.OBJECT_SCOPE)
-//    constraints.setReturningAttributes( Array("username", "mail") )
+    try {
+      val contextFactory = new JndiLdapContextFactory()
+      contextFactory.setUrl(url)
+      val sep = if (searchBase.startsWith(",")) "" else ","
+      val dn = "cn=" + systemUsername + sep + searchBase
+      contextFactory.setSystemUsername(systemUsername)
+      contextFactory.setSystemPassword(systemPassword)
+      val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
+      val constraints = new SearchControls()
+      constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
+      val answer: NamingEnumeration[SearchResult] = context.search(searchBase, primaryField + "=" + primary, constraints)
 
-    val answer: NamingEnumeration[SearchResult] = context.search(searchBase, primaryField + "=" + primary, constraints)
-    Logger.debug("Sending search to LDAP: " + searchBase + " - " + primaryField + "=" + primary + " => " + answer.hasMore())
-
-    if (answer.hasMore()) {
-      val current = answer.next()
-      val attrs = current.getAttributes
-      val username = primary
-      val firstname = attrs.get("firstName").toString
-      val lastname = attrs.get("lastName").toString
-      val description = if (attrs.get("description").toString != "") Some(attrs.get("description").toString) else None
-      // Create subject in shadow directory for auth
-      Logger.debug("...shadowing account for user found in LDAP: " + username)
-      for {
-        account <- this.shadowAccount(username, description, firstname, lastname, Some(primary), None, GestaltPasswordCredential("Notused")).toOption
-      } yield account
-    } else {
-      throw new Exception("Invalid User")
+      if (answer.hasMore()) {
+        val current = answer.next()
+        val attrs = current.getAttributes
+        val username = primary
+        val firstname = if (attrs.get("firstName") != null) attrs.get("firstName").toString else ""
+        val lastname = if (attrs.get("lastName") != null) attrs.get("lastName").toString else ""
+        val description = if (attrs.get("description") != null) Some(attrs.get("description").toString) else None
+        val email = if (attrs.get("mail") != null) Some(attrs.get("mail").toString) else None
+        val phone = if (attrs.get("phoneNumber") != null) Some(attrs.get("phoneNumber").toString) else None
+        // Create subject in shadow directory for auth
+        for {
+          account <- this.shadowAccount(username, description, firstname, lastname, email, phone, GestaltPasswordCredential("Notused")).toOption
+        } yield account
+      } else {
+        None
+      }
+    } catch {
+      case e: Throwable =>
+        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
+          Logger.error("Error: LDAP configuration was not setup.")
+        }
+        Logger.error("Error: Error accessing LDAP.")
+        throw e
     }
   }
 
@@ -266,26 +278,13 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       ))
       case None =>
         {
-          create.config flatMap {c => (c \ "directoryType").asOpt[String]} match {
-            case None =>
-              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER('INTERNAL')") match {
-                case None => Failure(UnknownAPIException(
-                  code = 500,
-                  resource = s"/orgs/${orgId}/directories",
-                  message = "default directory type INTERNAL not found",
-                  developerMessage = "A directory type not specified during directory create request, and the default directory type was not available."
-                ))
-                case Some(dirType) => Success(dirType.name.toUpperCase)
-              }
-            case Some(createType) =>
-              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${createType})") match {
-                case None => Failure(BadRequestException(
-                  resource = s"/orgs/${orgId}/directories",
-                  message = "directory type not valid",
-                  developerMessage = "During directory creation, the requested directory type was not valid."
-                ))
-                case Some(dirType) => Success(dirType.name.toUpperCase)
-              }
+          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${create.directoryType.label})") match {
+            case None => Failure(BadRequestException(
+              resource = s"/orgs/${orgId}/directories",
+              message = s"directory type ${create.directoryType} not valid",
+              developerMessage = s"During directory creation, the requested directory type ${create.directoryType} was not valid."
+            ))
+            case Some(dirType) => Success(dirType.name.toUpperCase)
           }
         } map { directoryType =>
           GestaltDirectoryRepository.create(

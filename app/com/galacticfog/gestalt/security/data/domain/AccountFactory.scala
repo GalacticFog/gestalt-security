@@ -227,19 +227,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         case t: GestaltBasicCredentials => Some(t)
         case _ => None
       }}.toSeq
-      acc <- findAppUsersByUsername(appId,token.username)
-      if checkPassword(account = acc, plaintext = token.password)
-    } yield acc
-    lazy val emailAuths = for {
-      token <- GestaltHeaderAuthentication.extractAuthToken(request).flatMap {_ match {
-        case t: GestaltBasicCredentials => Some(t)
-        case _ => None
-      }}.toSeq
-      acc <- findAppUsersByEmail(appId,token.username)
-      if checkPassword(account = acc, plaintext = token.password)
+      acc <- AccountFactory.authenticate(appId, GestaltBasicCredsToken(token.username, token.password))
     } yield acc
     // first success is good enough
-    usernameAuths.headOption orElse emailAuths.headOption
+    usernameAuths.headOption
   }
 
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
@@ -248,16 +239,14 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       dir <- DirectoryFactory.find(acc.dirId.asInstanceOf[java.util.UUID])
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    authAttempt.headOption match {   // first success is good enough
-      case Some(attempt) => Some(attempt)
-      case None =>   // Authentication failed, if an LDAPDirectory exists we might need to shadow the account and re-authenticate
-        val shadowedAccounts = for {
-            app <- AppFactory.findByAppId(appId).toSeq
-            dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID])
-            saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
-        } yield saccount
-        shadowedAccounts.headOption
-    }
+    Logger.warn("===> Did not find account, trying LDAPDirectories...")
+    val shadowedAccounts = for {
+        app <- AppFactory.findByAppId(appId).toSeq
+        dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID]).filter {d => d.isInstanceOf[LDAPDirectory]}
+        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
+    } yield saccount
+    authAttempt.headOption orElse shadowedAccounts.headOption
+    // TODO - query all indirect LDAPDirectories
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
