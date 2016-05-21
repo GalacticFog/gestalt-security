@@ -1084,7 +1084,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
       await(newOrgApp.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
       await(mapping.delete) must beTrue
-      await(GestaltAccountStoreMapping.getById(mapping.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltAccountStoreMapping.getById(mapping.id)) must beNone
       await(newOrg.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
     }
@@ -1107,7 +1107,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
       await(newOrgApp.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
       await(mapping.delete) must beTrue
-      await(GestaltAccountStoreMapping.getById(mapping.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltAccountStoreMapping.getById(mapping.id)) must beNone
       await(newOrg.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
     }
@@ -1481,7 +1481,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.getAccountByUsername(unmappedActFromRootDir.name)) must beNone // because not default dir
       await(newOrgApp.getAccountByUsername(unmappedActFromRootDir.name)) must beNone // because not in default dir
       await(mapping.delete) must beTrue
-      await(GestaltAccountStoreMapping.getById(mapping.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltAccountStoreMapping.getById(mapping.id)) must beNone
       await(newOrg.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
     }
@@ -1504,7 +1504,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.getAccountByUsername(unmappedActFromRootDir.name)) must beNone // because not default dir
       await(newOrgApp.getAccountByUsername(unmappedActFromRootDir.name)) must beNone // because not in default dir
       await(mapping.delete) must beTrue
-      await(GestaltAccountStoreMapping.getById(mapping.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltAccountStoreMapping.getById(mapping.id)) must beNone
       await(newOrg.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must not contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
     }
@@ -1598,7 +1598,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "not be available after deletion by id" in {
-      await(GestaltApp.getById(testApp.id)) must throwA[UnauthorizedAPIException]
+      await(GestaltApp.getById(testApp.id)) must beNone
     }
 
   }

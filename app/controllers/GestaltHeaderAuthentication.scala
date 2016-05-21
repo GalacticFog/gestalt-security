@@ -33,6 +33,7 @@ trait GestaltHeaderAuthentication {
             serviceAppId match {
               case Some(srvAppId) =>
                 // authenticated in the requested app, proceed with the user block but using the appropriate login org
+                Logger.info(s"authenticated /accounts/${request.user.identity.id} against ${orgId}")
                 block(new AuthenticatedRequest[B,AccountWithOrgContext](
                   request.user.copy(
                     orgId = orgId,
@@ -41,10 +42,12 @@ trait GestaltHeaderAuthentication {
                 ))
               case None =>
                 // did not authenticate with the requested app, we could 403 or 404, we will 403
+                Logger.info(s"authenticated /accounts/${request.user.identity.id} did not belong to /orgs/${orgId}")
                 throw UnauthorizedAPIException("", message = "insufficient permissions", developerMessage = "Insufficient permissions in the authenticated account to perform the requested action.")
             }
           case None =>
             // controller didn't specify an orgId, so we don't enforce that the account belongs to an orgId. just return auth information from the token.
+            Logger.info(s"authenticated /accounts/${request.user.identity.id} against ${request.user.orgId}")
             block(request)
         }
       }
@@ -79,15 +82,13 @@ object GestaltHeaderAuthentication {
 
   // find the account by credentials and verify that they are still part of the associated app
   def authenticateHeader(request: RequestHeader): Option[AccountWithOrgContext] = {
-    // TODO: add more debugging
+    val authToken = extractAuthToken(request)
     for {
-      tokenHeader <- extractAuthToken(request)
+      tokenHeader <- authToken
       apiCred <- tokenHeader match {
         case GestaltBearerCredentials(token) =>
-          Logger.info("found Bearer credential, will attempt to validate as token")
           TokenFactory.findValidToken(token) map Right.apply
         case GestaltBasicCredentials(apiKey,apiSecret) =>
-          Logger.info("found Basic credential, will attempt to validate as apiKey")
           APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && found.disabled == false) map Left.apply
       }
       orgId = apiCred.fold(_.orgId.asInstanceOf[UUID], _.issuedOrgId.asInstanceOf[UUID])
