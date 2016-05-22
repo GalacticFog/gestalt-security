@@ -887,6 +887,20 @@ class SDKIntegrationSpec extends PlaySpecification {
       await(newOrg.listAccounts) must contain(manualAccount)
       await(newOrg.getAccountById(manualAccount.id)) must beSome(manualAccount)
       await(newOrg.getAccountByUsername(manualAccount.username)) must beSome(manualAccount)
+      manualAccount.directory.id must_== newOrgDir.id
+    }
+
+    "should be created in the appropriate org and directory" in {
+      val manualAccount = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+        username = "manual-user-2",
+        firstName = "Manny",
+        lastName = "User",
+        email = "",
+        phoneNumber = "",
+        groups = None,
+        credential = GestaltPasswordCredential("letmein")
+      )))
+      manualAccount.directory.id must_== newOrgDir.id
     }
 
     "should not add account in the case of a non-existent group" in {
