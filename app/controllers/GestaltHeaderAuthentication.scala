@@ -68,7 +68,9 @@ trait GestaltHeaderAuthentication {
         message = "Unauthorized",
         developerMessage = "Not authenticated. Authentication credentials were missing or not valid for the resource context."
       ))
-    ).withHeaders(("WWW-Authenticate","Basic"))
+    ).
+      withHeaders(("WWW-Authenticate","Basic")).
+      withHeaders(("WWW-Authenticate","Bearer"))
   }
 }
 
