@@ -220,12 +220,10 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   }
 
   def findByFQON(fqon: String)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
-    Logger.info("looking for org with fqon = " + fqon)
     GestaltOrgRepository.findBy(sqls"fqon = ${fqon}")
   }
 
   def findByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): Option[GestaltOrgRepository] = {
-    Logger.info("looking for org with org_id = " + orgId)
     GestaltOrgRepository.find(orgId)
   }
 

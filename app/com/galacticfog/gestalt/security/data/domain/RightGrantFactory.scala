@@ -65,7 +65,6 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
   }
 
   def listAccountRights(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
-    Logger.info(s"looking up rights for appId = ${appId}, accountId = ${accountId}")
     val (rg, axg) = (RightGrantRepository.syntax("rg"), GroupMembershipRepository.syntax("axg"))
     withSQL {
       select.from(RightGrantRepository as rg)
@@ -75,7 +74,6 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
   }
 
   def listGroupRights(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
-    Logger.info(s"looking up rights for appId = ${appId}, groupId = ${groupId}")
     RightGrantRepository.findAllBy(sqls"app_id = ${appId} AND group_id = ${groupId}")
   }
 }
