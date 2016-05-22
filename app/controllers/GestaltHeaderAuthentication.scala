@@ -28,7 +28,7 @@ trait GestaltHeaderAuthentication {
             val serviceAppId = for {
               serviceApp <- AppFactory.findServiceAppForOrg(orgId)
               serviceAppId = serviceApp.id.asInstanceOf[UUID]
-              orgAccount <- AccountFactory.getAppAccount(serviceAppId, request.user.identity.id.asInstanceOf[UUID])
+              if AccountFactory.getAppAccount(serviceAppId, request.user.identity.id.asInstanceOf[UUID]).isDefined
             } yield serviceAppId
             serviceAppId match {
               case Some(srvAppId) =>
