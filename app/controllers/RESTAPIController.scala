@@ -101,7 +101,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         case _ => None
       }}
       apiKey <- APICredentialFactory.findByAPIKey(authToken.username)
-    } yield apiKey.orgId.asInstanceOf[UUID]
+      orgId <- apiKey.issuedOrgId
+    } yield orgId.asInstanceOf[UUID]
     keyRoot orElse resolveRoot
   }
 
@@ -167,7 +168,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     Ok(Json.toJson(ar))
   }
 
-  def apiAuth() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
+  def globalAuth() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -1187,7 +1188,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username,password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
       account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
-      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
+      newToken <- TokenFactory.createToken(Some(orgId), account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
     } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")
     renderTry[AccessTokenResponse](Ok)(authResp)
   }
@@ -1204,7 +1205,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username = username, password = password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
       account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
-      newToken <- TokenFactory.createToken(orgId, account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
+      newToken <- TokenFactory.createToken(Some(orgId), account.id.asInstanceOf[UUID], defaultTokenExpiration, ACCESS_TOKEN)
     } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")
     renderTry[AccessTokenResponse](Ok)(authResp)
   }
@@ -1295,7 +1296,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   }
 
   def info() = Action {
-    Ok(Json.toJson(BuildInfo.toMap + ("sdkVersion" -> GestaltSecurityClient.getVersion)))
+    Ok(Json.obj(
+      "name" -> BuildInfo.name,
+      "version" -> BuildInfo.version,
+      "scalaVersion" -> BuildInfo.scalaVersion,
+      "sbtVersion" -> BuildInfo.sbtVersion,
+      "builtBy" -> BuildInfo.builtBy,
+      "gitHash" -> BuildInfo.gitHash,
+      "builtAtString" -> BuildInfo.builtAtString,
+      "builtAtMillis" ->BuildInfo.builtAtMillis,
+      "sdkVersion" -> GestaltSecurityClient.getVersion
+    ))
   }
 
   def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
@@ -1306,6 +1317,17 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       TokenRepository.destroy(t)
     }
     renderTry[DeleteResult](Ok)(Success(DeleteResult(token.isDefined)))
+  }
+
+  def globalTokenIssue() = play.mvc.Results.TODO
+
+  def generateAPIKey(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
+    if ( request.user.identity.id.asInstanceOf[UUID] != accountId ) requireAuthorization(CREATE_APIKEY)
+    val newKey = APICredentialFactory.createAPIKey(
+      accountId = accountId,
+      boundOrg = (request.body \ "orgId").asOpt[UUID]
+    )
+    renderTry[GestaltAPIKey](Created)(newKey)
   }
 
 }

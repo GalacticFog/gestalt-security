@@ -42,7 +42,7 @@ object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
     }
   }
 
-  def createToken(orgId: UUID, accountId: UUID, validForSeconds: Long, tokenType: TokenType)(implicit session: DBSession = autoSession): Try[TokenRepository] =
+  def createToken(orgId: Option[UUID], accountId: UUID, validForSeconds: Long, tokenType: TokenType)(implicit session: DBSession = autoSession): Try[TokenRepository] =
   {
     val tt = tokenType match {
       case ACCESS_TOKEN => "ACCESS"

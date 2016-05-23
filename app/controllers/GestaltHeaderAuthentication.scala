@@ -91,9 +91,10 @@ object GestaltHeaderAuthentication {
         case GestaltBearerCredentials(token) =>
           TokenFactory.findValidToken(token) map Right.apply
         case GestaltBasicCredentials(apiKey,apiSecret) =>
+          Logger.info(s"checking credentials ${apiKey}:${apiSecret}")
           APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && found.disabled == false) map Left.apply
       }
-      orgId = apiCred.fold(_.orgId.asInstanceOf[UUID], _.issuedOrgId.asInstanceOf[UUID])
+      orgId <- apiCred.fold(_.issuedOrgId, _.issuedOrgId).map(_.asInstanceOf[UUID])
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       account <- AccountFactory.getAppAccount(serviceAppId, apiCred.fold(_.accountId,_.accountId).asInstanceOf[UUID])

@@ -6,12 +6,13 @@ import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{TokenRepository, UserAccountRepository}
+import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository, UserAccountRepository}
 import controllers.RESTAPIController
 import org.joda.time.DateTime
 import org.specs2.execute.{Results, Result}
 import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
 import org.specs2.specification.Fragments
+import play.api.Logger
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
@@ -60,8 +61,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   val rootEmail = "root@root"
 
   // create a token for testing use
-  lazy val rootAccessToken = TokenFactory.createToken(rootOrg.id, rootAccount.id, 28800, ACCESS_TOKEN).get
+  lazy val rootAccessToken = TokenFactory.createToken(Some(rootOrg.id), rootAccount.id, 28800, ACCESS_TOKEN).get
   lazy val rootBearerCreds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
+
+  // create api key for testing
+//  lazy val rootApiKey = API
 
   lazy implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
     wsclient = client,
@@ -429,8 +433,8 @@ class SDKIntegrationSpec extends PlaySpecification {
     firstName = "test",
     description = Some("some user"),
     lastName = "user",
-    email = "test@root",
-    phoneNumber = "+1.555.555.5555",
+    email = Some("test@root"),
+    phoneNumber = Some("+1.555.555.5555"),
     credential = GestaltPasswordCredential("letmein")
   )))
 
@@ -445,7 +449,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "be able to get self (a different account)" in {
-      val token = TokenFactory.createToken(rootDir.orgId, testAccount.id, 60, ACCESS_TOKEN).get
+      val token = TokenFactory.createToken(Some(rootDir.orgId), testAccount.id, 60, ACCESS_TOKEN).get
       await(GestaltAccount.getSelf()(sdk.withCreds(
         GestaltBearerCredentials(OpaqueToken(token.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
       ))).id must_== testAccount.id
@@ -471,7 +475,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       val updatedAccount = await(rootAccount.update(
         'email -> Json.toJson(rootEmail)
       ))
-      updatedAccount.email must_== rootEmail
+      updatedAccount.email must beSome(rootEmail)
       await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
@@ -479,7 +483,7 @@ class SDKIntegrationSpec extends PlaySpecification {
       val updatedAccount = await(rootAccount.update(
         'phoneNumber -> Json.toJson(rootPhone)
       ))
-      updatedAccount.phoneNumber must_== "+15058675309"
+      updatedAccount.phoneNumber must beSome("+15058675309")
       await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
@@ -488,8 +492,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "accountWithBadEmail",
         firstName = "bad",
         lastName = "account",
-        email = "",
-        phoneNumber = "867.5309",
+        phoneNumber = Some("867.5309"),
         credential = GestaltPasswordCredential("letmein"))
       )) must throwA[BadRequestException](".*phone number was not properly formatted.*")
     }
@@ -511,8 +514,8 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = testAccount.username,
         firstName = "new",
         lastName = "account",
-        email = "root@root",
-        phoneNumber = "",
+        email = Some("root@root"),
+        phoneNumber = None,
         credential = GestaltPasswordCredential("letmein"))
       )) must throwA[ConflictException](".*username already exists.*")
     }
@@ -529,7 +532,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         firstName = "new",
         lastName = "account",
         email = testAccount.email,
-        phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"))
       )) must throwA[ConflictException](".*email address already exists.*")
     }
@@ -545,7 +547,7 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "newAccount",
         firstName = "new",
         lastName = "account",
-        email = "newaccount@root",
+        email = Some("newaccount@root"),
         phoneNumber = testAccount.phoneNumber,
         credential = GestaltPasswordCredential("letmein"))
       )) must throwA[ConflictException](".*phone number already exists.*")
@@ -560,13 +562,13 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "allow email removal" in {
       val updatedAccount = await(testAccount.deregisterEmail())
-      updatedAccount.email must_== ""
+      updatedAccount.email must beNone
       await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
     "allow phone number removal" in {
       val updatedAccount = await(testAccount.deregisterPhoneNumber())
-      updatedAccount.phoneNumber must_== ""
+      updatedAccount.phoneNumber must beNone
       await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
@@ -590,7 +592,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "testAccount2",
         firstName = "test",
         lastName = "account2",
-        email = "", phoneNumber = "",
         groups = Some(Seq(testGroup2.id)),
         credential = GestaltPasswordCredential(password = "letmein")
       ))) must haveName("testAccount2")
@@ -636,189 +637,81 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   "Org API credentials" should {
 
-    lazy val orgName = "new-org-for-api-creds"
+    lazy val orgName = "api-creds-testing-org"
     lazy val org = await(rootOrg.createSubOrg(GestaltOrgCreate(
       name = orgName,
       createDefaultUserGroup = true
     )))
     lazy val subOrg = await(org.createSubOrg(GestaltOrgCreate(
       name = "sub",
-      createDefaultUserGroup = false // will map group from existing directory
-    )))
-    lazy val subSubOrg = await(subOrg.createSubOrg(GestaltOrgCreate(
-      name = "sub",
-      createDefaultUserGroup = false // will map group from existing directory
+      createDefaultUserGroup = true
     )))
     lazy val orgDir = await(org.listDirectories()).head
-    lazy val group = await(orgDir.createGroup(GestaltGroupCreate(
-      name = "users"
-    )))
-    lazy val subOrgMapping = await(subOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
-      name = "mapping",
-      description = None,
-      storeType = GROUP,
-      accountStoreId = group.id,
-      isDefaultAccountStore = false,
-      isDefaultGroupStore = false
-    )))
-    lazy val rights = Seq(GestaltGrantCreate(
-      grantName = "grantA"
-    ), GestaltGrantCreate(
-      grantName = "grantB", grantValue = Some("grantBvalue")
-    ))
-    lazy val account = await(GestaltOrg.createAccount(org.id, GestaltAccountCreateWithRights(
-      username = "new-org-account",
-      firstName = "Account",
-      lastName = "InNewOrg",
-      email = "",
-      phoneNumber = "",
-      groups = Some(Seq(group.id)),
-      rights = Some(rights),
-      credential = GestaltPasswordCredential("letmein")
-    )))
 
-    lazy val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
-
-    "not issue access tokens on invalid credentials (UUID)" in {
-      await(account.generateAPICredentials()(sdk.withCreds(GestaltBasicCredentials(account.username, "bad password")))) must beNone
-    }
-
-    "not issue access tokens on invalid credentials (FQON)" in {
-      await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "bad password")) must beNone
-    }
-
-    "issue access tokens on valid credentials (UUID)" in {
-      val token = await(GestaltOrg.grantPasswordToken(org.id, account.username, "letmein"))
-      token must beSome
-      token.get.tokenType must_== BEARER
-    }
-
-    "issue access tokens on valid credentials (FQON)" in {
-      val token = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
-      token must beSome
-      token.get.tokenType must_== BEARER
-    }
-
-    "accept valid access token for authentication" in {
-      val resp = await(GestaltOrg.getById(org.id)(sdk.withCreds(GestaltBearerCredentials(OpaqueToken(token.get.accessToken.id, ACCESS_TOKEN).toString))))
-      resp must beSome(org)
-    }
-
-    "validate valid access tokens (UUID) against generating org" in {
-      val resp = await(GestaltOrg.validateToken(org.id, token.get.accessToken))
-      resp must beAnInstanceOf[ValidTokenResponse]
-      resp.active must beTrue
-      val validResp = resp.asInstanceOf[ValidTokenResponse]
-      validResp.jti must_== token.get.accessToken.id
-      validResp.active must beTrue
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+    "can be generated with no bound org and used to auth" in {
+      val apiKey = await(GestaltAccount.generateAPICredentials(rootAccount.id))
+      apiKey.apiSecret must beSome
+      apiKey.accountId must_== rootAccount.id
+      apiKey.disabled must beFalse
+      val apiSDK = sdk.withCreds(GestaltBasicCredentials(apiKey.apiKey, apiKey.apiSecret.get))
+      APICredentialFactory.findByAPIKey(apiKey.apiKey) must beSome (
+        (apikey: APICredentialRepository) => apikey.issuedOrgId.isEmpty
       )
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
+      await(GestaltAccount.getSelf()(apiSDK)) must_== rootAccount
+      await(GestaltOrg.getCurrentOrg()(apiSDK)) must_== rootOrg
+    }
+
+    "can be deleted and become ineffective" in {
+      val apiKey = await(GestaltAccount.generateAPICredentials(rootAccount.id))
+      apiKey.apiSecret must beSome
+      apiKey.accountId must_== rootAccount.id
+      apiKey.disabled must beFalse
+      val apiSDK = sdk.withCreds(GestaltBasicCredentials(apiKey.apiKey, apiKey.apiSecret.get))
+      await(GestaltAccount.getSelf()(apiSDK)) must_== rootAccount
+      await(apiKey.delete()) must beTrue
+      await(GestaltAccount.getSelf()(apiSDK)) must throwA[UnauthorizedAPIException]
+    }
+
+    "will cascade delete to child API credentials" in {
+      ko("write me")
+    }
+
+    "will cascade delete to child oauth tokens" in {
+      ko("write me")
+    }
+
+    "can be exchanged for oauth tokens via client_credentials flow" in {
+      ko("write me")
+    }
+
+    "can be generated with bound org for use in sync and current" in {
+      val apiKey = await(GestaltAccount.generateAPICredentials(rootAccount.id, Some(subOrg.id)))
+      apiKey.apiSecret must beSome
+      apiKey.accountId must_== rootAccount.id
+      apiKey.disabled must beFalse
+      APICredentialFactory.findByAPIKey(apiKey.apiKey) must beSome (
+        (apikey: APICredentialRepository) => apikey.issuedOrgId.exists(_.asInstanceOf[UUID] == subOrg.id)
       )
-      validResp.gestalt_org_id must_== org.id
-    }
-
-    "validate valid access tokens (FQON) against generating org" in {
-      val resp = await(GestaltOrg.validateToken(org.fqon, token.get.accessToken))
-      resp must beAnInstanceOf[ValidTokenResponse]
-      resp.active must beTrue
-      val validResp = resp.asInstanceOf[ValidTokenResponse]
-      validResp.jti must_== token.get.accessToken.id
-      validResp.active must beTrue
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+      val apiSDK = sdk.withCreds(GestaltBasicCredentials(apiKey.apiKey, apiKey.apiSecret.get))
+      await(GestaltAccount.getSelf()(apiSDK)) must_== rootAccount
+      await(GestaltOrg.getCurrentOrg()(apiSDK)) must_== subOrg
+      await(GestaltOrg.syncOrgTree(None)(apiSDK)) must_== (
+        (sync: GestaltOrgSync) => sync.orgs(0).id == subOrg.id
       )
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
-      )
-      validResp.gestalt_org_id must_== org.id
     }
 
-    "validate valid access tokens (global) against generating org" in {
-      val resp = await(GestaltOrg.validateToken(token.get.accessToken))
-      resp must beAnInstanceOf[ValidTokenResponse]
-      resp.active must beTrue
-      val validResp = resp.asInstanceOf[ValidTokenResponse]
-      validResp.jti must_== token.get.accessToken.id
-      validResp.active must beTrue
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
-      )
-      validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
-      )
-      validResp.gestalt_org_id must_== org.id
+    "fail for invalid bound org" in {
+      await(GestaltAccount.generateAPICredentials(rootAccount.id, Some(UUID.randomUUID()))) must throwA[BadRequestException]
     }
 
-    "validate valid access tokens (UUID) against non-generating subscribed org" in {
-      subOrgMapping.storeId must_== group.id
-      val resp = await(GestaltOrg.validateToken(subOrg.id, token.get.accessToken))
-      resp must beAnInstanceOf[ValidTokenResponse]
-      resp.active must beTrue
-      val validResp = resp.asInstanceOf[ValidTokenResponse]
-      validResp.jti must_== token.get.accessToken.id
-      validResp.active must beTrue
-      validResp.gestalt_rights must beEmpty
-      validResp.gestalt_org_id must_== subOrg.id
-    }
-
-    "validate valid access tokens (FQON) against non-generating subscribed org" in {
-      subOrgMapping.storeId must_== group.id
-      val resp = await(GestaltOrg.validateToken(subOrg.fqon, token.get.accessToken))
-      resp must beAnInstanceOf[ValidTokenResponse]
-      resp.active must beTrue
-      val validResp = resp.asInstanceOf[ValidTokenResponse]
-      validResp.jti must_== token.get.accessToken.id
-      validResp.active must beTrue
-      validResp.gestalt_rights must beEmpty
-      validResp.gestalt_org_id must_== subOrg.id
-    }
-
-    "not validate invalid access tokens (UUID)" in {
-      val resp = await(GestaltOrg.validateToken(org.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
-      resp must_== INVALID_TOKEN
-      resp.active must beFalse
-    }
-
-    "not validate invalid access tokens (FQON)" in {
-      val resp = await(GestaltOrg.validateToken(org.fqon, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
-      resp must_== INVALID_TOKEN
-      resp.active must beFalse
-    }
-
-    "not validate invalid access tokens (global)" in {
-      val resp = await(GestaltOrg.validateToken(OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
-      resp must_== INVALID_TOKEN
-      resp.active must beFalse
-    }
-
-    "delete expired tokens on introspection" in {
-      val maybeTokenResponse = await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "letmein"))
-      maybeTokenResponse must beSome
-      maybeTokenResponse.get.tokenType must_== BEARER
-      val accessToken = maybeTokenResponse.get.accessToken
-      await(GestaltOrg.validateToken(org.fqon, accessToken)) must beAnInstanceOf[ValidTokenResponse]
-      val tokendao = TokenRepository.find(accessToken.id)
-      tokendao must beSome
-      tokendao foreach { t => TokenRepository.save(t.copy(
-        expiresAt = DateTime.now.minusMillis(1)
-      ))}
-      await(GestaltOrg.validateToken(org.fqon, accessToken)) must_== INVALID_TOKEN
-      TokenRepository.find(accessToken.id) must beNone
-    }
-
-    "not validate token if account doesn't belong to org (UUID)" in {
-      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
-      resp must_== INVALID_TOKEN
-      resp.active must beFalse
-    }
-
-    "not validate token if account doesn't belong to org (FQON)" in {
-      val resp = await(GestaltOrg.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
-      resp must_== INVALID_TOKEN
-      resp.active must beFalse
+    "fail for bound org with no membership" in {
+      val newAccount = await(GestaltOrg.createAccount(subOrg.id, GestaltAccountCreateWithRights(
+        username = "test-account",
+        firstName = "test",
+        lastName = "account",
+        credential = GestaltPasswordCredential("letmein")
+      )))
+      await(GestaltAccount.generateAPICredentials(newAccount.id, Some(rootOrg.id))) must throwA[BadRequestException]
     }
 
   }
@@ -859,8 +752,6 @@ class SDKIntegrationSpec extends PlaySpecification {
       username = "new-org-account",
       firstName = "Account",
       lastName = "InNewOrg",
-      email = "",
-      phoneNumber = "",
       groups = Some(Seq(group.id)),
       rights = Some(rights),
       credential = GestaltPasswordCredential("letmein")
@@ -874,6 +765,10 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "not issue access tokens on invalid credentials (FQON)" in {
       await(GestaltOrg.grantPasswordToken(org.fqon, account.username, "bad password")) must beNone
+    }
+
+    "cannot be exchanged for tokens using client_credentials flow" in {
+      ko("write me")
     }
 
     "issue access tokens on valid credentials (UUID)" in {
@@ -1068,8 +963,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "manual-user",
         firstName = "Manny",
         lastName = "User",
-        email = "",
-        phoneNumber = "",
         groups = None,
         credential = GestaltPasswordCredential("letmein")
       )))
@@ -1084,8 +977,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "manual-user-2",
         firstName = "Manny",
         lastName = "User",
-        email = "",
-        phoneNumber = "",
         groups = None,
         credential = GestaltPasswordCredential("letmein")
       )))
@@ -1098,8 +989,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = failAccountName,
         firstName = "Will",
         lastName = "Fail",
-        email = "",
-        phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(UUID.randomUUID())), // failure
         rights = None
@@ -1113,8 +1002,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = failAccountName,
         firstName = "Will",
         lastName = "Fail",
-        email = "",
-        phoneNumber = "",
         credential = GestaltPasswordCredential("letmein"),
         groups = None,
         rights = Some(Seq(GestaltGrantCreate(
@@ -1169,13 +1056,13 @@ class SDKIntegrationSpec extends PlaySpecification {
     lazy val newOrgAccount = await(GestaltOrg.createAccount(newOrg.id,
       GestaltAccountCreateWithRights(
         username = "new-account",
-        firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
+        firstName = "", lastName = "", credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(newOrgGroup.id)), rights = None
       )))
     lazy val subOrgAccount = await(GestaltOrg.createAccount(subOrg.id,
       GestaltAccountCreateWithRights(
         username = "sub-account",
-        firstName = "", lastName = "", email = "", phoneNumber = "", credential = GestaltPasswordCredential("letmein"),
+        firstName = "", lastName = "", credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(subOrgGroup1.id)), rights = None
       )))
     lazy val sync = await(GestaltOrg.syncOrgTree(Some(newOrg.id)))
@@ -1626,8 +1513,6 @@ class SDKIntegrationSpec extends PlaySpecification {
       username = "unmapped",
       firstName = "Bob",
       lastName = "Not-Mapped",
-      email = "",
-      phoneNumber = "",
       groups = Some(Seq(unmappedGrpFromRootDir.id)), // so we can map it below
       credential = GestaltPasswordCredential("letmein")
     )))
@@ -1716,8 +1601,6 @@ class SDKIntegrationSpec extends PlaySpecification {
       username = "new-org-account",
       firstName = "Account",
       lastName = "InNewOrg",
-      email = "",
-      phoneNumber = "",
       groups = None,
       rights = Some(Seq(GestaltGrantCreate(
         grantName = "grantA"
@@ -1777,8 +1660,6 @@ class SDKIntegrationSpec extends PlaySpecification {
         username = "wfail",
         firstName = "Will",
         lastName = "Fail",
-        email = "",
-        phoneNumber = ""  ,
         credential = GestaltPasswordCredential("letmein"),
         groups = None,
         rights = None

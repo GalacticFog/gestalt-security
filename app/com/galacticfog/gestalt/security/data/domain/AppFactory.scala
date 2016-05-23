@@ -283,14 +283,8 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           dirId = dirId,
           username = create.username,
           description = create.description,
-          email = create.email.trim match {
-            case "" => None
-            case e => Some(e)
-          },
-          phoneNumber = create.phoneNumber.trim match {
-            case "" => None
-            case p => Some(AccountFactory.canonicalE164(p))
-          },
+          email = create.email.map(_.trim).filter(!_.isEmpty),
+          phoneNumber = create.phoneNumber.map(pn => AccountFactory.canonicalE164(pn.trim)),
           firstName = create.firstName,
           lastName = create.lastName,
           hashMethod = "bcrypt",

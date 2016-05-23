@@ -59,6 +59,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val DELETE_ACCOUNT_STORE = "deleteAccountStore"
     val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
     val DELETE_TOKEN = "deleteToken"
+    val CREATE_APIKEY = "createAPIKey"
 
     val NEW_ORG_OWNER_RIGHTS = Seq(
       SUPERUSER
@@ -91,8 +92,8 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           description = uar.description,
           firstName = uar.firstName,
           lastName = uar.lastName,
-          email = uar.email getOrElse "",
-          phoneNumber = uar.phoneNumber getOrElse "",
+          email = uar.email,
+          phoneNumber = uar.phoneNumber,
           directory = dir
         )
       }
