@@ -8,7 +8,6 @@ case class APICredentialRepository(
   accountId: Any,
   issuedOrgId: Option[Any] = None,
   disabled: Boolean,
-  parentToken: Option[Any] = None,
   parentApikey: Option[Any] = None) {
 
   def save()(implicit session: DBSession = APICredentialRepository.autoSession): APICredentialRepository = APICredentialRepository.save(this)(session)
@@ -24,7 +23,7 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
 
   override val tableName = "api_credential"
 
-  override val columns = Seq("api_key", "api_secret", "account_id", "issued_org_id", "disabled", "parent_token", "parent_apikey")
+  override val columns = Seq("api_key", "api_secret", "account_id", "issued_org_id", "disabled", "parent_apikey")
 
   def apply(apicr: SyntaxProvider[APICredentialRepository])(rs: WrappedResultSet): APICredentialRepository = apply(apicr.resultName)(rs)
   def apply(apicr: ResultName[APICredentialRepository])(rs: WrappedResultSet): APICredentialRepository = new APICredentialRepository(
@@ -33,7 +32,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
     accountId = rs.any(apicr.accountId),
     issuedOrgId = rs.anyOpt(apicr.issuedOrgId),
     disabled = rs.get(apicr.disabled),
-    parentToken = rs.anyOpt(apicr.parentToken),
     parentApikey = rs.anyOpt(apicr.parentApikey)
   )
 
@@ -79,7 +77,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
     accountId: Any,
     issuedOrgId: Option[Any] = None,
     disabled: Boolean,
-    parentToken: Option[Any] = None,
     parentApikey: Option[Any] = None)(implicit session: DBSession = autoSession): APICredentialRepository = {
     withSQL {
       insert.into(APICredentialRepository).columns(
@@ -88,7 +85,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         column.accountId,
         column.issuedOrgId,
         column.disabled,
-        column.parentToken,
         column.parentApikey
       ).values(
         apiKey,
@@ -96,7 +92,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         accountId,
         issuedOrgId,
         disabled,
-        parentToken,
         parentApikey
       )
     }.update.apply()
@@ -107,7 +102,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
       accountId = accountId,
       issuedOrgId = issuedOrgId,
       disabled = disabled,
-      parentToken = parentToken,
       parentApikey = parentApikey)
   }
 
@@ -119,7 +113,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         'accountId -> entity.accountId,
         'issuedOrgId -> entity.issuedOrgId,
         'disabled -> entity.disabled,
-        'parentToken -> entity.parentToken,
         'parentApikey -> entity.parentApikey))
         SQL("""insert into api_credential(
         api_key,
@@ -127,7 +120,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         account_id,
         issued_org_id,
         disabled,
-        parent_token,
         parent_apikey
       ) values (
         {apiKey},
@@ -135,7 +127,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         {accountId},
         {issuedOrgId},
         {disabled},
-        {parentToken},
         {parentApikey}
       )""").batchByName(params: _*).apply()
     }
@@ -148,7 +139,6 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         column.accountId -> entity.accountId,
         column.issuedOrgId -> entity.issuedOrgId,
         column.disabled -> entity.disabled,
-        column.parentToken -> entity.parentToken,
         column.parentApikey -> entity.parentApikey
       ).where.eq(column.apiKey, entity.apiKey)
     }.update.apply()

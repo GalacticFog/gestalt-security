@@ -11,7 +11,6 @@ case class TokenRepository(
   refreshToken: Option[Any] = None,
   issuedOrgId: Option[Any] = None,
   tokenType: String,
-  parentToken: Option[Any] = None,
   parentApikey: Option[Any] = None) {
 
   def save()(implicit session: DBSession = TokenRepository.autoSession): TokenRepository = TokenRepository.save(this)(session)
@@ -27,7 +26,7 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
 
   override val tableName = "token"
 
-  override val columns = Seq("id", "account_id", "issued_at", "expires_at", "refresh_token", "issued_org_id", "token_type", "parent_token", "parent_apikey")
+  override val columns = Seq("id", "account_id", "issued_at", "expires_at", "refresh_token", "issued_org_id", "token_type", "parent_apikey")
 
   def apply(tr: SyntaxProvider[TokenRepository])(rs: WrappedResultSet): TokenRepository = apply(tr.resultName)(rs)
   def apply(tr: ResultName[TokenRepository])(rs: WrappedResultSet): TokenRepository = new TokenRepository(
@@ -38,7 +37,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
     refreshToken = rs.anyOpt(tr.refreshToken),
     issuedOrgId = rs.anyOpt(tr.issuedOrgId),
     tokenType = rs.get(tr.tokenType),
-    parentToken = rs.anyOpt(tr.parentToken),
     parentApikey = rs.anyOpt(tr.parentApikey)
   )
 
@@ -86,7 +84,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
     refreshToken: Option[Any] = None,
     issuedOrgId: Option[Any] = None,
     tokenType: String,
-    parentToken: Option[Any] = None,
     parentApikey: Option[Any] = None)(implicit session: DBSession = autoSession): TokenRepository = {
     withSQL {
       insert.into(TokenRepository).columns(
@@ -97,7 +94,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         column.refreshToken,
         column.issuedOrgId,
         column.tokenType,
-        column.parentToken,
         column.parentApikey
       ).values(
         id,
@@ -107,7 +103,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         refreshToken,
         issuedOrgId,
         tokenType,
-        parentToken,
         parentApikey
       )
     }.update.apply()
@@ -120,7 +115,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
       refreshToken = refreshToken,
       issuedOrgId = issuedOrgId,
       tokenType = tokenType,
-      parentToken = parentToken,
       parentApikey = parentApikey)
   }
 
@@ -134,7 +128,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         'refreshToken -> entity.refreshToken,
         'issuedOrgId -> entity.issuedOrgId,
         'tokenType -> entity.tokenType,
-        'parentToken -> entity.parentToken,
         'parentApikey -> entity.parentApikey))
         SQL("""insert into token(
         id,
@@ -144,7 +137,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         refresh_token,
         issued_org_id,
         token_type,
-        parent_token,
         parent_apikey
       ) values (
         {id},
@@ -154,7 +146,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         {refreshToken},
         {issuedOrgId},
         {tokenType},
-        {parentToken},
         {parentApikey}
       )""").batchByName(params: _*).apply()
     }
@@ -169,7 +160,6 @@ object TokenRepository extends SQLSyntaxSupport[TokenRepository] {
         column.refreshToken -> entity.refreshToken,
         column.issuedOrgId -> entity.issuedOrgId,
         column.tokenType -> entity.tokenType,
-        column.parentToken -> entity.parentToken,
         column.parentApikey -> entity.parentApikey
       ).where.eq(column.id, entity.id)
     }.update.apply()

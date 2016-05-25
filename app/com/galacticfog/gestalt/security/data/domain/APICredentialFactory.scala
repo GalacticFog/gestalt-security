@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
-import com.galacticfog.gestalt.security.data.model.APICredentialRepository
+import com.galacticfog.gestalt.security.data.model.{TokenRepository, APICredentialRepository}
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import org.postgresql.util.PSQLException
 import play.api.Logger
@@ -19,7 +19,10 @@ object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
     Try{UUID.fromString(apiKey)}.toOption flatMap APICredentialRepository.find
   }
 
-  def createAPIKey(accountId: UUID, boundOrg: Option[UUID])(implicit session: DBSession = autoSession): Try[APICredentialRepository] = {
+  def createAPIKey(accountId: UUID,
+                   boundOrg: Option[UUID],
+                   parentApiKey: Option[APICredentialRepository])
+                  (implicit session: DBSession = autoSession): Try[APICredentialRepository] = {
     Try {
       APICredentialRepository.create(
         apiKey = UUID.randomUUID(),
@@ -27,8 +30,7 @@ object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
         accountId = accountId,
         issuedOrgId = boundOrg,
         disabled = false,
-        parentToken = None,
-        parentApikey = None
+        parentApikey = parentApiKey.map(_.apiKey.asInstanceOf[UUID])
       )
     } recoverWith {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>

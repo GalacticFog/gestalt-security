@@ -60,6 +60,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val AUTHENTICATE_ACCOUNTS = "authenticateAccounts"
     val DELETE_TOKEN = "deleteToken"
     val CREATE_APIKEY = "createAPIKey"
+    val DELETE_APIKEY = "deleteAPIKey"
 
     val NEW_ORG_OWNER_RIGHTS = Seq(
       SUPERUSER

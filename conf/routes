@@ -137,6 +137,11 @@ PATCH         /rights/:rightId                                          controll
 DELETE        /accessTokens/:tokenId                                    controllers.RESTAPIController.deleteToken(tokenId: java.util.UUID)
 
 ##########################################
+# apiKeys
+##########################################
+DELETE        /apiKeys/:apiKey                                          controllers.RESTAPIController.deleteApiKey(apiKey: java.util.UUID)
+
+##########################################
 # account-store mappings
 ##########################################
 GET           /accountStores/:mapId                                     controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
