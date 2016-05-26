@@ -39,10 +39,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
 
   private[this] def requireAuthorization[T](requiredRight: String)(implicit request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]) = {
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
-    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) Forbidden(Json.toJson(ForbiddenAPIException(
+    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw new ForbiddenAPIException(
       message = "Forbidden",
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-    )))
+    )
   }
 
   def defaultBadPatch(implicit request: RequestHeader) = {
@@ -1184,30 +1184,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     case _ => None
   }
 
-  def globalTokenIssue() = Action(parse.urlFormEncoded) { implicit request =>
-    request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => GestaltHeaderAuthentication.authenticateHeader(request) match {
-        case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
-        case Some(auth) => auth.credential match {
-          case Right(token) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
-          case Left(apiKey) =>
-            val authResp = for {
-              newToken <- TokenFactory.createToken(
-                orgId = apiKey.issuedOrgId map (_.asInstanceOf[UUID]),
-                accountId = apiKey.accountId.asInstanceOf[UUID],
-                validForSeconds = defaultTokenExpiration,
-                tokenType = ACCESS_TOKEN,
-                parentApiKey = Some(apiKey)
-              )
-            } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = "")
-            renderTry[AccessTokenResponse](Ok)(authResp)
-        }
-      }
-      case Some(t) => oAuthErr(INVALID_GRANT, "global token issue endpoint only support client_credentials grant")
-      case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
-    }
-  }
-
   private def passwordGrantFlow(orgIdGen: => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
     val authTry = for {
@@ -1232,54 +1208,62 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[AccessTokenResponse](Ok)(authTry)
   }
 
-  def orgGenTokenFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
-    request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => GestaltHeaderAuthentication.authenticateHeader(request) match {
-        case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
-        case Some(auth) => auth.credential match {
-          case Right(token) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
-          case Left(apiKey) =>
-            AppFactory.findServiceAppForFQON(fqon) flatMap {app => AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])} match {
-              case None => oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
-              case Some(_) => renderTry[AccessTokenResponse](Ok)(for {
-                newToken <- TokenFactory.createToken(
-                  orgId = Some(auth.orgId),
+  private def clientCredGrantFlow(orgIdGen: APICredentialRepository => Option[UUID])
+                                 (implicit request: Request[Map[String,Seq[String]]]): Result = {
+    GestaltHeaderAuthentication.authenticateHeader(request) match {
+      case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
+      case Some(auth) => auth.credential match {
+        case Right(token) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
+        case Left(apiKey) =>
+          orgIdGen(apiKey) match {
+            case None => oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
+            case Some(orgId) =>
+              val authResp = TokenFactory.createToken(
+                  orgId = Some(orgId),
                   accountId = apiKey.accountId.asInstanceOf[UUID],
                   validForSeconds = defaultTokenExpiration,
                   tokenType = ACCESS_TOKEN,
-                  parentApiKey = Some(apiKey)
-                )
-              } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
-            }
-        }
+                  parentApiKey = Some(apiKey.id)
+                ) map {newToken => AccessTokenResponse(
+                accessToken = newToken,
+                refreshToken = None,
+                tokenType = BEARER,
+                expiresIn = defaultTokenExpiration,
+                gestalt_access_token_href = "")}
+              renderTry[AccessTokenResponse](Ok)(authResp)
+          }
       }
+    }
+  }
+
+  def globalTokenIssue() = Action(parse.urlFormEncoded) { implicit request =>
+    request.body.get("grant_type") flatMap asSingleton match {
+      case Some("client_credentials") => clientCredGrantFlow(apiKey => apiKey.issuedOrgId map (_.asInstanceOf[UUID]))
+      case Some(t) => oAuthErr(INVALID_GRANT, "global token issue endpoint only support client_credentials grant")
+      case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
+    }
+  }
+
+  def orgGenTokenFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
+    request.body.get("grant_type") flatMap asSingleton match {
+      case Some("client_credentials") => clientCredGrantFlow(apiKey => for {
+        org <- OrgFactory.findByFQON(fqon)
+        orgId = org.id.asInstanceOf[UUID]
+        app <-  AppFactory.findServiceAppForOrg(orgId)
+        appAccount <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
+      } yield orgId)
       case Some("password") => passwordGrantFlow(resolveFQON(fqon))
       case Some(t) => oAuthErr(INVALID_GRANT, "org token issue endpoints only support client_credentials and password grants")
       case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
     }
   }
 
-  def orgGenTokenUUID(orgId: java.util.UUID) = Action(parse.urlFormEncoded) { implicit request =>
+  def orgGenTokenUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
     request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => GestaltHeaderAuthentication.authenticateHeader(request) match {
-        case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
-        case Some(auth) => auth.credential match {
-          case Right(token) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
-          case Left(apiKey) =>
-            AppFactory.findServiceAppForOrg(orgId) flatMap {app => AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])} match {
-              case None => oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
-              case Some(_) => renderTry[AccessTokenResponse](Ok)(for {
-                newToken <- TokenFactory.createToken(
-                  orgId = Some(auth.orgId),
-                  accountId = apiKey.accountId.asInstanceOf[UUID],
-                  validForSeconds = defaultTokenExpiration,
-                  tokenType = ACCESS_TOKEN,
-                  parentApiKey = Some(apiKey)
-                )
-              } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
-            }
-        }
-      }
+      case Some("client_credentials") => clientCredGrantFlow(apiKey => for {
+        app <- AppFactory.findServiceAppForOrg(orgId)
+        account <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
+      } yield orgId)
       case Some("password") => passwordGrantFlow(Some(orgId))
       case Some(t) => oAuthErr(INVALID_GRANT, "org token issue endpoints only support client_credentials and password grants")
       case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
@@ -1406,14 +1390,34 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     renderTry[DeleteResult](Ok)(Success(DeleteResult(key.isDefined)))
   }
 
-  def generateAPIKey(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
-    if ( request.user.identity.id.asInstanceOf[UUID] != accountId ) requireAuthorization(CREATE_APIKEY)
-    val newKey = APICredentialFactory.createAPIKey(
-      accountId = accountId,
-      boundOrg = (request.body \ "orgId").asOpt[UUID] orElse Some(request.user.orgId),
-      parentApiKey = request.user.credential.left.toOption
-    )
-    renderTry[GestaltAPIKey](Created)(newKey)
+  def generateAPIKey(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
+    if ( request.user.identity.id != accountId ) requireAuthorization(CREATE_APIKEY)
+    val explicitOrgId = (request.body \ "orgId").asOpt[UUID]
+    val currentOrg = if (request.user.identity.id == accountId) Some(request.user.orgId) else None
+    // must have org to bind api key to
+    val orgId = explicitOrgId orElse currentOrg
+    // only generate if using api key authentication
+    val apiKey = request.user.credential.left.toOption map {_.apiKey.asInstanceOf[UUID]}
+
+    (apiKey,orgId) match {
+      case (None,_) => BadRequest(Json.toJson(BadRequestException(
+        resource = "",
+        message = "API key creation requires API key authentication",
+        developerMessage = "API key creation request must be authenticated using API keys and does not support bearer token authentication"
+      )))
+      case (Some(apiKey),None) => BadRequest(Json.toJson(BadRequestException(
+        resource = "",
+        message = "delegated API key creation requires orgId",
+        developerMessage = "API key creation on behalf of another account requires an orgId against which to bind the API key."
+      )))
+      case (Some(apiKey),Some(orgId)) =>
+        val newKey = APICredentialFactory.createAPIKey(
+          accountId = accountId,
+          boundOrg = Some(orgId),
+          parentApiKey = Some(apiKey)
+        )
+        renderTry[GestaltAPIKey](Created)(newKey)
+    }
   }
 
 }

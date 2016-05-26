@@ -21,24 +21,45 @@ object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
 
   def createAPIKey(accountId: UUID,
                    boundOrg: Option[UUID],
-                   parentApiKey: Option[APICredentialRepository])
+                   parentApiKey: Option[UUID])
                   (implicit session: DBSession = autoSession): Try[APICredentialRepository] = {
-    Try {
-      APICredentialRepository.create(
+    val newKey = boundOrg match {
+      case None => Try{APICredentialRepository.create(
         apiKey = UUID.randomUUID(),
         apiSecret = SecureIdGenerator.genId64(40),
         accountId = accountId,
-        issuedOrgId = boundOrg,
+        issuedOrgId = None,
         disabled = false,
-        parentApikey = parentApiKey.map(_.apiKey.asInstanceOf[UUID])
-      )
-    } recoverWith {
+        parentApikey = parentApiKey
+      )}
+      case Some(orgId) =>
+        (for {
+          serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+          if AccountFactory.getAppAccount(
+            appId = serviceApp.id.asInstanceOf[UUID],
+            accountId = accountId
+          ).isDefined
+        } yield orgId) match {
+          case None => Failure(BadRequestException(
+            "", "account does not belong to specified org",
+            "API key for the account cannot be bound to the specified org because the account does not belong to the org."))
+          case Some(orgId) => Try{APICredentialRepository.create(
+            apiKey = UUID.randomUUID(),
+            apiSecret = SecureIdGenerator.genId64(40),
+            accountId = accountId,
+            issuedOrgId = Some(orgId),
+            disabled = false,
+            parentApikey = parentApiKey
+          )}
+        }
+    }
+    newKey recoverWith {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
         t.getServerErrorMessage.getConstraint match {
           case "api_credential_org_id_fkey" => Failure(BadRequestException(
             resource = "",
-            message = "account is not a member of the specified org",
-            developerMessage = "The account is not a member of the specified org or the org ID does not exist."
+            message = "org does not exist",
+            developerMessage = "The bound org ID does not exist."
           ))
           case _ => Failure(t)
         }
