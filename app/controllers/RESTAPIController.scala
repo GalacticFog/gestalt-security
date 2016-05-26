@@ -231,6 +231,20 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
     }
   }
 
+  def info() = Action {
+    Ok(Json.obj(
+      "name" -> BuildInfo.name,
+      "version" -> BuildInfo.version,
+      "scalaVersion" -> BuildInfo.scalaVersion,
+      "sbtVersion" -> BuildInfo.sbtVersion,
+      "builtBy" -> BuildInfo.builtBy,
+      "gitHash" -> BuildInfo.gitHash,
+      "builtAtString" -> BuildInfo.builtAtString,
+      "builtAtMillis" ->BuildInfo.builtAtMillis,
+      "sdkVersion" -> GestaltSecurityClient.getVersion
+    ))
+  }
+
   def getCurrentOrg = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
     OrgFactory.findByOrgId(request.user.orgId) match {
       case Some(org) => Ok(Json.toJson[GestaltOrg](org))
@@ -1195,8 +1209,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         if grant_type == "password"
         username <- request.body.get("username") flatMap asSingleton
         password <- request.body.get("password") flatMap asSingleton
-      } yield GestaltBasicCredsToken(username = username, password = password))(BadRequestException("","invalid_request","Invalid content in one of required fields: `username` or `password`"))
-      account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(BadRequestException("","invalid_grant","The provided authorization grant is invalid, expired or revoked."))
+      } yield GestaltBasicCredsToken(username = username, password = password))(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `username` or `password`"))
+      account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(OAuthError(INVALID_GRANT,"The provided authorization grant is invalid, expired or revoked."))
       newToken <- TokenFactory.createToken(
         orgId = Some(orgId),
         accountId = account.id.asInstanceOf[UUID],
@@ -1239,7 +1253,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
   def globalTokenIssue() = Action(parse.urlFormEncoded) { implicit request =>
     request.body.get("grant_type") flatMap asSingleton match {
       case Some("client_credentials") => clientCredGrantFlow(apiKey => apiKey.issuedOrgId map (_.asInstanceOf[UUID]))
-      case Some(t) => oAuthErr(INVALID_GRANT, "global token issue endpoint only support client_credentials grant")
+      case Some(t) => oAuthErr(UNSUPPORTED_GRANT_TYPE, "global token issue endpoint only support client_credentials grant")
       case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
     }
   }
@@ -1253,7 +1267,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         appAccount <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
       } yield orgId)
       case Some("password") => passwordGrantFlow(resolveFQON(fqon))
-      case Some(t) => oAuthErr(INVALID_GRANT, "org token issue endpoints only support client_credentials and password grants")
+      case Some(t) => oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")
       case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
     }
   }
@@ -1265,109 +1279,55 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
         account <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
       } yield orgId)
       case Some("password") => passwordGrantFlow(Some(orgId))
-      case Some(t) => oAuthErr(INVALID_GRANT, "org token issue endpoints only support client_credentials and password grants")
+      case Some(t) => oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")
       case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
     }
   }
 
+  private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
+                               (implicit request: Request[Map[String,Seq[String]]]): Result = {
+    GestaltHeaderAuthentication.authenticateHeader(request) match {
+      case None => oAuthErr(INVALID_CLIENT,"token introspection requires client authentication")
+      case Some(auth) =>
+        val introspection = for {
+          tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+          tokenAndAccount = for {
+            token <- TokenFactory.findValidToken(tokenStr)
+            orgId <- getOrgId(token)
+            serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+            serviceAppId = serviceApp.id.asInstanceOf[UUID]
+            account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
+          } yield (token,account,serviceAppId,orgId)
+          intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
+            case (token,orgAccount,serviceAppId,orgId) => ValidTokenResponse(
+              username = orgAccount.username,
+              sub = orgAccount.href,
+              iss = "todo",
+              exp = token.expiresAt.getMillis/1000,
+              iat = token.issuedAt.getMillis/1000,
+              jti = token.id.asInstanceOf[UUID],
+              gestalt_token_href = token.href,
+              gestalt_org_id = orgId,
+              gestalt_account = orgAccount,
+              gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
+              gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
+            )
+          }
+        } yield intro
+        renderTry[TokenIntrospectionResponse](Ok)(introspection)
+    }
+  }
+
   def orgTokenIntroUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
-    val introspection = for {
-      serviceApp <- o2t(AppFactory.findServiceAppForOrg(orgId))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
-      serviceAppId = serviceApp.id.asInstanceOf[UUID]
-      tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
-      tokenAndAccount = for {
-        token <- TokenFactory.findValidToken(tokenStr)
-        account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
-      } yield (token,account)
-      intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
-        case (token,orgAccount) => ValidTokenResponse(
-          username = orgAccount.username,
-          sub = orgAccount.href,
-          iss = "todo",
-          exp = token.expiresAt.getMillis/1000,
-          iat = token.issuedAt.getMillis/1000,
-          jti = token.id.asInstanceOf[UUID],
-          gestalt_token_href = token.href,
-          gestalt_org_id = orgId,
-          gestalt_account = orgAccount,
-          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
-          gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
-        )
-      }
-    } yield intro
-    renderTry[TokenIntrospectionResponse](Ok)(introspection)
+    genericTokenIntro(_ => Some(orgId))
   }
 
   def orgTokenIntroFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
-    val introspection = for {
-      org <- o2t(OrgFactory.findByFQON(fqon))(ResourceNotFoundException("","could not location org with the specified FQON",""))
-      serviceApp <- o2t(AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]))(ResourceNotFoundException("","could not locate service app for the specified org ID",""))
-      serviceAppId = serviceApp.id.asInstanceOf[UUID]
-      tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
-      tokenAndAccount = for {
-        token <- TokenFactory.findValidToken(tokenStr)
-        account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
-      } yield (token,account)
-      intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
-        case (token,orgAccount) => ValidTokenResponse(
-          username = orgAccount.username,
-          sub = orgAccount.href,
-          iss = "todo",
-          exp = token.expiresAt.getMillis/1000,
-          iat = token.issuedAt.getMillis/1000,
-          jti = token.id.asInstanceOf[UUID],
-          gestalt_token_href = token.href,
-          gestalt_org_id = org.id.asInstanceOf[UUID],
-          gestalt_account = orgAccount,
-          gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
-          gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
-        )
-      }
-    } yield intro
-    renderTry[TokenIntrospectionResponse](Ok)(introspection)
+    genericTokenIntro( _ => OrgFactory.findByFQON(fqon) map {_.id.asInstanceOf[UUID]} )
   }
 
   def globalTokenIntro() = Action(parse.urlFormEncoded) { implicit request =>
-    val introspection = for {
-      tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(BadRequestException("","invalid_request","Invalid content in one of required fields: `token`"))
-      tokenAndAccountAndApp = for {
-        token <- TokenFactory.findValidToken(tokenStr)
-        orgId <- token.issuedOrgId map {_.asInstanceOf[UUID]}
-        serviceApp <- AppFactory.findServiceAppForOrg(orgId)
-        account <- AccountFactory.getAppAccount(serviceApp.id.asInstanceOf[UUID], token.accountId.asInstanceOf[UUID])
-      } yield (token,account,serviceApp,orgId)
-      intro = tokenAndAccountAndApp.fold[TokenIntrospectionResponse](INVALID_TOKEN){
-        case (token,orgAccount,serviceApp,orgId) =>
-          ValidTokenResponse(
-            username = orgAccount.username,
-            sub = orgAccount.href,
-            iss = "todo",
-            exp = token.expiresAt.getMillis/1000,
-            iat = token.issuedAt.getMillis/1000,
-            jti = token.id.asInstanceOf[UUID],
-            gestalt_token_href = token.href,
-            gestalt_org_id = orgId,
-            gestalt_account = orgAccount,
-            gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
-            gestalt_rights = RightGrantFactory.listAccountRights(serviceApp.id.asInstanceOf[UUID], orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
-          )
-      }
-    } yield intro
-    renderTry[TokenIntrospectionResponse](Ok)(introspection)
-  }
-
-  def info() = Action {
-    Ok(Json.obj(
-      "name" -> BuildInfo.name,
-      "version" -> BuildInfo.version,
-      "scalaVersion" -> BuildInfo.scalaVersion,
-      "sbtVersion" -> BuildInfo.sbtVersion,
-      "builtBy" -> BuildInfo.builtBy,
-      "gitHash" -> BuildInfo.gitHash,
-      "builtAtString" -> BuildInfo.builtAtString,
-      "builtAtMillis" ->BuildInfo.builtAtMillis,
-      "sdkVersion" -> GestaltSecurityClient.getVersion
-    ))
+    genericTokenIntro( token => token.issuedOrgId map {_.asInstanceOf[UUID]} )
   }
 
   def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>

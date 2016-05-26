@@ -1,3 +1,4 @@
+import com.galacticfog.gestalt.security.api.errors.OAuthError
 import play.api.libs.json.Json
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
@@ -6,6 +7,8 @@ import play.api.mvc.Results.BadRequest
   * Created by cgbaker on 5/25/16.
   */
 package object controllers {
+
+  import com.galacticfog.gestalt.security.api.json.JsonImports.oauthErrorFormat
 
   // The request is missing a required parameter, includes an
   // unsupported parameter value (other than grant type),
@@ -41,9 +44,8 @@ package object controllers {
   // authorization server.
   val UNSUPPORTED_GRANT_TYPE = "unsupported_grant_type"
 
-  def oAuthErr(error: String, error_description: String): Result = BadRequest(Json.obj(
-    "error" -> error,
-    "error_description" -> error_description
-  ))
+  def oAuthErr(error: String, error_description: String): Result = BadRequest(Json.toJson(OAuthError(
+    error, error_description
+  )))
 
 }

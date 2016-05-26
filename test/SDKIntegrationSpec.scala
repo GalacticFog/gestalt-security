@@ -4,7 +4,7 @@ import com.galacticfog.gestalt.security.{EnvConfig, Global}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ConflictException, UnauthorizedAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{OAuthError, ConflictException, UnauthorizedAPIException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository, UserAccountRepository}
 import controllers.RESTAPIController
@@ -899,6 +899,11 @@ class SDKIntegrationSpec extends PlaySpecification {
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
       validResp.gestalt_org_id must_== org.id
+    }
+
+    "require authentication for introspection" in {
+      val badSdk = tokenSdk.withCreds(GestaltBasicCredentials("bad-key","bad-secret"))
+      await(GestaltToken.validateToken(token.get.accessToken)(badSdk)) must throwA[OAuthError]
     }
 
     "validate valid access tokens (UUID) against non-generating subscribed org" in {
