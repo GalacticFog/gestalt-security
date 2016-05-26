@@ -3,11 +3,12 @@ package com.galacticfog.gestalt.security.data.model
 import scalikejdbc._
 
 case class APICredentialRepository(
-  apiKey: String,
+  apiKey: Any,
   apiSecret: String,
   accountId: Any,
-  orgId: Any,
-  disabled: Boolean) {
+  issuedOrgId: Option[Any] = None,
+  disabled: Boolean,
+  parentApikey: Option[Any] = None) {
 
   def save()(implicit session: DBSession = APICredentialRepository.autoSession): APICredentialRepository = APICredentialRepository.save(this)(session)
 
@@ -22,22 +23,23 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
 
   override val tableName = "api_credential"
 
-  override val columns = Seq("api_key", "api_secret", "account_id", "org_id", "disabled")
+  override val columns = Seq("api_key", "api_secret", "account_id", "issued_org_id", "disabled", "parent_apikey")
 
   def apply(apicr: SyntaxProvider[APICredentialRepository])(rs: WrappedResultSet): APICredentialRepository = apply(apicr.resultName)(rs)
   def apply(apicr: ResultName[APICredentialRepository])(rs: WrappedResultSet): APICredentialRepository = new APICredentialRepository(
-    apiKey = rs.get(apicr.apiKey),
+    apiKey = rs.any(apicr.apiKey),
     apiSecret = rs.get(apicr.apiSecret),
     accountId = rs.any(apicr.accountId),
-    orgId = rs.any(apicr.orgId),
-    disabled = rs.get(apicr.disabled)
+    issuedOrgId = rs.anyOpt(apicr.issuedOrgId),
+    disabled = rs.get(apicr.disabled),
+    parentApikey = rs.anyOpt(apicr.parentApikey)
   )
 
   val apicr = APICredentialRepository.syntax("apicr")
 
   override val autoSession = AutoSession
 
-  def find(apiKey: String)(implicit session: DBSession = autoSession): Option[APICredentialRepository] = {
+  def find(apiKey: Any)(implicit session: DBSession = autoSession): Option[APICredentialRepository] = {
     withSQL {
       select.from(APICredentialRepository as apicr).where.eq(apicr.apiKey, apiKey)
     }.map(APICredentialRepository(apicr.resultName)).single.apply()
@@ -70,24 +72,27 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
   }
 
   def create(
-    apiKey: String,
+    apiKey: Any,
     apiSecret: String,
     accountId: Any,
-    orgId: Any,
-    disabled: Boolean)(implicit session: DBSession = autoSession): APICredentialRepository = {
+    issuedOrgId: Option[Any] = None,
+    disabled: Boolean,
+    parentApikey: Option[Any] = None)(implicit session: DBSession = autoSession): APICredentialRepository = {
     withSQL {
       insert.into(APICredentialRepository).columns(
         column.apiKey,
         column.apiSecret,
         column.accountId,
-        column.orgId,
-        column.disabled
+        column.issuedOrgId,
+        column.disabled,
+        column.parentApikey
       ).values(
         apiKey,
         apiSecret,
         accountId,
-        orgId,
-        disabled
+        issuedOrgId,
+        disabled,
+        parentApikey
       )
     }.update.apply()
 
@@ -95,8 +100,9 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
       apiKey = apiKey,
       apiSecret = apiSecret,
       accountId = accountId,
-      orgId = orgId,
-      disabled = disabled)
+      issuedOrgId = issuedOrgId,
+      disabled = disabled,
+      parentApikey = parentApikey)
   }
 
   def batchInsert(entities: Seq[APICredentialRepository])(implicit session: DBSession = autoSession): Seq[Int] = {
@@ -105,20 +111,23 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         'apiKey -> entity.apiKey,
         'apiSecret -> entity.apiSecret,
         'accountId -> entity.accountId,
-        'orgId -> entity.orgId,
-        'disabled -> entity.disabled))
+        'issuedOrgId -> entity.issuedOrgId,
+        'disabled -> entity.disabled,
+        'parentApikey -> entity.parentApikey))
         SQL("""insert into api_credential(
         api_key,
         api_secret,
         account_id,
-        org_id,
-        disabled
+        issued_org_id,
+        disabled,
+        parent_apikey
       ) values (
         {apiKey},
         {apiSecret},
         {accountId},
-        {orgId},
-        {disabled}
+        {issuedOrgId},
+        {disabled},
+        {parentApikey}
       )""").batchByName(params: _*).apply()
     }
 
@@ -128,8 +137,9 @@ object APICredentialRepository extends SQLSyntaxSupport[APICredentialRepository]
         column.apiKey -> entity.apiKey,
         column.apiSecret -> entity.apiSecret,
         column.accountId -> entity.accountId,
-        column.orgId -> entity.orgId,
-        column.disabled -> entity.disabled
+        column.issuedOrgId -> entity.issuedOrgId,
+        column.disabled -> entity.disabled,
+        column.parentApikey -> entity.parentApikey
       ).where.eq(column.apiKey, entity.apiKey)
     }.update.apply()
     entity

@@ -1,6 +1,5 @@
 package com.galacticfog.gestalt.security
 
-import com.typesafe.config.ConfigObject
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
 import scala.collection.JavaConverters._
@@ -13,7 +12,7 @@ import play.api._
 import org.flywaydb.core.Flyway
 import org.apache.commons.dbcp2.BasicDataSource
 import play.api.Play.current
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, Json}
 import play.api.mvc.{Result, RequestHeader}
 import scala.util.{Failure, Success, Try}
 import play.api.mvc.Results._
@@ -168,6 +167,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
           message = s"PSQL error ${sql.getSQLState}, ${sql.getErrorCode}",
           developerMessage = sql.getServerErrorMessage.getMessage
         )))
+      case oauthErr: OAuthError => BadRequest(Json.toJson(oauthErr).as[JsObject] ++ Json.obj("resource" -> resource))
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
       case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
       case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))

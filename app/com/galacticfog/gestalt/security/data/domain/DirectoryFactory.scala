@@ -169,8 +169,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
             newAccount <- dir.createAccount(
               username = create.username,
               description = create.description,
-              email = if (create.email.trim.isEmpty) None else Some(create.email),
-              phoneNumber = if (create.phoneNumber.trim.isEmpty) None else Some(create.phoneNumber),
+              email = create.email.map(_.trim).filter(!_.isEmpty),
+              phoneNumber = create.phoneNumber.map(_.trim).filter(!_.isEmpty),
               firstName = create.firstName,
               lastName = create.lastName,
               cred = cred

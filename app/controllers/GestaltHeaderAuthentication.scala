@@ -4,7 +4,7 @@ import java.util.{UUID, Base64}
 import com.galacticfog.gestalt.security.api.{GestaltBearerCredentials, GestaltBasicCredentials, GestaltBasicCredsToken, GestaltAPICredentials}
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException}
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.UserAccountRepository
+import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository, UserAccountRepository}
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.json.{Json, JsValue}
@@ -76,7 +76,7 @@ trait GestaltHeaderAuthentication {
 
 object GestaltHeaderAuthentication {
 
-  case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID)
+  case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID, credential: Either[APICredentialRepository,TokenRepository])
 
   def extractAuthToken(request: RequestHeader): Option[GestaltAPICredentials] = {
     request.headers.get("Authorization") flatMap GestaltAPICredentials.getCredentials
@@ -93,11 +93,15 @@ object GestaltHeaderAuthentication {
         case GestaltBasicCredentials(apiKey,apiSecret) =>
           APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && found.disabled == false) map Left.apply
       }
-      orgId = apiCred.fold(_.orgId.asInstanceOf[UUID], _.issuedOrgId.asInstanceOf[UUID])
+      orgId <- apiCred.fold(_.issuedOrgId, _.issuedOrgId).map(_.asInstanceOf[UUID])
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)
       serviceAppId = serviceApp.id.asInstanceOf[UUID]
       account <- AccountFactory.getAppAccount(serviceAppId, apiCred.fold(_.accountId,_.accountId).asInstanceOf[UUID])
-    } yield AccountWithOrgContext(identity = account, orgId = orgId, serviceAppId = serviceAppId)
+    } yield AccountWithOrgContext(
+      identity = account,
+      orgId = orgId,
+      serviceAppId = serviceAppId,
+      credential = apiCred)
   }
 
 }

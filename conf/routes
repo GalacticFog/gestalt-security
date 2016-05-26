@@ -3,6 +3,7 @@
 # ~~~~
 
 GET           /health                                                   controllers.RESTAPIController.getHealth
+GET           /info                                                     controllers.RESTAPIController.info
 
 ##########################################
 # orgs
@@ -64,6 +65,7 @@ DELETE        /accounts/:accountId                                      controll
 GET           /accounts/:accountId/groups                               controllers.RESTAPIController.listAccountGroups(accountId: java.util.UUID)
 DELETE        /accounts/:accountId/email                                controllers.RESTAPIController.removeAccountEmail(accountId: java.util.UUID)
 DELETE        /accounts/:accountId/phoneNumber                          controllers.RESTAPIController.removeAccountPhoneNumber(accountId: java.util.UUID)
+POST          /accounts/:accountId/apiKeys                              controllers.RESTAPIController.generateAPIKey(accountId: java.util.UUID)
 
 ##########################################
 # groups
@@ -135,6 +137,11 @@ PATCH         /rights/:rightId                                          controll
 DELETE        /accessTokens/:tokenId                                    controllers.RESTAPIController.deleteToken(tokenId: java.util.UUID)
 
 ##########################################
+# apiKeys
+##########################################
+DELETE        /apiKeys/:apiKey                                          controllers.RESTAPIController.deleteApiKey(apiKey: java.util.UUID)
+
+##########################################
 # account-store mappings
 ##########################################
 GET           /accountStores/:mapId                                     controllers.RESTAPIController.getAccountStoreMapping(mapId: java.util.UUID)
@@ -143,8 +150,6 @@ DELETE        /accountStores/:mapId                                     controll
 
 # Map static resources from the /public folder to the /assets URL path
 GET           /assets/*file                                             controllers.Assets.at(path="/public", file)
-
-GET           /info                                                     controllers.RESTAPIController.info
 
 ##########################################
 # auth
@@ -155,8 +160,9 @@ POST          /orgs/:orgId/auth                                         controll
 POST          /orgs/:orgId/oauth/issue                                  controllers.RESTAPIController.orgGenTokenUUID(orgId: java.util.UUID)
 POST          /orgs/:orgId/oauth/inspect                                controllers.RESTAPIController.orgTokenIntroUUID(orgId: java.util.UUID)
 #
-POST          /auth                                                     controllers.RESTAPIController.apiAuth
+POST          /auth                                                     controllers.RESTAPIController.globalAuth
 POST          /oauth/inspect                                            controllers.RESTAPIController.globalTokenIntro
+POST          /oauth/issue                                              controllers.RESTAPIController.globalTokenIssue
 
 GET           /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>                 controllers.RESTAPIController.getOrgByFQON(fqon: String)
 POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/auth            controllers.RESTAPIController.orgAuthByFQON(fqon: String)

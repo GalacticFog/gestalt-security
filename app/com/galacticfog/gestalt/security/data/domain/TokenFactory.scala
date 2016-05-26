@@ -13,7 +13,6 @@ import scala.util.{Failure, Try}
 
 object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
 
-
   override val autoSession = AutoSession
 
   def isValid(token: TokenRepository): Boolean = token.issuedAt.isBeforeNow && token.expiresAt.isAfterNow
@@ -42,7 +41,12 @@ object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
     }
   }
 
-  def createToken(orgId: UUID, accountId: UUID, validForSeconds: Long, tokenType: TokenType)(implicit session: DBSession = autoSession): Try[TokenRepository] =
+  def createToken(orgId: Option[UUID],
+                  accountId: UUID,
+                  validForSeconds: Long,
+                  tokenType: TokenType,
+                  parentApiKey: Option[UUID])
+                 (implicit session: DBSession = autoSession): Try[TokenRepository] =
   {
     val tt = tokenType match {
       case ACCESS_TOKEN => "ACCESS"
@@ -56,7 +60,8 @@ object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
         expiresAt = now plus Duration.standardSeconds(validForSeconds),
         refreshToken = None,
         tokenType = tt,
-        issuedOrgId = orgId
+        issuedOrgId = orgId,
+        parentApikey = parentApiKey
       )
     } recoverWith {
       case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>

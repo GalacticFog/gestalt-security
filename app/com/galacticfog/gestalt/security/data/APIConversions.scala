@@ -14,8 +14,8 @@ object APIConversions {
       username = uar.username,
       firstName = uar.firstName,
       lastName = uar.lastName,
-      email = uar.email getOrElse "",
-      phoneNumber  = uar.phoneNumber getOrElse "",
+      email = uar.email,
+      phoneNumber  = uar.phoneNumber,
       directory = DirectoryFactory.find(uar.dirId.asInstanceOf[UUID]).get,
       description = uar.description
     )
@@ -99,4 +99,11 @@ object APIConversions {
   }
 
   implicit def tokenModelToApi(token: TokenRepository): GestaltToken = OpaqueToken(token.id.asInstanceOf[UUID], ACCESS_TOKEN)
+
+  implicit def apikeyModelToApi(apiKey: APICredentialRepository): GestaltAPIKey = GestaltAPIKey(
+    apiKey = apiKey.apiKey.asInstanceOf[UUID].toString,
+    apiSecret = Some(apiKey.apiSecret),
+    accountId = apiKey.accountId.asInstanceOf[UUID],
+    disabled = apiKey.disabled
+  )
 }
