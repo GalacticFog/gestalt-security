@@ -1,21 +1,37 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
+
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.model._
 import play.api.libs.json.JsResult
 import scalikejdbc._
 
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 
-object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
+trait GroupFactoryDelegate {
+  def find(groupId: UUID)(implicit session: DBSession): Option[UserGroupRepository]
+  def delete(groupId: UUID)(implicit session: DBSession): Boolean
+  def create(name: String, description: Option[String], dirId: UUID, parentOrg: UUID)(implicit session: DBSession): Try[UserGroupRepository]
+  def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Unit
+  def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Try[GroupMembershipRepository]
+  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]}
 
+object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFactoryDelegate {
+
+  def instance = this
 
   override val autoSession = AutoSession
 
   def find(groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    // TODO - for all directories, find group by ID.
     UserGroupRepository.find(groupId)
+  }
+
+  def findGroupByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Try[List[UserGroupRepository]] = {
+    // TODO - for all directories
+    Success(List.empty[UserGroupRepository])
   }
 
   def delete(groupId: UUID)(implicit session: DBSession = autoSession): Boolean = {
@@ -161,4 +177,11 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       """.map(UserGroupRepository(grp)).list.apply()
   }
 
+  def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
+    for {
+      dir <- DirectoryFactory.listByOrgId(orgId)
+      group <- dir.listOrgGroupsByName(orgId, groupName)
+    } yield group
+
+  }
 }

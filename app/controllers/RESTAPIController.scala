@@ -626,6 +626,13 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     ))
   }
 
+  def listOrgGroupsByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    requireAuthorization(READ_DIRECTORY)
+    Ok(Json.toJson[Seq[GestaltGroup]](
+      GroupFactory.listOrgGroupsByName(orgId, groupName).map { g => g: GestaltGroup }
+    ))
+  }
+
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
     AccountFactory.find(accountId) match {
       case Some(account) => Ok(Json.toJson[Seq[GestaltGroup]](

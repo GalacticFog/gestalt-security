@@ -795,15 +795,15 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val testUser3 = await(rootDir.getAccountByUsername("testAccount2")).get
   lazy val ldapDir = await(rootOrg.listDirectories()).filter { d => d.name == "LdapTestDir"}.head
 
-  "LDAP Directory" should {
-
-    "be addable to the root org" in {
-      val dir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP)))
-      ldapDir must haveName("LdapTestDir")
-      rootOrg.create
-      val rootApp = await(rootOrg.getServiceApp())
-      val asm = await(rootApp.create)
-    }
+//  "LDAP Directory" should {
+//
+//    "be addable to the root org" in {
+//      val dir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP)))
+//      ldapDir must haveName("LdapTestDir")
+//      rootOrg.create
+//      val rootApp = await(rootOrg.getServiceApp())
+//      val asm = await(rootApp.create)
+//    }
 
 //    "allow user to create sub-org with LDAP directory" in {
 //      val ldapOrg = rootOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
@@ -826,26 +826,26 @@ class SDKIntegrationSpec extends PlaySpecification {
 //      ))) must beFailedTry[GestaltAccount]
 //    }
 
-    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
-
-      val creds = GestaltBasicCredentials("newton", "password")
-      // Account must not be already shadowed
-      await(rootOrg.getAccountByUsername("newton")) must beNone
-      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
-      // Check account is shadowed
-      await(rootOrg.getAccountByUsername("newton")) must beSome
-      // Check that already shadowed account can be authenticated
-      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
-    }
-
-    "NOT allow account to authenticate against a password not in LDAP" in {
-      await(rootOrg.getAccountByUsername("einstein")) must beNone
-      await(GestaltOrg.grantPasswordToken(rootOrg.id, "einstein", "NotUsed")) must beNone
-      // Check for shadowed account
-      await(rootOrg.getAccountByUsername("einstein")) must beSome
-    }
-
-  }
+//    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
+//
+//      val creds = GestaltBasicCredentials("newton", "password")
+//      // Account must not be already shadowed
+//      await(rootOrg.getAccountByUsername("newton")) must beNone
+//      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
+//      // Check account is shadowed
+//      await(rootOrg.getAccountByUsername("newton")) must beSome
+//      // Check that already shadowed account can be authenticated
+//      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
+//    }
+//
+//    "NOT allow account to authenticate against a password not in LDAP" in {
+//      await(rootOrg.getAccountByUsername("einstein")) must beNone
+//      await(GestaltOrg.grantPasswordToken(rootOrg.id, "einstein", "NotUsed")) must beNone
+//      // Check for shadowed account
+//      await(rootOrg.getAccountByUsername("einstein")) must beSome
+//    }
+//
+//  }
 
   "Org oauth2" should {
 

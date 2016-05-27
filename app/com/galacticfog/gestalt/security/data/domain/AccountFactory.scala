@@ -16,9 +16,17 @@ import scalikejdbc._
 import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
 
-object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
+trait AccountFactoryDelegate {
+  def createAccount(dirId: UUID, username: String, description: Option[String] = None, email: Option[String] = None, phoneNumber: Option[String] = None,
+                    firstName: String, lastName: String, hashMethod: String, salt: String, secret: String, disabled: Boolean)(implicit session: DBSession): Try[UserAccountRepository]
+  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession): Option[UserAccountRepository]
+}
+
+object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with AccountFactoryDelegate {
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
+
+  def instance = this
 
   def canonicalE164(phoneNumber: String): String = {
     phoneNumber.replaceAll("[- ().]","")
@@ -76,7 +84,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     }
   }
 
-  def createAccount(dirId: UUID,
+  override def createAccount(dirId: UUID,
                     username: String,
                     description: Option[String] = None,
                     email: Option[String] = None,
@@ -239,14 +247,19 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       dir <- DirectoryFactory.find(acc.dirId.asInstanceOf[java.util.UUID])
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    Logger.warn("===> Did not find account, trying LDAPDirectories...")
     val shadowedAccounts = for {
         app <- AppFactory.findByAppId(appId).toSeq
         dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID]).filter {d => d.isInstanceOf[LDAPDirectory]}
         saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
     } yield saccount
-    authAttempt.headOption orElse shadowedAccounts.headOption
     // TODO - query all indirect LDAPDirectories
+//    val indirectAccounts = for {
+//        app <- AppFactory.findByAppId(appId).toSeq
+//        grp <- GroupFactory.listAppGroups(appId)
+//        dir <- Some(DirectoryFactory.find(grp.dirId)).toSeq
+//        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
+//    } yield saccount
+    (authAttempt.headOption orElse shadowedAccounts.headOption) // orElse indirectAccounts.headOption
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
