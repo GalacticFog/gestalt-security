@@ -190,19 +190,19 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
 object FlywayMigration {
 
+  def getDataSource(info: ScalikePostgresDBConnection) = {
+    val ds = new BasicDataSource()
+    ds.setDriverClassName(info.driver)
+    ds.setUsername(info.username)
+    ds.setPassword(info.password)
+    ds.setUrl(info.url)
+    log.info("url: " + ds.getUrl)
+    ds
+  }
+
   def migrate(info: ScalikePostgresDBConnection, clean: Boolean,
               rootUsername: String, rootPassword: String) =
   {
-    def getDataSource(info: ScalikePostgresDBConnection) = {
-      val ds = new BasicDataSource()
-      ds.setDriverClassName(info.driver)
-      ds.setUsername(info.username)
-      ds.setPassword(info.password)
-      ds.setUrl(info.url)
-      log.info("url: " + ds.getUrl)
-      ds
-    }
-
     val baseFlyway = new Flyway()
     val baseDS = getDataSource(info)
     val migLevel = Try {

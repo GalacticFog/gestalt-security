@@ -1,22 +1,18 @@
-package controllers
+package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
-import com.galacticfog.gestalt.security.EnvConfig
-import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
-import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
+
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, OAuthError, UnauthorizedAPIException}
-import com.galacticfog.gestalt.security.api.json.JsonImports._
-import com.galacticfog.gestalt.security.data.APIConversions._
+import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository, APICredentialRepository, TokenRepository}
-import org.joda.time.DateTime
-import org.specs2.matcher.{Expectable, MatchResult, Matcher}
+import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository}
+import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration}
+import controllers.InitRequest
+import org.flywaydb.core.Flyway
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
-import InitRequest.initRequestFormat
 
 class InitSpecs extends PlaySpecification {
 
@@ -26,14 +22,24 @@ class InitSpecs extends PlaySpecification {
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
 
+  def clearInit() = InitSettingsRepository.find(0) foreach {
+    _.copy(initialized = false).save()
+  }
+
   sequential
 
   step({
-      server.start()
+    server.start()
+    val connection = EnvConfig.dbConnection.get
+    val baseDS = FlywayMigration.getDataSource(connection)
+    val baseFlyway = new Flyway()
+    baseFlyway.setDataSource(baseDS)
+    baseFlyway.clean()
   })
 
   val client = WS.client(fakeApp)
 
+  // testing against /init only, so we don't need creds
   lazy implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
     wsclient = client,
     protocol = HTTP,
@@ -96,6 +102,53 @@ class InitSpecs extends PlaySpecification {
         uri = "init",
         payload = Json.toJson(InitRequest())
       )) must throwA[BadRequestException](".*already initialized.*")
+    }
+
+  }
+
+  "Re-initialization" should {
+
+    "support repasswording and return existing api keys" in {
+      clearInit()
+      val newPassword = "#*#don't Guess My New Password#*#"
+      val prevInitAccount = InitSettingsRepository.find(0).
+        flatMap {_.rootAccount}.
+        flatMap (UserAccountRepository.find) get
+      val prevApiKeyList = APICredentialFactory.findByAccountId(prevInitAccount.id.asInstanceOf[UUID])
+      prevApiKeyList must haveSize(1)
+      val prevApiKey = prevApiKeyList(0)
+      val init = await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest(
+          username = Some(initUsername),
+          password = Some(newPassword)
+        ))
+      ))
+      init must haveSize(1)
+      init(0).apiKey must_== prevApiKey.apiKey.toString
+      init(0).apiSecret must beSome(prevApiKey.apiSecret)
+      AccountFactory.checkPassword(prevInitAccount, newPassword) must beTrue
+      (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
+    }
+
+    "issue new api key if none exist" in {
+      clearInit()
+      val prevInitAccount = InitSettingsRepository.find(0).
+        flatMap {_.rootAccount}.
+        flatMap (UserAccountRepository.find).
+        get
+      APICredentialFactory.findByAccountId(prevInitAccount.id.asInstanceOf[UUID]) foreach {
+        _.destroy()
+      }
+      val init = await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest())
+      ))
+      init must haveSize(1)
+      val newApiKey = init(0)
+      newApiKey.apiSecret must beSome
+      newApiKey.accountId must_== prevInitAccount.id
+      (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }
 
   }
