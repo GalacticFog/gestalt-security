@@ -10,21 +10,18 @@ import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
 import org.joda.time.Duration
-import play.api.http.MimeTypes
 import play.api.libs.json._
 import play.api._
 import play.api.mvc._
 import scala.concurrent.ExecutionContext.Implicits.global
-import play.api.Play.current
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import OrgFactory.Rights._
-import PatchUpdate._
-
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
+import PatchUpdate._
 
-object RESTAPIController extends Controller with GestaltHeaderAuthentication {
+object RESTAPIController extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
   val defaultTokenExpiration: Long = Duration.standardHours(8).getStandardSeconds
 
@@ -43,47 +40,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication {
       message = "Forbidden",
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
-  }
-
-  def defaultBadPatch(implicit request: RequestHeader) = {
-    BadRequest(Json.toJson(BadRequestException(
-      resource = request.path,
-      message = "PATCH payload contained unsupported fields",
-      developerMessage = "The PATCH payload did not match the semantics of the resource"
-    )))
-  }
-
-  def defaultResourceNotFound(implicit request: RequestHeader) = {
-    NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "resource not found",
-      developerMessage = "Resource not found."
-    )))
-  }
-
-  case class TryRenderer[B](status: RESTAPIController.Status) {
-    def apply[A](bodyTry: Try[A])
-                (implicit request: RequestHeader,
-                 tjs : play.api.libs.json.Writes[B],
-                 c: A => B) = bodyTry match {
-      case Success(body) =>
-        status(Json.toJson(body: B))
-      case Failure(e) =>
-        Global.handleError(request, e)
-    }
-  }
-
-  def renderTry[B](status: RESTAPIController.Status) = TryRenderer[B](status)
-
-  def validateBody[T](implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): T = {
-    request.body.validate[T] match {
-      case s: JsSuccess[T] => s.get
-      case e: JsError => throw new BadRequestException(
-        resource = request.path,
-        message = "invalid payload",
-        developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object ${m.toString}"
-      )
-    }
   }
 
   ////////////////////////////////////////////////////////////////

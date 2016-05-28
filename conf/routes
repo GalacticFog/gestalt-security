@@ -5,6 +5,9 @@
 GET           /health                                                   controllers.RESTAPIController.getHealth
 GET           /info                                                     controllers.RESTAPIController.info
 
+GET           /init                                                     controllers.InitController.checkInit
+POST          /init                                                     controllers.InitController.initialize
+
 ##########################################
 # orgs
 ##########################################
