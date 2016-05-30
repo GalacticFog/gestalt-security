@@ -22,19 +22,23 @@ class InitSpecs extends PlaySpecification {
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
 
-  def clearInit() = InitSettingsRepository.find(0) foreach {
+  def clearInit() = InitSettings.getInitSettings() foreach {
     _.copy(initialized = false).save()
+  }
+
+  def clearDB() = {
+    val connection = EnvConfig.dbConnection.get
+    val baseDS = FlywayMigration.getDataSource(connection)
+    val baseFlyway = new Flyway()
+    baseFlyway.setDataSource(baseDS)
+    baseFlyway.clean()
   }
 
   sequential
 
   step({
     server.start()
-    val connection = EnvConfig.dbConnection.get
-    val baseDS = FlywayMigration.getDataSource(connection)
-    val baseFlyway = new Flyway()
-    baseFlyway.setDataSource(baseDS)
-    baseFlyway.clean()
+    clearDB()
   })
 
   val client = WS.client(fakeApp)
@@ -54,12 +58,27 @@ class InitSpecs extends PlaySpecification {
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(false)
     }
 
-    "return OK on /health while uninitialized" in {
-      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
+    "return 500 on /health while uninitialized" in {
+      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(INTERNAL_SERVER_ERROR)
     }
 
-    "return info on /info while uninitialized" in {
+    "return 200 with info on /info while uninitialized" in {
       await(client.url(s"http://localhost:${testServerPort}/info").get()).status must equalTo(OK)
+    }
+
+    "throw 400 on other requests" in {
+      val resp = await(client.url(s"http://localhost:${testServerPort}/root").get())
+      resp.status must_== BAD_REQUEST
+      resp.body must contain("not initialized")
+    }
+
+    "pre-4 initialization requires username" in {
+      await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest(
+          username = None
+        ))
+      )) must throwA[BadRequestException](".*requires username.*")
     }
 
     "allow initialization, create account and return valid API keys" in {
@@ -93,7 +112,7 @@ class InitSpecs extends PlaySpecification {
 
   "Initialized service" should {
 
-    "indicated initialized after initialization" in {
+    "indicate initialized after initialization" in {
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }
 
@@ -124,9 +143,7 @@ class InitSpecs extends PlaySpecification {
           password = Some(newPassword)
         ))
       ))
-      init must haveSize(1)
-      init(0).apiKey must_== prevApiKey.apiKey.toString
-      init(0).apiSecret must beSome(prevApiKey.apiSecret)
+      init must containTheSameElementsAs(prevApiKeyList)
       AccountFactory.checkPassword(prevInitAccount, newPassword) must beTrue
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }
@@ -148,6 +165,26 @@ class InitSpecs extends PlaySpecification {
       val newApiKey = init(0)
       newApiKey.apiSecret must beSome
       newApiKey.accountId must_== prevInitAccount.id
+      (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
+    }
+
+  }
+
+  "Init from V4+" should {
+
+    "succeed and return keys" in {
+      clearDB()
+      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      val init = await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest())
+      ))
+      init must haveSize(1)
+      val newApiKey = init(0)
+      newApiKey.apiSecret must beSome
+      AccountFactory.find(newApiKey.accountId) must beSome(
+        (uar: UserAccountRepository) => uar.username == "legacy-root"
+      )
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }
 

@@ -177,10 +177,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
       Try {
         resolveRoot
       } match {
-        case Success(orgId) if orgId.isDefined =>
+        case Success(maybeRoot) if maybeRoot.isDefined =>
           Ok("healthy")
         case Success(orgId) if orgId.isEmpty =>
-          NotFound("could not find root org; check database version")
+          InternalServerError("could not find root org; check database version")
         case Failure(ex) =>
           InternalServerError("not able to connect to database")
       }
