@@ -9,6 +9,7 @@ import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, InitSettingsRepository}
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration}
+import org.mindrot.jbcrypt.BCrypt
 import play.api._
 import play.api.libs.json._
 import play.api.mvc._
@@ -46,60 +47,98 @@ object InitController extends Controller with ControllerHelpers {
     ))
   }
 
-  private[this] def evolveFromLT4(db: ScalikePostgresDBConnection,
+  private[this] def findAccountInRoot(username: String): Try[UserAccountRepository] = for {
+    serviceApp <- Try { AppFactory.findServiceAppForFQON("root").get }
+    account <- AppFactory.getUsernameInDefaultAccountStore(serviceApp.id.asInstanceOf[UUID], username)
+  } yield account
+
+  private[this] def evolveFromBefore4(db: ScalikePostgresDBConnection,
                                   username: String,
                                   maybePassword: Option[String]): Try[UserAccountRepository] = {
     val password = maybePassword getOrElse SecureIdGenerator.genId64(40)
     FlywayMigration.migrate(db, username, password)
     for {
-      rootOrg <- Try{ OrgFactory.findByFQON("root").get }
-      rootDir <- Try { DirectoryFactory.listByOrgId(rootOrg.id.asInstanceOf[UUID]).head}
-      account <- Try {
-        val account = rootDir.lookupAccountByUsername(username).get
+      account <- findAccountInRoot(username)
+      updatedAccount <- Try {
         if (maybePassword.isEmpty) account.copy(
-          secret = ""
+          secret = "",
+          hashMethod = "disabled"
         ).save() else account
       }
-    } yield account
+    } yield updatedAccount
   }
 
   def initialize() = Action(parse.json) { implicit request =>
     // change this to a for-comprehension over Try
+    if (isInit) throw new BadRequestException("", "service already initialized", "The service is initialized")
+
     val ir = validateBody[InitRequest]
     val db = EnvConfig.dbConnection.get
     val currentVersion = FlywayMigration.currentVersion(db)
     val pre4Migration = !currentVersion.exists(_ >= 4)
-    if (isInit) throw new BadRequestException("", "service already initialized", "The service is initialized")
-    val keys = (ir.username, ir.password) match {
-      case (Some(username), maybePassword) if pre4Migration =>
-        val initAccount = evolveFromLT4(db, username, maybePassword)
-        for {
-          rootOrg <- Try{ OrgFactory.findByFQON("root").get }
-          account <- initAccount
-          key <- APICredentialFactory.createAPIKey(
-            accountId = account.id.asInstanceOf[UUID],
-            boundOrg = Some(rootOrg.id.asInstanceOf[UUID]),
-            parentApiKey = None
-          )
-        } yield Seq(key)
-      case (None,_) if pre4Migration => Failure(BadRequestException("", "/init requires username", "Initialization requires username and password."))
-      case (_,_) => Failure(???)
+
+    val maybeExistingAdmin = for {
+      settings <- InitSettings.getInitSettings().toOption
+      accountId <- settings.rootAccount
+      account <- AccountFactory.find(accountId.asInstanceOf[UUID])
+    } yield account
+
+    // get/create "root" account
+    val initAccount = (ir.username,maybeExistingAdmin) match {
+      case (Some(username),None) if pre4Migration =>
+        // schema version 4 will create admin user
+        evolveFromBefore4(db, username, ir.password)
+      case (None,_) if pre4Migration => Failure(BadRequestException(
+        resource = "",
+        message = "/init requires username",
+        developerMessage = "Initialization requires username and password."
+      ))
+      case (Some(username),None) if !pre4Migration =>
+        FlywayMigration.migrate(db, "", "")
+        findAccountInRoot(username)
+      case (None, Some(existingAdmin)) => Success(existingAdmin)
+      case (Some(username),Some(existingAdmin)) if username != existingAdmin.username => Failure(BadRequestException(
+        resource = "",
+        message = "username provided but admin user already exist",
+        developerMessage = "Initialization does not currently support modifying the admin user."
+      ))
+      case (Some(username),Some(existingAdmin)) if username == existingAdmin.username =>
+        ir.password match {
+          case None =>
+            // clear admin password
+            Try{ existingAdmin.copy(
+              secret = "",
+              hashMethod = "disabled"
+            ).save() }
+          case Some(newPassword) =>
+            // reset admin password
+            Try{ existingAdmin.copy(
+              secret = BCrypt.hashpw(newPassword, BCrypt.gensalt()),
+              hashMethod = "bcrypt"
+            ).save() }
+        }
     }
 
-    val init = for {
-      keys <- keys
+    val keys = for {
+      account <- initAccount
       init <- InitSettings.getInitSettings()
-      newInit <- Try{init.copy(
-        initialized = true,
-        rootAccount = Some(keys(0).accountId)
-      ).save()}
-    } yield newInit
-    if (init.isSuccess) initialized = true
-    init match {
-      case Success(_) =>
-        renderTry[Seq[GestaltAPIKey]](Ok)( keys map {_.map {k => (k: GestaltAPIKey)} } )
-      case Failure(err) => throw err
-    }
+      newInit <- Try{
+        init.copy(
+          initialized = true,
+          rootAccount = Some(account.id)
+        ).save()
+      }
+      rootOrg <- Try{ OrgFactory.findByFQON("root").get }
+      prevKeys = APICredentialFactory.findByAccountId(account.id.asInstanceOf[UUID])
+      apiKeys <- if (prevKeys.isEmpty) APICredentialFactory.createAPIKey(
+        accountId = account.id.asInstanceOf[UUID],
+        boundOrg = Some(rootOrg.id.asInstanceOf[UUID]),
+        parentApiKey = None
+      ).map(List(_)) else Success(prevKeys)
+    } yield apiKeys
+
+    if (keys.isSuccess) initialized = true
+    renderTry[Seq[GestaltAPIKey]](Ok)( keys map {_.map {k => (k: GestaltAPIKey)} } )
   }
 
 }

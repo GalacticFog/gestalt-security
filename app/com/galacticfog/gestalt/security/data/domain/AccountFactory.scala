@@ -65,6 +65,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
+      case "disabled" =>
+        Logger.info("Account password authenticated marked disabled")
+        false
       case "" => account.secret.equals(plaintext)
       case s: String =>
         Logger.warn("Unsupported password hash method: " + s)

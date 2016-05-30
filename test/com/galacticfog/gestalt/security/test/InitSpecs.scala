@@ -135,7 +135,6 @@ class InitSpecs extends PlaySpecification {
         flatMap (UserAccountRepository.find) get
       val prevApiKeyList = APICredentialFactory.findByAccountId(prevInitAccount.id.asInstanceOf[UUID])
       prevApiKeyList must haveSize(1)
-      val prevApiKey = prevApiKeyList(0)
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(
