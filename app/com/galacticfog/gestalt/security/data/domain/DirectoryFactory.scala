@@ -52,13 +52,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   }
 
   override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
-    account.hashMethod match {
-      case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
-      case "" => account.secret.equals(plaintext)
-      case s: String =>
-        Logger.warn("Unsupported password hash method: " + s)
-        false
-    }
+    AccountFactory.checkPassword(account, plaintext)
   }
 
   override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = None

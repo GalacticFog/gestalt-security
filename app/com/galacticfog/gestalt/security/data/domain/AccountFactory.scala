@@ -70,7 +70,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
   }
 
-  // TODO - check for deprecation or removal - moved to InternalDirectory.authenticateAccount()
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
