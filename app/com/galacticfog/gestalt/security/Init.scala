@@ -25,14 +25,12 @@ case object InitRequest {
 
 object Init extends SQLSyntaxSupport[InitSettingsRepository] {
 
-  private[this] var initialized: Boolean = checkDBInit
-
-  def isInit: Boolean = initialized
+  def isInit: Boolean = checkDBInit
 
   private[this] def checkDBInit() = {
     getInitSettings map {_.initialized} recover {
       case t: Throwable =>
-        Logger.warn("error determining initialization",t)
+        Logger.warn(s"error determining initialization: ${t.toString.replace("\n","")}")
         false
     } get
   }
@@ -122,7 +120,7 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
           ))
         }
 
-        val keys = for {
+        for {
           account <- initAccount
           init <- getInitSettings
           newInit <- Try{
@@ -139,8 +137,6 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
             parentApiKey = None
           ).map(List(_)) else Success(prevKeys)
         } yield apiKeys
-        initialized = keys.isSuccess
-        keys
     }
   }
 

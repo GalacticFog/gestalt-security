@@ -8,6 +8,7 @@ import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository}
 import com.galacticfog.gestalt.security.{Init, InitRequest, EnvConfig, FlywayMigration}
 import org.flywaydb.core.Flyway
+import play.api.Logger
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
@@ -31,14 +32,15 @@ class InitSpecs extends PlaySpecification {
     val baseDS = FlywayMigration.getDataSource(connection)
     val baseFlyway = new Flyway()
     baseFlyway.setDataSource(baseDS)
+    Logger.info("cleaning DB")
     baseFlyway.clean()
   }
 
   sequential
 
   step({
+    clearDB
     server.start()
-    clearDB()
   })
 
   val client = WS.client(fakeApp)
@@ -55,7 +57,6 @@ class InitSpecs extends PlaySpecification {
   "Service" should {
 
     "begin uninitialized" in {
-      clearDB()
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(false)
     }
 
