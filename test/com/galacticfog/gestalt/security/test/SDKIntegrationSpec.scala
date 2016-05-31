@@ -792,61 +792,6 @@ class SDKIntegrationSpec extends PlaySpecification {
 
   }
 
-  lazy val testUser3 = await(rootDir.getAccountByUsername("testAccount2")).get
-  lazy val ldapDir = await(rootOrg.listDirectories()).filter { d => d.name == "LdapTestDir"}.head
-
-//  "LDAP Directory" should {
-//
-//    "be addable to the root org" in {
-//      val dir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP)))
-//      ldapDir must haveName("LdapTestDir")
-//      rootOrg.create
-//      val rootApp = await(rootOrg.getServiceApp())
-//      val asm = await(rootApp.create)
-//    }
-
-//    "allow user to create sub-org with LDAP directory" in {
-//      val ldapOrg = rootOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
-//      val ldapDir = rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP))
-//    }
-
-//    "NOT allow a new group to be created" in {
-//      val ldapDir = await(rootOrg.listDirectories()).filter { d => d.name == "LdapTestDir"}.head
-//      await(ldapDir.createGroup(GestaltGroupCreate("testGroup3"))) must beFailedTry[GestaltGroup]
-//    }
-
-//    "NOT allow a new user to be created" in {
-//      await(ldapDir.createAccount(GestaltAccountCreate(
-//        username = "testAccount3",
-//        firstName = "test",
-//        lastName = "account3",
-//        email = "taccount3@test.com", phoneNumber = "",
-//        groups = None,
-//        credential = GestaltPasswordCredential(password = "letmein")
-//      ))) must beFailedTry[GestaltAccount]
-//    }
-
-//    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
-//
-//      val creds = GestaltBasicCredentials("newton", "password")
-//      // Account must not be already shadowed
-//      await(rootOrg.getAccountByUsername("newton")) must beNone
-//      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
-//      // Check account is shadowed
-//      await(rootOrg.getAccountByUsername("newton")) must beSome
-//      // Check that already shadowed account can be authenticated
-//      await(GestaltOrg.grantPasswordToken(rootOrg.id, creds.username, creds.password)) must beSome[AccessTokenResponse]
-//    }
-//
-//    "NOT allow account to authenticate against a password not in LDAP" in {
-//      await(rootOrg.getAccountByUsername("einstein")) must beNone
-//      await(GestaltOrg.grantPasswordToken(rootOrg.id, "einstein", "NotUsed")) must beNone
-//      // Check for shadowed account
-//      await(rootOrg.getAccountByUsername("einstein")) must beSome
-//    }
-//
-//  }
-
   "Org oauth2" should {
 
     lazy val orgName = "new-org-for-oauth"
@@ -1820,6 +1765,68 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "not be available after deletion by id" in {
       await(GestaltApp.getById(testApp.id)) must beNone
+    }
+
+  }
+
+  "LDAP Directory" should {
+
+    val config = Json.parse(
+	 """
+          {
+            "activeDirectory" : false,
+            "url" : "ldap://ldap.forumsys.com:389",
+            "searchBase" : "dc=example,dc=com",
+            "systemUsername" : "read-only-admin",
+            "systemPassword" : "password",
+            "primaryField" : "uid"
+          }
+	 """.stripMargin)
+    lazy val ldapdir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP, Some("Test LDAP"), Some(config))))
+
+    "be addable to the root org" in {
+      ldapdir must haveName("LdapTestDir")
+      await(rootOrg.listDirectories()) must contain(ldapdir)
+    }
+
+//    "allow user to create sub-org with LDAP directory" in {
+//      val ldapOrg = rootOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
+//      val ldapDir = rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP))
+//    }
+
+//    "NOT allow a new group to be created" in {
+//      await(ldapdir.createGroup(GestaltGroupCreate("testGroup3"))) must throwA[BadRequestException](".*cannot add group.*")
+//    }
+
+    "NOT allow a new user to be created" in {
+      await(ldapdir.createAccount(GestaltAccountCreate(
+        username = "testAccount3",
+        firstName = "test",
+        lastName = "account3",
+        email = Some("testuser3@test.com"), phoneNumber = None,
+        groups = None,
+        credential = GestaltPasswordCredential(password = "letmein")
+      ))) must throwA[BadRequestException](".*Account create request not valid.*")
+    }
+
+    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
+
+      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "root", "letmein"))
+       token must beSome
+       token.get.tokenType must_== BEARER
+      // Check account is shadowed
+//      await(rootOrg.getAccountByUsername("newton")) must beSome
+      // Check that already shadowed account can be authenticated
+//      val token2 = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
+//       token2 must beSome
+//       token2.get.tokenType must_== BEARER
+    }
+
+    "NOT allow account to authenticate against a password not in LDAP" in {
+      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "letmein"))
+       token must beNone
+      // Check for shadowed account
+      await(rootOrg.getAccountByUsername("einstein")) must beSome
     }
 
   }
