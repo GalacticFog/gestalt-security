@@ -1,99 +1,19 @@
 package com.galacticfog.gestalt.security
 
+import controllers.{RESTAPIController, InitController}
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
-import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.SecurityServices
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
 import com.galacticfog.gestalt.security.data.domain.DefaultAccountStoreMappingServiceImpl
 import play.api._
-import org.flywaydb.core.Flyway
-import org.apache.commons.dbcp2.BasicDataSource
 import play.api.Play.current
 import play.api.libs.json.{JsObject, Json}
-import play.api.mvc.{Result, RequestHeader}
-import scala.util.{Failure, Success, Try}
+import play.api.mvc.{Action, Handler, Result, RequestHeader}
 import play.api.mvc.Results._
 import scalikejdbc._
-
-object EnvConfig {
-  val DEFAULT_ROOT_USERNAME = "root"
-  val DEFAULT_ROOT_PASSWORD = "letmein"
-  val DEFAULT_DB_TIMEOUT: Long = 5000
-  val DEFAULT_DB_PORT: Int = 5432
-
-  def getEnvOpt(name: String): Option[String] = {
-    System.getenv(name) match {
-      case null => None
-      case empty if empty.trim.isEmpty => None
-      case okay => Some(okay)
-    }
-  }
-
-  def getEnvOpInt(name: String): Option[Int] = {
-    getEnvOpt(name) flatMap { s => Try{s.toInt}.toOption }
-  }
-
-  def getEnvOptBoolean(name: String): Option[Boolean] = {
-    getEnvOpt(name) flatMap { s => Try{s.toBoolean}.toOption }
-  }
-
-  lazy val migrateDatabase = getEnvOptBoolean("MIGRATE_DATABASE") getOrElse true
-  lazy val cleanOnMigrate = getEnvOptBoolean("CLEAN_ON_MIGRATE") getOrElse false
-  lazy val shutdownAfterMigrate = getEnvOptBoolean("SHUTDOWN_AFTER_MIGRATE") getOrElse false
-
-  lazy val rootUsername = getEnvOpt("ROOT_USERNAME") getOrElse DEFAULT_ROOT_USERNAME
-  lazy val rootPassword = getEnvOpt("ROOT_PASSWORD") getOrElse DEFAULT_ROOT_PASSWORD
-
-  private lazy val host = getEnvOpt("DATABASE_HOSTNAME")
-  private lazy val username = getEnvOpt("DATABASE_USERNAME")
-  private lazy val password = getEnvOpt("DATABASE_PASSWORD")
-  private lazy val dbname = getEnvOpt("DATABASE_NAME")
-  private lazy val port = getEnvOpt("DATABASE_PORT")
-  private lazy val timeout = getEnvOpt("DATABASE_TIMEOUT_MS")
-
-  lazy val dbConnection = {
-    log.info(EnvConfig.toString)
-    for {
-      host <- host
-      username <- username
-      password <- password
-      dbname <- dbname
-      port <- port flatMap { s => Try{s.toInt}.toOption} orElse Some(DEFAULT_DB_PORT)
-      timeout <- timeout flatMap { s => Try{s.toLong}.toOption} orElse Some(DEFAULT_DB_TIMEOUT)
-    } yield ScalikePostgresDBConnection(
-      host = host,
-      port = port,
-      database = dbname,
-      username = username,
-      password = password,
-      timeoutMs = timeout
-    )
-  }
-
-  lazy val databaseUrl = {
-    "jdbc:postgresql://%s:%s/%s?user=%s&password=%s".format(
-      host getOrElse "undefined",
-      port getOrElse 9455,
-      dbname getOrElse "undefined",
-      username getOrElse "undefined",
-      password map {_ => "*****"} getOrElse "undefined"
-    )
-  }
-
-  override def toString = {
-    s"""
-       |EnvConfig(
-       |  database = ${databaseUrl},
-       |  migrateDatabase = ${migrateDatabase},
-       |  cleanOnMigrate = ${cleanOnMigrate},
-       |  shutdownAfterMigrate = ${shutdownAfterMigrate}
-       |)
-    """.stripMargin
-  }
-}
 
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
@@ -105,6 +25,23 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     * @return a non-empty string indicating the query parameter. Popular choice is "_method"
    */
   override def overrideParameter: String = "_method"
+
+  override def onRouteRequest(request: RequestHeader): Option[Handler] = {
+    log.debug(request.toString)
+    (request.method, request.path) match {
+      case ("GET", "/init") => Some(InitController.checkInit)
+      case ("POST", "/init") => Some(InitController.initialize)
+      case ("GET", "/health") => Some(RESTAPIController.getHealth)
+      case ("GET", "/info") => Some(RESTAPIController.info)
+      case (_,_) =>
+        if (Init.isInit) super.onRouteRequest(request)
+        else Some(Action { BadRequest(Json.toJson(BadRequestException(
+          request.path,
+          message = "service it not initialized",
+          developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
+        )))})
+    }
+  }
 
   override def onError(request: RequestHeader, ex: Throwable) = {
     log.error("Global::onError", ex)
@@ -132,24 +69,11 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   override def onStart(app: Application): Unit = {
     scalikejdbc.GlobalSettings.loggingSQLErrors = false
 
-    val connection = EnvConfig.dbConnection getOrElse {
+    EnvConfig.dbConnection getOrElse {
       throw new RuntimeException("FATAL: Database configuration not found.")
     }
 
-    if (EnvConfig.migrateDatabase) {
-      log.info("Migrating databases")
-      FlywayMigration.migrate(
-        info = connection,
-        clean = EnvConfig.cleanOnMigrate,
-        rootUsername = EnvConfig.rootUsername,
-        rootPassword = EnvConfig.rootPassword
-      )
-      if (EnvConfig.shutdownAfterMigrate) {
-        log.info("Shutting because database.shutdownAfterMigrate == true")
-        Play.stop()
-        scala.sys.exit()
-      }
-    }
+    log.info(s"database url: ${EnvConfig.databaseUrl}")
   }
 
   def handleError(request: RequestHeader, e: Throwable): Result = {
@@ -188,46 +112,4 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
 }
 
-object FlywayMigration {
 
-  def migrate(info: ScalikePostgresDBConnection, clean: Boolean,
-              rootUsername: String, rootPassword: String) =
-  {
-    def getDataSource(info: ScalikePostgresDBConnection) = {
-      val ds = new BasicDataSource()
-      ds.setDriverClassName(info.driver)
-      ds.setUsername(info.username)
-      ds.setPassword(info.password)
-      ds.setUrl(info.url)
-      log.info("url: " + ds.getUrl)
-      ds
-    }
-
-    val baseFlyway = new Flyway()
-    val baseDS = getDataSource(info)
-    val migLevel = Try {
-      baseFlyway.setDataSource(baseDS)
-      baseFlyway.setLocations("classpath:db/migration/base")
-      baseFlyway.setPlaceholders(Map(
-        "root_username" -> rootUsername,
-        "root_password" -> rootPassword
-      ).asJava)
-      if (clean) {
-        log.info("cleaning database")
-        baseFlyway.clean()
-      }
-      baseFlyway.migrate()
-    }
-    if ( ! baseDS.isClosed ) try {
-      baseDS.close()
-    } catch {
-      case e: Throwable => log.error("error closing base datasource",e)
-    }
-    migLevel match {
-      case Success(l) => log.info(s"Base DB migrated ${l} levels")
-      case Failure(ex) => throw ex
-    }
-
-  }
-
-}

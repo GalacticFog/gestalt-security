@@ -1,23 +1,22 @@
+package com.galacticfog.gestalt.security.test
+
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.{EnvConfig, Global}
+import com.galacticfog.gestalt.security.{FlywayMigration, EnvConfig, InitRequest}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{OAuthError, ConflictException, UnauthorizedAPIException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, OAuthError, UnauthorizedAPIException}
+import com.galacticfog.gestalt.security.api.json.JsonImports._
+import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository, UserAccountRepository}
-import controllers.RESTAPIController
+import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository}
+import org.flywaydb.core.Flyway
 import org.joda.time.DateTime
-import org.specs2.execute.{Results, Result}
-import org.specs2.matcher.{MatchResult, Expectable, Matcher, ValueCheck, ValueChecks}
-import org.specs2.specification.Fragments
-import play.api.Logger
+import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
-import com.galacticfog.gestalt.security.data.APIConversions._
-import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 class SDKIntegrationSpec extends PlaySpecification {
 
@@ -36,10 +35,18 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
   }
 
+  def clearDB() = {
+    val connection = EnvConfig.dbConnection.get
+    val baseDS = FlywayMigration.getDataSource(connection)
+    val baseFlyway = new Flyway()
+    baseFlyway.setDataSource(baseDS)
+    baseFlyway.clean()
+  }
+
   // default credentials on flyway are
-  val ru = EnvConfig.DEFAULT_ROOT_USERNAME
-  val rp = EnvConfig.DEFAULT_ROOT_PASSWORD
-  val rootCreds = GestaltBasicCredentials(ru,rp)
+  val rootUsername = "root-user"
+  val rootPassword = "root password123"
+  val rootAccountCreds = GestaltBasicCredentials(rootUsername,rootPassword)
 
   lazy val fakeApp = FakeApplication()
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
@@ -48,14 +55,15 @@ class SDKIntegrationSpec extends PlaySpecification {
   sequential
 
   step({
-      server.start()
+    server.start()
+    clearDB()
   })
 
   val client = WS.client(fakeApp)
 
   lazy val rootOrg: GestaltOrg = OrgFactory.getRootOrg().get
   lazy val daoRootDir: Directory = DirectoryFactory.listByOrgId(rootOrg.id).head
-  lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(ru).get
+  lazy val rootAccount: GestaltAccount = daoRootDir.lookupAccountByUsername(rootUsername).get
   lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroupByName("admins").get
   val rootPhone = "+1.505.867.5309"
   val rootEmail = "root@root"
@@ -64,26 +72,27 @@ class SDKIntegrationSpec extends PlaySpecification {
   lazy val rootAccessToken = TokenFactory.createToken(Some(rootOrg.id), rootAccount.id, 28800, ACCESS_TOKEN, None).get
   lazy val rootBearerCreds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
 
-  lazy val rootApiKey = APICredentialFactory.createAPIKey(
-    accountId = rootAccount.id.asInstanceOf[UUID],
-    boundOrg = Some(rootOrg.id),
-    parentApiKey = None
-  ).get
-  lazy val rootBasicCreds = GestaltBasicCredentials(rootApiKey.apiKey.toString, rootApiKey.apiSecret)
+  lazy val rootApiKey = await(client.url(s"http://localhost:${testServerPort}/init").post(
+    Json.toJson(InitRequest(
+      username = Some(rootUsername),
+      password = Some(rootPassword)
+    )))).json.as[Seq[GestaltAPIKey]].head
 
-  lazy implicit val tokenSdk: GestaltSecurityClient = GestaltSecurityClient(
+  lazy val rootApiCreds = GestaltBasicCredentials(rootApiKey.apiKey, rootApiKey.apiSecret.get)
+
+  lazy val tokenSdk: GestaltSecurityClient = GestaltSecurityClient(
     wsclient = client,
     protocol = HTTP,
     hostname = "localhost",
     port = testServerPort,
     creds = rootBearerCreds
   )
-  lazy val keySdk: GestaltSecurityClient = GestaltSecurityClient(
+  lazy implicit val keySdk: GestaltSecurityClient = GestaltSecurityClient(
     wsclient = client,
     protocol = HTTP,
     hostname = "localhost",
     port = testServerPort,
-    creds = rootBasicCreds
+    creds = rootApiCreds
   )
 
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
@@ -91,11 +100,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Service" should {
 
     "return OK on /health" in {
-      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
+      await(keySdk.client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
     }
 
     "return info on /info" in {
-      val resp = await(client.url(s"http://localhost:${testServerPort}/info").get())
+      val resp = await(keySdk.client.url(s"http://localhost:${testServerPort}/info").get())
       resp.status must equalTo(OK)
     }
 
@@ -131,13 +140,13 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "not perform framework authorization with username,password credentials" in {
       // against implicit root org
-      val auth1 = await(GestaltOrg.authorizeFrameworkUser(rootCreds))
+      val auth1 = await(GestaltOrg.authorizeFrameworkUser(rootAccountCreds))
       auth1 must beNone
       // against explicit root org
-      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, rootCreds))
+      val auth2 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.fqon, rootAccountCreds))
       auth2 must beNone
       // against explicit org id
-      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, rootCreds))
+      val auth3 = await(GestaltOrg.authorizeFrameworkUser(rootOrg.id, rootAccountCreds))
       auth3 must beNone
     }
 
@@ -185,7 +194,7 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Root app" should {
 
     lazy val rootApp: GestaltApp = AppFactory.findServiceAppForOrg(rootOrg.id).get
-    lazy val appAuth = await(GestaltApp.authorizeUser(rootApp.id, GestaltBasicCredsToken(ru,rp))).get
+    lazy val appAuth = await(GestaltApp.authorizeUser(rootApp.id, GestaltBasicCredsToken(rootUsername,rootPassword))).get
 
     "be accessible from root org endpoint" in {
       await(rootOrg.getServiceApp) must_== rootApp
@@ -201,7 +210,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "returns same rights as auth" in {
-      await(GestaltApp.listAccountGrantsByUsername(rootApp.id, "root") ) must containTheSameElementsAs(appAuth.rights)
+      await(GestaltApp.listAccountGrantsByUsername(rootApp.id, rootAccount.username) ) must containTheSameElementsAs(appAuth.rights)
       await(GestaltApp.listAccountGrants(rootApp.id, appAuth.account.id)) must containTheSameElementsAs(appAuth.rights)
     }
 
@@ -832,7 +841,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "cannot be exchanged for tokens using client_credentials flow" in {
-      val ar = await(GestaltToken.grantClientToken())
+      val ar = await(GestaltToken.grantClientToken()(tokenSdk))
       ar must beNone
     }
 

@@ -13,6 +13,7 @@ import scala.util.{Failure, Try}
 
 object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
 
+
   override val autoSession = AutoSession
 
   def findByAPIKey(apiKey: String)(implicit session: DBSession = autoSession): Option[APICredentialRepository] = {
@@ -65,5 +66,10 @@ object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
         }
     }
   }
+
+  def findByAccountId(accountId: UUID)(implicit session: DBSession = autoSession): List[APICredentialRepository] = {
+    APICredentialRepository.findAllBy(sqls"account_id = ${accountId}")
+  }
+
 
 }

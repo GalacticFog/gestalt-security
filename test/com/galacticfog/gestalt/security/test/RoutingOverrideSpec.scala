@@ -1,14 +1,14 @@
+package com.galacticfog.gestalt.security.test
+
 import com.galacticfog.gestalt.security.GlobalWithMethodOverriding
 import org.junit.runner._
 import org.specs2.mutable._
 import org.specs2.runner._
 import play.api.libs.ws.WS
 import play.api.mvc.Action
-import play.api.test._
-import play.api.test.Helpers._
 import play.api.mvc.Results._
-
-import scala.concurrent.Await
+import play.api.test.Helpers._
+import play.api.test._
 
 /**
  * Add your spec here.
