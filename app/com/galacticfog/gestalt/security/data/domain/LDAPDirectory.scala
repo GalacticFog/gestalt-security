@@ -60,7 +60,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     val sep = if (searchBase.startsWith(",")) "" else ","
     val dn = primaryField + "=" + account.username + sep + searchBase
     val token = new UsernamePasswordToken(dn, plaintext)
-    Logger.info(s"Attempting: LDAP authentication of ${account.username}")
+    Logger.info(s"Attempting: LDAP authentication of DN: ${dn}")
     try {
       val subject: Subject = SecurityUtils.getSubject
       subject.login(token)
@@ -101,8 +101,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
       val constraints = new SearchControls()
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
-      Logger.info(s"Attempting: LDAP lookupAccountByPrimary - search of ${primary}")
-      val answer: NamingEnumeration[SearchResult] = context.search(searchBase, primaryField + "=" + primary, constraints)
+      Logger.info(s"Attempting: LDAP lookupAccountByPrimary - search of DN: ${searchdn}")
+      val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
 
       if (answer.hasMore()) {
         val current = answer.next()
@@ -209,7 +209,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   }
 
   private def findAccountByUsername(username: String): Option[UserAccountRepository] = {
-    UserAccountRepository.findBy(sqls"dir_id = ${this.id} and name = ${username}")
+    UserAccountRepository.findBy(sqls"dir_id = ${this.id} and username = ${username}")
   }
 
   private def findGroupsByName(groupname: String): List[UserGroupRepository] = {

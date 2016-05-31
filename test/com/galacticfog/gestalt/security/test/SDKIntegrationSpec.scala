@@ -1811,26 +1811,19 @@ class SDKIntegrationSpec extends PlaySpecification {
 
     "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
 
-//      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
-//      token must beSome
-//      token.get.tokenType must_== BEARER
-//      // Check account is shadowed
+      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
+       token must beSome
+      // Check account is shadowed
 //      await(rootOrg.getAccountByUsername("newton")) must beSome
-//      // Check that already shadowed account can be authenticated
-//      val token2 = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
-//      token2 must beSome
-//      token2.get.tokenType must_== BEARER
-
-      ko("fix these tests")
-    }.pendingUntilFixed
+      // Check that already shadowed account can be authenticated
+      val token2 = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
+       token2 must beSome
+    }
 
     "NOT allow account to authenticate against a password not in LDAP" in {
-//      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "letmein"))
-//      token must beNone
-//      // Check for shadowed account
-//      await(rootOrg.getAccountByUsername("einstein")) must beSome
-      ko("fix these tests")
-    }.pendingUntilFixed
+      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "einstein", "letmein"))
+       token must beNone
+    }
 
   }
 
