@@ -96,11 +96,8 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
           case (Some(username),Some(existingAdmin)) if username == existingAdmin.username =>
             ir.password match {
               case None =>
-                // clear admin password
-                Try{ existingAdmin.copy(
-                  secret = "",
-                  hashMethod = "disabled"
-                ).save() }
+                // don't clear admin password, leave it be
+                Success(existingAdmin)
               case Some(newPassword) =>
                 // reset admin password
                 Try{ existingAdmin.copy(
