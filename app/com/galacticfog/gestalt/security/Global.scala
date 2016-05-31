@@ -34,7 +34,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case ("GET", "/health") => Some(RESTAPIController.getHealth)
       case ("GET", "/info") => Some(RESTAPIController.info)
       case (_,_) =>
-        if (InitController.initialized) super.onRouteRequest(request)
+        if (Init.isInit) super.onRouteRequest(request)
         else Some(Action { BadRequest(Json.toJson(BadRequestException(
           request.path,
           message = "service it not initialized",

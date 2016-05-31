@@ -6,8 +6,7 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository}
-import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration}
-import controllers.InitRequest
+import com.galacticfog.gestalt.security.{Init, InitRequest, EnvConfig, FlywayMigration}
 import org.flywaydb.core.Flyway
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
@@ -23,7 +22,7 @@ class InitSpecs extends PlaySpecification {
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
 
-  def clearInit() = InitSettings.getInitSettings() foreach {
+  def clearInit() = Init.getInitSettings foreach {
     _.copy(initialized = false).save()
   }
 
@@ -59,8 +58,10 @@ class InitSpecs extends PlaySpecification {
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(false)
     }
 
-    "return 500 on /health while uninitialized" in {
-      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(INTERNAL_SERVER_ERROR)
+    "return 400 on /health while uninitialized" in {
+      val resp = await(client.url(s"http://localhost:${testServerPort}/health").get())
+      resp.status must equalTo(BAD_REQUEST)
+      resp.body must contain("not initialized")
     }
 
     "return 200 with info on /info while uninitialized" in {
@@ -189,7 +190,7 @@ class InitSpecs extends PlaySpecification {
         payload = Json.toJson(InitRequest(
           username = Some("not-legacy-root")
         ))
-      )) must throwA[BadRequestException](".*username required.*")
+      )) must throwA[BadRequestException](".*invalid username.*")
     }
 
     "succeed and return keys" in {

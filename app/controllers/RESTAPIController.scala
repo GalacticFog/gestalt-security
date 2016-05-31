@@ -4,7 +4,7 @@ import java.util.UUID
 import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.{BuildInfo, Global}
+import com.galacticfog.gestalt.security.{Init, BuildInfo, Global}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
@@ -181,6 +181,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
           Ok("healthy")
         case Success(orgId) if orgId.isEmpty =>
           InternalServerError("could not find root org; check database version")
+        case Failure(_) if Init.isInit == false =>
+          BadRequest("server not initialized")
         case Failure(ex) =>
           InternalServerError("not able to connect to database")
       }
