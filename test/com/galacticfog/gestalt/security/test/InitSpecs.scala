@@ -55,6 +55,7 @@ class InitSpecs extends PlaySpecification {
   "Service" should {
 
     "begin uninitialized" in {
+      clearDB()
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(false)
     }
 
@@ -98,6 +99,36 @@ class InitSpecs extends PlaySpecification {
       val initAccount = AccountFactory.find(init(0).accountId)
       initAccount must beSome((u: UserAccountRepository) => u.username == initUsername)
       AccountFactory.checkPassword(initAccount.get, initPassword) must beTrue
+      InitSettingsRepository.find(0) must beSome((init: InitSettingsRepository) =>
+        init.rootAccount exists (_ == initAccount.get.id)
+      )
+      val newSdk = sdk.withCreds(
+        GestaltBasicCredentials(init(0).apiKey, init(0).apiSecret.get)
+      )
+      await(GestaltAccount.getSelf()(newSdk)).username must_== initUsername
+      val rootOrg = await(GestaltOrg.getCurrentOrg()(newSdk))
+      val auth = await(GestaltOrg.authorizeFrameworkUser(newSdk.creds))
+      auth must beSome
+    }
+
+    "allow initialization with password disabled" in {
+      clearDB()
+      val initUsername = "init-user"
+      val initPassword = "init password123"
+      val init = await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest(
+          username = Some(initUsername),
+          password = None
+        ))
+      ))
+      init must haveSize(1)
+      init(0).apiSecret must beSome
+      val initAccount = AccountFactory.find(init(0).accountId)
+      initAccount must beSome((u: UserAccountRepository) =>
+        u.username == initUsername && u.hashMethod == "disabled" && u.secret.isEmpty
+      )
+      AccountFactory.checkPassword(initAccount.get, "") must beFalse
       InitSettingsRepository.find(0) must beSome((init: InitSettingsRepository) =>
         init.rootAccount exists (_ == initAccount.get.id)
       )
@@ -193,7 +224,7 @@ class InitSpecs extends PlaySpecification {
       )) must throwA[BadRequestException](".*invalid username.*")
     }
 
-    "succeed and return keys" in {
+    "succeed and return keys and not clear password" in {
       clearDB()
       FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
       val init = await(sdk.post[Seq[GestaltAPIKey]](
@@ -205,8 +236,9 @@ class InitSpecs extends PlaySpecification {
       init must haveSize(1)
       val newApiKey = init(0)
       newApiKey.apiSecret must beSome
-      AccountFactory.find(newApiKey.accountId) must beSome(
-        (uar: UserAccountRepository) => uar.username == "legacy-root"
+      val initAccount = AccountFactory.find(newApiKey.accountId)
+      initAccount must beSome(
+        (uar: UserAccountRepository) => uar.username == "legacy-root" && uar.hashMethod == "bcrypt" && !uar.secret.isEmpty
       )
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }

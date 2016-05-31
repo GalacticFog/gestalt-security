@@ -2,7 +2,7 @@ package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.InitRequest
+import com.galacticfog.gestalt.security.{FlywayMigration, EnvConfig, InitRequest}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
@@ -11,6 +11,7 @@ import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository}
+import org.flywaydb.core.Flyway
 import org.joda.time.DateTime
 import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import play.api.libs.json.Json
@@ -34,6 +35,14 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
   }
 
+  def clearDB() = {
+    val connection = EnvConfig.dbConnection.get
+    val baseDS = FlywayMigration.getDataSource(connection)
+    val baseFlyway = new Flyway()
+    baseFlyway.setDataSource(baseDS)
+    baseFlyway.clean()
+  }
+
   // default credentials on flyway are
   val rootUsername = "root-user"
   val rootPassword = "root password123"
@@ -46,7 +55,8 @@ class SDKIntegrationSpec extends PlaySpecification {
   sequential
 
   step({
-      server.start()
+    server.start()
+    clearDB()
   })
 
   val client = WS.client(fakeApp)
@@ -90,11 +100,11 @@ class SDKIntegrationSpec extends PlaySpecification {
   "Service" should {
 
     "return OK on /health" in {
-      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
+      await(keySdk.client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
     }
 
     "return info on /info" in {
-      val resp = await(client.url(s"http://localhost:${testServerPort}/info").get())
+      val resp = await(keySdk.client.url(s"http://localhost:${testServerPort}/info").get())
       resp.status must equalTo(OK)
     }
 
@@ -200,7 +210,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "returns same rights as auth" in {
-      await(GestaltApp.listAccountGrantsByUsername(rootApp.id, "root") ) must containTheSameElementsAs(appAuth.rights)
+      await(GestaltApp.listAccountGrantsByUsername(rootApp.id, rootAccount.username) ) must containTheSameElementsAs(appAuth.rights)
       await(GestaltApp.listAccountGrants(rootApp.id, appAuth.account.id)) must containTheSameElementsAs(appAuth.rights)
     }
 
@@ -831,7 +841,7 @@ class SDKIntegrationSpec extends PlaySpecification {
     }
 
     "cannot be exchanged for tokens using client_credentials flow" in {
-      val ar = await(GestaltToken.grantClientToken())
+      val ar = await(GestaltToken.grantClientToken()(tokenSdk))
       ar must beNone
     }
 
