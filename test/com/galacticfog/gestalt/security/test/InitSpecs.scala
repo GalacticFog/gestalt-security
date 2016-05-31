@@ -13,6 +13,7 @@ import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
+import com.galacticfog.gestalt.security.data.APIConversions._
 
 class InitSpecs extends PlaySpecification {
 
@@ -130,10 +131,9 @@ class InitSpecs extends PlaySpecification {
     "support repasswording and return existing api keys" in {
       clearInit()
       val newPassword = "#*#don't Guess My New Password#*#"
-      val prevInitAccount = InitSettingsRepository.find(0).
-        flatMap {_.rootAccount}.
-        flatMap (UserAccountRepository.find) get
-      val prevApiKeyList = APICredentialFactory.findByAccountId(prevInitAccount.id.asInstanceOf[UUID])
+      val prevAdminAccountId = InitSettingsRepository.find(0).
+        flatMap {_.rootAccount} map {_.asInstanceOf[UUID]} get
+      val prevApiKeyList = APICredentialFactory.findByAccountId(prevAdminAccountId) map {k => k: GestaltAPIKey}
       prevApiKeyList must haveSize(1)
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
@@ -143,7 +143,8 @@ class InitSpecs extends PlaySpecification {
         ))
       ))
       init must containTheSameElementsAs(prevApiKeyList)
-      AccountFactory.checkPassword(prevInitAccount, newPassword) must beTrue
+      val prevAdminAccount = AccountFactory.find(prevAdminAccountId).get
+      AccountFactory.checkPassword(prevAdminAccount, newPassword) must beTrue
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
     }
 
@@ -171,12 +172,34 @@ class InitSpecs extends PlaySpecification {
 
   "Init from V4+" should {
 
+    "require username" in {
+      clearDB()
+      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest())
+      )) must throwA[BadRequestException](".*username required.*")
+    }
+
+    "require valid username" in {
+      clearDB()
+      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      await(sdk.post[Seq[GestaltAPIKey]](
+        uri = "init",
+        payload = Json.toJson(InitRequest(
+          username = Some("not-legacy-root")
+        ))
+      )) must throwA[BadRequestException](".*username required.*")
+    }
+
     "succeed and return keys" in {
       clearDB()
       FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
-        payload = Json.toJson(InitRequest())
+        payload = Json.toJson(InitRequest(
+          username = Some("legacy-root")
+        ))
       ))
       init must haveSize(1)
       val newApiKey = init(0)

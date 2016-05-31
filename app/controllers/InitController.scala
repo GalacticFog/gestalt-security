@@ -88,20 +88,12 @@ object InitController extends Controller with ControllerHelpers {
       case (Some(username),None) if pre4Migration =>
         // schema version 4 will create admin user
         evolveFromBefore4(db, username, ir.password)
-      case (None,_) if pre4Migration => Failure(BadRequestException(
-        resource = "",
-        message = "/init requires username",
-        developerMessage = "Initialization requires username and password."
-      ))
       case (Some(username),None) if !pre4Migration =>
         FlywayMigration.migrate(db, "", "")
         findAccountInRoot(username)
-      case (None, Some(existingAdmin)) => Success(existingAdmin)
-      case (Some(username),Some(existingAdmin)) if username != existingAdmin.username => Failure(BadRequestException(
-        resource = "",
-        message = "username provided but admin user already exist",
-        developerMessage = "Initialization does not currently support modifying the admin user."
-      ))
+      case (None, Some(existingAdmin)) =>
+        FlywayMigration.migrate(db, "", "")
+        Success(existingAdmin)
       case (Some(username),Some(existingAdmin)) if username == existingAdmin.username =>
         ir.password match {
           case None =>
@@ -117,6 +109,21 @@ object InitController extends Controller with ControllerHelpers {
               hashMethod = "bcrypt"
             ).save() }
         }
+      case (None,_) if pre4Migration => Failure(BadRequestException(
+        resource = "",
+        message = "initialization requires username",
+        developerMessage = "Initialization requires username and password."
+      ))
+      case (Some(username),Some(existingAdmin)) if username != existingAdmin.username => Failure(BadRequestException(
+        resource = "",
+        message = "username provided but admin user already exist",
+        developerMessage = "Initialization does not currently support modifying the admin user."
+      ))
+      case (None,None) => Failure(BadRequestException(
+        resource = "",
+        message = "username required to establish admin user",
+        developerMessage = "There is no registered admin user, so the username of the desired user is necessary to establish one."
+      ))
     }
 
     val keys = for {
