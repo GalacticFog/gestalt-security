@@ -16,17 +16,17 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
   override val autoSession = AutoSession
 
-  def recoverRightGrantCreate: PartialFunction[Throwable, Try[RightGrantRepository]] = _ match {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
-        t.getServerErrorMessage.getConstraint match {
-          case "right_grant_name_nonempty" => Failure(BadRequestException(
-            resource = "",
-            message = "right grant must be non-empty without leading or trailing spaces",
-            developerMessage = "Right grant name may not have leading or trailing spaces, and must be non-empty."
-          ))
-          case _ => Failure(t)
-        }
-    }
+  def recoverRightGrantCreate: PartialFunction[Throwable, Try[RightGrantRepository]] = {
+    case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      t.getServerErrorMessage.getConstraint match {
+        case "right_grant_name_nonempty" => Failure(BadRequestException(
+          resource = "",
+          message = "right grant must be non-empty without leading or trailing spaces",
+          developerMessage = "Right grant name may not have leading or trailing spaces, and must be non-empty."
+        ))
+        case _ => Failure(t)
+      }
+  }
 
   def addRightToGroup(appId: UUID,
                       groupId: UUID,

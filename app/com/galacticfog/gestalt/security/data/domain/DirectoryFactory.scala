@@ -1,15 +1,17 @@
 package com.galacticfog.gestalt.security.data.domain
 
-import com.galacticfog.gestalt.security.api.{GestaltGroupCreate, GestaltDirectoryCreate, GestaltPasswordCredential, GestaltAccountCreate}
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, BadRequestException, ConflictException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.{GestaltAccountCreate, GestaltDirectoryCreate, GestaltGroupCreate, GestaltPasswordCredential}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
 import org.mindrot.jbcrypt.BCrypt
-import play.api.libs.json.Json
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
+
 import com.galacticfog.gestalt.security.data.model._
 
-import scala.util.{Success, Failure, Try}
+import play.api.Logger
+
+import scala.util.{Failure, Success, Try}
 
 trait Directory {
   def createAccount(username: String,
@@ -20,6 +22,8 @@ trait Directory {
                     phoneNumber: Option[String],
                     cred: GestaltPasswordCredential): Try[UserAccountRepository]
 
+  def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean
+  def lookupAccountByPrimary(primary: String): Option[UserAccountRepository]
   def lookupAccountByUsername(username: String): Option[UserAccountRepository]
   def lookupGroupByName(groupName: String): Option[UserGroupRepository]
 
@@ -34,6 +38,7 @@ trait Directory {
   def getGroupById(groupId: UUID): Option[UserGroupRepository]
 
   def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository]
+  def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository]
 }
 
 case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
@@ -46,9 +51,16 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     AccountFactory.disableAccount(accountId)
   }
 
+  override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
+    AccountFactory.checkPassword(account, plaintext)
+  }
+
+  override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = None
+
+
   override def lookupAccountByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
 
-  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = GroupFactory.directoryLookup(id, groupName)
+  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
   override def getGroupById(groupId: UUID) = {
     GroupFactory.find(groupId) flatMap { grp =>
@@ -78,13 +90,22 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
       disabled = false
     )
   }
+
+  override def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository] = {
+    UserGroupRepository.findAllBy(sqls"org_id = ${orgId} and name = ${groupName}")
+  }
 }
+
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
   implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): Directory = {
     daoDir.directoryType.toUpperCase match {
       case "INTERNAL" => InternalDirectory(daoDir)
+      case "LDAP" =>
+        // TODO - Use plugin / adapter to get classname
+        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
+        ldapClass.newInstance(daoDir, AccountFactory.instance, GroupFactory.instance).asInstanceOf[LDAPDirectory]
       case _ => throw new BadRequestException(
         resource = s"/directories/${daoDir.id}",
         message = "invalid directory type",
@@ -121,26 +142,13 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       ))
       case None =>
         {
-          create.config flatMap {c => (c \ "directoryType").asOpt[String]} match {
-            case None =>
-              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER('INTERNAL')") match {
-                case None => Failure(UnknownAPIException(
-                  code = 500,
-                  resource = s"/orgs/${orgId}/directories",
-                  message = "default directory type INTERNAL not found",
-                  developerMessage = "A directory type not specified during directory create request, and the default directory type was not available."
-                ))
-                case Some(dirType) => Success(dirType.name.toUpperCase)
-              }
-            case Some(createType) =>
-              GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${createType})") match {
-                case None => Failure(BadRequestException(
-                  resource = s"/orgs/${orgId}/directories",
-                  message = "directory type not valid",
-                  developerMessage = "During directory creation, the requested directory type was not valid."
-                ))
-                case Some(dirType) => Success(dirType.name.toUpperCase)
-              }
+          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${create.directoryType.label})") match {
+            case None => Failure(BadRequestException(
+              resource = s"/orgs/${orgId}/directories",
+              message = s"directory type ${create.directoryType} not valid",
+              developerMessage = s"During directory creation, the requested directory type ${create.directoryType} was not valid."
+            ))
+            case Some(dirType) => Success(dirType.name.toUpperCase)
           }
         } map { directoryType =>
           GestaltDirectoryRepository.create(
@@ -195,9 +203,9 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       ))
       case Some(dir) => GroupFactory.create(
         name = create.name,
+        description = create.description,
         dirId = dir.id.asInstanceOf[UUID],
-        parentOrg = dir.orgId.asInstanceOf[UUID],
-        description = create.description
+        parentOrg = dir.orgId.asInstanceOf[UUID]
       )
     }
   }

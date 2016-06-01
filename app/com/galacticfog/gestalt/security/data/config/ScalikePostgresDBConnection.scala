@@ -20,7 +20,7 @@ class ScalikePostgresDBConnection(override val host: String,
   )
 
   ConnectionPool.singleton(url, username, password, settings)
-  println("IS-INITIALIZED : " + ConnectionPool.isInitialized())
+  println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
 }
 
 object ScalikePostgresDBConnection {
