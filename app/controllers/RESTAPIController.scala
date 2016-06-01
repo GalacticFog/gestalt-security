@@ -181,7 +181,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
           Ok("healthy")
         case Success(orgId) if orgId.isEmpty =>
           InternalServerError("could not find root org; check database version")
-        case Failure(_) if Init.isInit == false =>
+        case Failure(_) if !Init.isInit =>
           BadRequest("server not initialized")
         case Failure(ex) =>
           InternalServerError("not able to connect to database")
@@ -189,7 +189,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     }
   }
 
-  def info() = Action {
+  def info = Action {
     Ok(Json.obj(
       "name" -> BuildInfo.name,
       "version" -> BuildInfo.version,
@@ -214,7 +214,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     }
   }
 
-  def getSelf() = AuthenticatedAction(None) { implicit request =>
+  def getSelf = AuthenticatedAction(None) { implicit request =>
     Ok(Json.toJson[GestaltAccount](request.user.identity))
   }
 
@@ -405,7 +405,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     val grant = for {
       account <- AppFactory.getUsernameInDefaultAccountStore(appId, username)
       grant <- AccountFactory.getAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName) match {
-        case Some(grant) => Success(grant)
+        case Some(g) => Success(g)
         case None => Failure(ResourceNotFoundException(
           resource = request.path,
           message = "could not locate requested right",
@@ -1330,16 +1330,16 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
         message = "API key creation requires API key authentication",
         developerMessage = "API key creation request must be authenticated using API keys and does not support bearer token authentication"
       )))
-      case (Some(apiKey),None) => BadRequest(Json.toJson(BadRequestException(
+      case (Some(key),None) => BadRequest(Json.toJson(BadRequestException(
         resource = "",
         message = "delegated API key creation requires orgId",
         developerMessage = "API key creation on behalf of another account requires an orgId against which to bind the API key."
       )))
-      case (Some(apiKey),Some(orgId)) =>
+      case (Some(key),Some(boundOrgId)) =>
         val newKey = APICredentialFactory.createAPIKey(
           accountId = accountId,
-          boundOrg = Some(orgId),
-          parentApiKey = Some(apiKey)
+          boundOrg = Some(boundOrgId),
+          parentApiKey = Some(key)
         )
         renderTry[GestaltAPIKey](Created)(newKey)
     }

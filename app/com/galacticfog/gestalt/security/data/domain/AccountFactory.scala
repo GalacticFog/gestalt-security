@@ -249,7 +249,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     val shadowedAccounts = for {
         app <- AppFactory.findByAppId(appId).toSeq
         dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID]).filter {d => d.isInstanceOf[LDAPDirectory]}
-        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
+        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password)  // Creates shadow account if found, then authenticates
     } yield saccount
     // TODO - query all indirect LDAPDirectories
 //    val indirectAccounts = for {

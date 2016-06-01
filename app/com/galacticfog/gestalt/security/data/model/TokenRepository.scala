@@ -1,7 +1,7 @@
 package com.galacticfog.gestalt.security.data.model
 
 import scalikejdbc._
-import org.joda.time.{DateTime}
+import org.joda.time.DateTime
 
 case class TokenRepository(
   id: Any,

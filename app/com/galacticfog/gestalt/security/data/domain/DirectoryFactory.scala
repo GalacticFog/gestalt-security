@@ -104,7 +104,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       case "INTERNAL" => InternalDirectory(daoDir)
       case "LDAP" =>
         // TODO - Use plugin / adapter to get classname
-        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors().head
+        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
         ldapClass.newInstance(daoDir, AccountFactory.instance, GroupFactory.instance).asInstanceOf[LDAPDirectory]
       case _ => throw new BadRequestException(
         resource = s"/directories/${daoDir.id}",

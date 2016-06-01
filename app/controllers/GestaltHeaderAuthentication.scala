@@ -91,7 +91,7 @@ object GestaltHeaderAuthentication {
         case GestaltBearerCredentials(token) =>
           TokenFactory.findValidToken(token) map Right.apply
         case GestaltBasicCredentials(apiKey,apiSecret) =>
-          APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && found.disabled == false) map Left.apply
+          APICredentialFactory.findByAPIKey(apiKey) filter (found => found.apiSecret == apiSecret && !found.disabled) map Left.apply
       }
       orgId <- apiCred.fold(_.issuedOrgId, _.issuedOrgId).map(_.asInstanceOf[UUID])
       serviceApp <- AppFactory.findServiceAppForOrg(orgId)

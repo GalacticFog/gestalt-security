@@ -27,7 +27,7 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
 
   def isInit: Boolean = checkDBInit
 
-  private[this] def checkDBInit() = {
+  private[this] def checkDBInit = {
     getInitSettings map {_.initialized} recover {
       case t: Throwable =>
         Logger.warn(s"error determining initialization: ${t.toString.replace("\n","")}")

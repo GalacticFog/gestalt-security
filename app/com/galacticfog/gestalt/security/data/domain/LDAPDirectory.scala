@@ -71,11 +71,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         }
     }
     // If authentication fails, and if account is no longer in LDAP, then remove the shadowedAccount
-    if ((result == false) && (lookupAccountByPrimary(account.username) == None)) {
+    if (!result && lookupAccountByPrimary(account.username).isEmpty) {
       //
       // for each shadowed group for shadowed user, if not found in LDAP, then remove shadowed group
       for (g <- GroupFactory.listAccountGroups(account.id.asInstanceOf[UUID])) {
-        if (this.ldapFindGroupnamesByName(g.name).get.headOption == None) {
+        if (this.ldapFindGroupnamesByName(g.name).get.isEmpty) {
           GroupFactory.delete(g.id.asInstanceOf[UUID])
         }
       }
@@ -104,7 +104,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       Logger.info(s"Attempting: LDAP lookupAccountByPrimary - search of DN: ${searchdn}")
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
 
-      if (answer.hasMore()) {
+      if (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
         val username = primary
@@ -143,7 +143,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   override def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository] = {
 
     for (sgroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${this.id}")) {
-      if (this.ldapFindGroupnamesByName(groupName).get.size == 0) {
+      if (this.ldapFindGroupnamesByName(groupName).get.isEmpty) {
         this.unshadowGroup(sgroup)
       }
     }
@@ -231,7 +231,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val searchdn = s"(&(${groupField}=*)(${memberField}=${primaryField}=${username}${searchtail}))"
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
       var gnames = List.empty[String]
-      while (answer.hasMore()) {
+      while (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
         if (attrs.get(groupField) != null) {
@@ -265,7 +265,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
       var groupNames = List.empty[String]
-      while (answer.hasMore()) {
+      while (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
         if (attrs.get(groupField) != null) {

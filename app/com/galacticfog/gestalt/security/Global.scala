@@ -30,7 +30,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     log.debug(request.toString)
     (request.method, request.path) match {
       case ("GET", "/init") => Some(InitController.checkInit)
-      case ("POST", "/init") => Some(InitController.initialize)
+      case ("POST", "/init") => Some(InitController.initialize())
       case ("GET", "/health") => Some(RESTAPIController.getHealth)
       case ("GET", "/info") => Some(RESTAPIController.info)
       case (_,_) =>
