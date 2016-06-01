@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "2.2.0-SNAPSHOT"
+version := "2.2.1-SNAPSHOT"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
@@ -92,7 +92,7 @@ scalikejdbcSettings
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-io" % "1.0.4" withSources(),
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.0-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.2-SNAPSHOT" withSources()
 )
 
 // ----------------------------------------------------------------------------
@@ -128,31 +128,6 @@ libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.15" % "test"
 libraryDependencies += "org.apache.commons" % "commons-dbcp2" % "2.1"
 
 libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
-
-// ----------------------------------------------------------------------------
-// Flyway Plugin Settings
-// ----------------------------------------------------------------------------
-
-val hostname = sys.env.getOrElse("DB_HOST", "localhost")
-
-val dbname = sys.env.getOrElse("DB_NAME", "gestalt-security")
-
-lazy val migration = (project in file("migration")).
-  settings(flywaySettings: _*).
-  settings(
-    flywayUrl := s"jdbc:postgresql://$hostname:5432/$dbname",
-    flywayUser := sys.env.getOrElse("DB_USER", "dbUser"),
-    flywayPassword := sys.env.getOrElse("DB_PASSWORD", "dbS3cr3t"),
-    flywayLocations := Seq("filesystem:conf/db/migration"),
-    flywayTarget := "8",
-    flywayPlaceholders := Map(
-      "root_username" -> sys.env.getOrElse("ROOT_USERNAME", "admin"),
-      "root_password" -> sys.env.getOrElse("ROOT_PASSWORD", "letmein")
-    )
-  ).
-  settings(
-    libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
-  )
 
 // ----------------------------------------------------------------------------
 // Apache Shiro
