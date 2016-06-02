@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.test
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration, InitRequest}

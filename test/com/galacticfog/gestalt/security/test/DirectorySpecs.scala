@@ -1,14 +1,6 @@
 package com.galacticfog.gestalt.security.test
 
-import java.util.UUID
-
-import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
-import com.galacticfog.gestalt.security.api.json.JsonImports._
-import com.galacticfog.gestalt.security.data.APIConversions._
-import com.galacticfog.gestalt.security.data.domain._
-import play.api.libs.json.Json
+import com.galacticfog.gestalt.security.api._
 
 class DirectorySpecs extends SpecWithSDK {
 
