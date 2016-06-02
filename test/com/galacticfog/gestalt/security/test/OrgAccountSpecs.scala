@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.security.test
 
-import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
+import com.galacticfog.gestalt.security.api._
 
 class OrgAccountSpecs extends SpecWithSDK {
 

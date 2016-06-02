@@ -1,22 +1,6 @@
 package com.galacticfog.gestalt.security.test
 
-import java.util.UUID
-
-import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
-import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, OAuthError, UnauthorizedAPIException}
-import com.galacticfog.gestalt.security.api.json.JsonImports._
-import com.galacticfog.gestalt.security.data.APIConversions._
-import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository}
-import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration, InitRequest}
-import org.flywaydb.core.Flyway
-import org.joda.time.DateTime
-import org.specs2.matcher.{Expectable, MatchResult, Matcher}
-import play.api.libs.json.Json
-import play.api.libs.ws.WS
-import play.api.test._
+import com.galacticfog.gestalt.security.api._
 
 class GroupSpecs extends SpecWithSDK {
 
