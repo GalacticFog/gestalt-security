@@ -975,6 +975,17 @@ class SDKIntegrationSpec extends PlaySpecification {
       TokenRepository.find(accessToken.id) must beNone
     }
 
+    "allow explicit token deletion" in {
+      val maybeTokenResponse = await(GestaltToken.grantPasswordToken(org.fqon, account.username, "letmein"))
+      maybeTokenResponse must beSome
+      maybeTokenResponse.get.tokenType must_== BEARER
+      val accessToken = maybeTokenResponse.get.accessToken
+      await(GestaltToken.validateToken(org.fqon, accessToken)) must beAnInstanceOf[ValidTokenResponse]
+      await(GestaltToken.deleteToken(accessToken.id, accessToken.tokenType)) must beTrue
+      await(GestaltToken.validateToken(org.fqon, accessToken)) must_== INVALID_TOKEN
+      TokenRepository.find(accessToken.id) must beNone
+    }
+
     "not validate token if account doesn't belong to org (UUID)" in {
       val resp = await(GestaltToken.validateToken(subSubOrg.id, OpaqueToken(UUID.randomUUID(), ACCESS_TOKEN)))
       resp must_== INVALID_TOKEN
