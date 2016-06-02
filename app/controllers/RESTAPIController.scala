@@ -92,7 +92,8 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   private[this] def resolveTokenOrg(tokenId: UUID): Option[UUID] = {
     for {
       token <- TokenFactory.findValidById(tokenId)
-    } yield token.issuedOrgId.asInstanceOf[UUID]
+      issuedOrg <- token.issuedOrgId
+    } yield issuedOrg.asInstanceOf[UUID]
   }
 
   private[this] def resolveApiKeyOrg(apiKey: UUID): Option[UUID] = {
