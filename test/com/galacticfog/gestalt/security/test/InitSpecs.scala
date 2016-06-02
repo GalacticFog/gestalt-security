@@ -157,6 +157,15 @@ class InitSpecs extends PlaySpecification {
       )) must throwA[BadRequestException](".*already initialized.*")
     }
 
+    "return OK on /health" in {
+      await(client.url(s"http://localhost:${testServerPort}/health").get()).status must equalTo(OK)
+    }
+
+    "return info on /info" in {
+      val resp = await(client.url(s"http://localhost:${testServerPort}/info").get())
+      resp.status must equalTo(OK)
+    }
+
   }
 
   "Re-initialization" should {
