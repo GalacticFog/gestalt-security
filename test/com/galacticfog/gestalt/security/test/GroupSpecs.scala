@@ -1,6 +1,10 @@
 package com.galacticfog.gestalt.security.test
 
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.api.errors.{ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
 
 class GroupSpecs extends SpecWithSDK {
 
@@ -112,6 +116,47 @@ class GroupSpecs extends SpecWithSDK {
         GestaltRightGrant(null, "grantA", None, newOrgApp.id),
         GestaltRightGrant(null, "grantB", Some("grantBvalue"), newOrgApp.id)
       ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
+    }
+
+    lazy val newAcct1 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "add-account-1", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+    )))
+    lazy val newAcct2 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "add-account-2", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+    )))
+    lazy val newAcct3 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "add-account-3", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+    )))
+    lazy val newAcct4 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "add-account-4", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+    )))
+
+    "allow multiple simultaneous account additions" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("multiple-adds")))
+      val newAccts1 = await(newOrgGrp.updateMembership(
+        add = Seq(newAcct1.id, newAcct2.id),
+        remove = Nil
+      ))
+      newAccts1 must containTheSameElementsAs( Seq(newAcct1.getLink, newAcct2.getLink) )
+      val newAccts2 = await(newOrgGrp.updateMembership(
+        add = Seq(newAcct3.id, newAcct4.id),
+        remove = Seq(newAcct1.id, newAcct2.id)
+      ))
+      newAccts2 must containTheSameElementsAs( Seq(newAcct3.getLink, newAcct4.getLink) )
+    }
+
+    "throw ConflictException on duplicate group name" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name")))
+      await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name"))) must
+        throwA[ConflictException](".*group name already exists in directory.*")
+    }
+
+    "properly handle error when adding multiple accounts to a group" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("bad-account-add")))
+      await(newOrgGrp.updateMembership(
+        add = Seq(newAcct3.id, UUID.randomUUID(), newAcct4.id),
+        remove = Nil
+      )) must throwA[BadRequestException]
     }
 
   }

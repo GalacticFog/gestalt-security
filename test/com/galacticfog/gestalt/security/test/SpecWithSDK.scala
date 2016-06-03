@@ -47,7 +47,6 @@ trait SpecWithSDK extends PlaySpecification {
   lazy val fakeApp = FakeApplication()
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
 
-  stopOnFail
   sequential
 
   step({

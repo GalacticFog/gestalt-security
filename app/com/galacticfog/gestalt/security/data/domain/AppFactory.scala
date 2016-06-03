@@ -329,13 +329,12 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       val newGroupTry = for {
         dir <- getDefaultGroupStore(appId)
         dirId = dir.id.asInstanceOf[UUID]
-        newGroup <- Try(UserGroupRepository.create(
-          id = UUID.randomUUID(),
-          dirId = dirId,
+        newGroup <- GroupFactory.create(
           name = create.name,
-          disabled = false,
-          description = create.description
-        ))
+          description = create.description,
+          dirId = dirId,
+          maybeParentOrg = None
+        )
         newGroupId = newGroup.id.asInstanceOf[UUID]
         // add grants
         _ <- Try{ create.rights.toSeq.flatten map { grant =>

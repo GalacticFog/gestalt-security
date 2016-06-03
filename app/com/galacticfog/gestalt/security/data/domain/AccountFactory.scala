@@ -13,7 +13,7 @@ import play.api.Logger
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Try}
 import scala.util.matching.Regex
 
 trait AccountFactoryDelegate {

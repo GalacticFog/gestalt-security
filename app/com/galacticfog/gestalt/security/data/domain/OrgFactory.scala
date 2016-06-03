@@ -145,7 +145,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         adminGroup <- GroupFactory.create(
           name = newOrgId + "-admins",
           dirId = creator.dirId.asInstanceOf[UUID],
-          parentOrg = newOrgId,
+          maybeParentOrg = Some(newOrgId),
           description = Some(s"automatically created admin group for ${newOrg.fqon} to house creator")
         )
         adminGroupId = adminGroup.id.asInstanceOf[UUID]
@@ -176,7 +176,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           usersGroup <- GroupFactory.create(
             name = newOrg.fqon + "-users",
             dirId = newDir.id,
-            parentOrg = newOrgId,
+            maybeParentOrg = Some(newOrgId),
             description = Some(s"automatically created user group for ${newOrg.fqon} to house users")
           )
           usersGroupId = usersGroup.id.asInstanceOf[UUID]

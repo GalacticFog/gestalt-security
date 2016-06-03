@@ -799,7 +799,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     GroupFactory.find(groupId) match {
       case Some(group) =>
         val newMembers = GroupFactory.updateGroupMembership(groupId, payload)
-        Ok(Json.toJson[Seq[ResourceLink]](newMembers map {a => a: GestaltAccount} map {_.getLink()}))
+        renderTry[Seq[ResourceLink]](Ok)(
+          newMembers map { _.map {a => (a: GestaltAccount).getLink()} }
+        )
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested group",
