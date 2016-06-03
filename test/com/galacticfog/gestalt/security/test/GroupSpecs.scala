@@ -1,6 +1,10 @@
 package com.galacticfog.gestalt.security.test
 
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.api.errors.{ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
 
 class GroupSpecs extends SpecWithSDK {
 
@@ -112,6 +116,41 @@ class GroupSpecs extends SpecWithSDK {
         GestaltRightGrant(null, "grantA", None, newOrgApp.id),
         GestaltRightGrant(null, "grantB", Some("grantBvalue"), newOrgApp.id)
       ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
+    }
+
+    "allow multiple simultaneous account additions" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("multiple-adds")))
+      val newAcct1 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+        username = "add-account-1", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+      )))
+      val newAcct2 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+        username = "add-account-2", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+      )))
+      val newAccts = await(newOrgGrp.updateMembership(
+        add = Seq(newAcct1.id, newAcct2.id),
+        remove = Nil
+      ))
+      newAccts must containTheSameElementsAs( Seq(newAcct1.getLink, newAcct2.getLink) )
+    }
+
+    "throw ConflictException on duplicate group name" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name")))
+      await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name"))) must
+        throwA[ConflictException](".*group name already exists in directory.*")
+    }
+
+    "properly handle error when adding multiple accounts to a group" in {
+      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("bad-account-add")))
+      val newAcct3 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+        username = "add-account-3", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+      )))
+      val newAcct4 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+        username = "add-account-4", firstName = "", lastName = "", credential = GestaltPasswordCredential("")
+      )))
+      await(newOrgGrp.updateMembership(
+        add = Seq(newAcct3.id, UUID.randomUUID(), newAcct4.id),
+        remove = Nil
+      )) must throwA[BadRequestException]
     }
 
   }

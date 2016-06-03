@@ -205,7 +205,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         name = create.name,
         description = create.description,
         dirId = dir.id.asInstanceOf[UUID],
-        parentOrg = dir.orgId.asInstanceOf[UUID]
+        maybeParentOrg = Some(dir.orgId.asInstanceOf[UUID])
       )
     }
   }

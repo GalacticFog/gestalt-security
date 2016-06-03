@@ -201,7 +201,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   }
 
   private def shadowGroup(groupName: String, description: Option[String]): Try[UserGroupRepository] = {
-    groupFactory.create(groupName, description, id, orgId)(session)
+    groupFactory.create(groupName, description, id, Some(orgId))(session)
   }
 
   private def unshadowGroup(group: UserGroupRepository): Try[Boolean] = {
