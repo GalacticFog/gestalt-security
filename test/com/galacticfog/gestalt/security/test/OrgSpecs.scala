@@ -54,15 +54,11 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "show up in the root org tree" in {
-      await(rootOrg.listOrgs).map(_.id) must containTheSameElementsAs(Seq(rootOrg.id,newOrg.id))
+      await(rootOrg.listOrgs).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
     }
 
     "return its created description" in {
       await(GestaltOrg.getById(newOrg.id)).get.description must beSome(newOrgDesc)
-    }
-
-    "be alone in its own org tree" in {
-      await(newOrg.listOrgs()).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
     }
 
     "not contain a new directory" in {
@@ -314,6 +310,33 @@ class OrgSpecs extends SpecWithSDK {
 
     "cleanup" in {
       await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    }
+
+  }
+
+  val subOrgName = "suborg-testing"
+  lazy val subOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+    name = subOrgName,
+    createDefaultUserGroup = false
+  )))
+  val subSubOrgName = "suborg-testing"
+  lazy val subSubOrg = await(subOrg.createSubOrg(GestaltOrgCreate(
+    name = subSubOrgName,
+    createDefaultUserGroup = false
+  )))
+
+  "Orgs" should {
+
+    "not show up in their own child org listing" in {
+      await(rootOrg.listOrgs()) should not contain(
+        (o: GestaltOrg) => o.id == rootOrg.id
+      )
+      await(subOrg.listOrgs()) should not contain(
+        (o: GestaltOrg) => o.id == subOrg.id
+      )
+      await(subSubOrg.listOrgs()) should not contain(
+        (o: GestaltOrg) =>  o.id == subSubOrg.id
+      )
     }
 
   }

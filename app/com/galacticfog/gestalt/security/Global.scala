@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.SecurityServices
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
-import com.galacticfog.gestalt.security.data.domain.DefaultAccountStoreMappingServiceImpl
+import com.galacticfog.gestalt.security.data.domain.{OrgFactory, DefaultAccountStoreMappingServiceImpl}
 import play.api._
 import play.api.Play.current
 import play.api.libs.json.{JsObject, Json}
@@ -26,6 +26,33 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
    */
   override def overrideParameter: String = "_method"
 
+  val registeredEndpoints = Set(
+    "accessTokens",
+    "accountStores",
+    "accounts",
+    "apiKeys",
+    "apps",
+    "assets",
+    "auth",
+    "directories",
+    "groups",
+    "health",
+    "info",
+    "init",
+    "oauth",
+    "orgs",
+    "rights",
+    "sync"
+  )
+
+  private[this] def topLevelEndpoint(path: String): (String,String) = {
+    path.split("/",3) match {
+      case Array("", top)       => (top,"")
+      case Array("", top, tail) => (top,"/" + tail)
+      case _ => ("","")
+    }
+  }
+
   override def onRouteRequest(request: RequestHeader): Option[Handler] = {
     log.debug(request.toString)
     (request.method, request.path) match {
@@ -33,13 +60,26 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       case ("POST", "/init") => Some(InitController.initialize())
       case ("GET", "/health") => Some(RESTAPIController.getHealth)
       case ("GET", "/info") => Some(RESTAPIController.info)
-      case (_,_) =>
-        if (Init.isInit) super.onRouteRequest(request)
-        else Some(Action { BadRequest(Json.toJson(BadRequestException(
-          request.path,
-          message = "service it not initialized",
-          developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
-        )))})
+      case (_,_) if !Init.isInit => Some(Action { BadRequest(Json.toJson(BadRequestException(
+        request.path,
+        message = "service it not initialized",
+        developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
+      )))})
+      case (_, path) => {
+        val (top,tail) = topLevelEndpoint(path)
+        if (registeredEndpoints.contains(top)) super.onRouteRequest(request)
+        else OrgFactory.findByFQON(top) match {
+          case Some(org) =>
+            super.onRouteRequest(request.copy(path = s"/orgs/${org.id}${tail}"))
+          case None =>
+            Logger.debug(s"top level path not mappable as fqon: ${top}")
+            Some(Action { NotFound(Json.toJson(ResourceNotFoundException(
+              resource = path,
+              message = "resource/endpoint not found",
+              developerMessage = "Resource/endpoint not found."
+            )))})
+        }
+      }
     }
   }
 

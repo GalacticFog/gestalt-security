@@ -168,9 +168,3 @@ POST          /auth                                                     controll
 POST          /oauth/inspect                                            controllers.RESTAPIController.globalTokenIntro
 POST          /oauth/issue                                              controllers.RESTAPIController.globalTokenIssue
 
-GET           /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>                 controllers.RESTAPIController.getOrgByFQON(fqon: String)
-POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/auth            controllers.RESTAPIController.orgAuthByFQON(fqon: String)
-POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/oauth/issue     controllers.RESTAPIController.orgGenTokenFQON(fqon: String)
-POST          /$fqon<(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])>/oauth/inspect   controllers.RESTAPIController.orgTokenIntroFQON(fqon: String)
-
-
