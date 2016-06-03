@@ -4,40 +4,37 @@ set -o errexit
 set -o pipefail
 set -o xtrace
 
-username=${ROOT_USERNAME-root}
-password=${ROOT_PASSWORD-letmein}
 security=${1-localhost:9455}
-auth="--auth $username:$password"
 
-AUTHRESP=$(http $auth POST $security/auth)
+AUTHRESP=$(http POST $security/auth)
 rootOrgId=$(echo $AUTHRESP | jq -r '.orgId')
 adminGrpId=$(echo $AUTHRESP | jq -r '.groups | .[] | select(.name == "admins") | .id')
 
 # create galacticfog
-gfOrgId=$(echo '{"name": "galacticfog", "createDefaultUserGroup": false}' | http $auth $security/orgs/$rootOrgId | jq -r '.id')
-gfAppId=$(http $auth $security/orgs/$gfOrgId/apps |
+gfOrgId=$(echo '{"name": "galacticfog", "createDefaultUserGroup": false}' | http $security/orgs/$rootOrgId | jq -r '.id')
+gfAppId=$(http $security/orgs/$gfOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering
-gfeOrgId=$(echo '{"name": "engineering", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfOrgId | jq -r '.id')
-gfeAppId=$(http $auth $security/orgs/$gfeOrgId/apps |
+gfeOrgId=$(echo '{"name": "engineering", "createDefaultUserGroup": false}' | http $security/orgs/$gfOrgId | jq -r '.id')
+gfeAppId=$(http $security/orgs/$gfeOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 # create galacticfog.engineering.core
-gfecOrgId=$(echo '{"name": "core", "createDefaultUserGroup": false}' | http $auth $security/orgs/$gfeOrgId | jq -r '.id')
-gfecAppId=$(http $auth $security/orgs/$gfecOrgId/apps |
+gfecOrgId=$(echo '{"name": "core", "createDefaultUserGroup": false}' | http $security/orgs/$gfeOrgId | jq -r '.id')
+gfecAppId=$(http $security/orgs/$gfecOrgId/apps |
           jq -r '.[] | select(.isServiceApp == true) | .id')
 
 gfDirId=$(echo '{"name": "galacticfog-people", "description": "directory of galacticfog employees", "config": {"directoryType": "internal"}}' |
-    http $auth $security/orgs/$gfOrgId/directories |
+    http $security/orgs/$gfOrgId/directories |
     jq -r '.id')
 
 gfUserGroupId=$(echo '{"name": "gf-users"}' |
-    http $auth $security/directories/$gfDirId/groups |
+    http $security/directories/$gfDirId/groups |
     jq -r '.id')
 gfEngGrpId=$(echo '{"name": "gf-engineers"}' |
-    http $auth $security/directories/$gfDirId/groups |
+    http $security/directories/$gfDirId/groups |
     jq -r '.id')
 gfAdminGrpId=$(echo '{"name": "gf-admins"}' |
-    http $auth $security/directories/$gfDirId/groups |
+    http $security/directories/$gfDirId/groups |
     jq -r '.id')
 
 createASM() {
@@ -53,7 +50,7 @@ read -r -d '' PAYLOAD <<EOM
 } 
 EOM
 set -e
-id=$(echo "$PAYLOAD" | http $auth $security/orgs/$1/accountStores | jq -r '.id')
+id=$(echo "$PAYLOAD" | http $security/orgs/$1/accountStores | jq -r '.id')
 }
 
 createASM $gfOrgId   $gfAdminGrpId  "mapping between galacticfog and gf-admins"                     false false
@@ -110,10 +107,10 @@ read -r -d '' ANTHONY <<EOM
 EOM
 set -e
 
-chrisId=$(echo "$CHRIS"     | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
-syId=$(echo "$SY"           | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
-bradId=$(echo "$BRAD"       | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
-anthonyId=$(echo "$ANTHONY" | http $auth $security/orgs/$gfOrgId/accounts | jq -r '.id')
+chrisId=$(echo "$CHRIS"     | http $security/orgs/$gfOrgId/accounts | jq -r '.id')
+syId=$(echo "$SY"           | http $security/orgs/$gfOrgId/accounts | jq -r '.id')
+bradId=$(echo "$BRAD"       | http $security/orgs/$gfOrgId/accounts | jq -r '.id')
+anthonyId=$(echo "$ANTHONY" | http $security/orgs/$gfOrgId/accounts | jq -r '.id')
 
 grantGroupRight() {
   set +e
@@ -123,7 +120,7 @@ grantGroupRight() {
 } 
 EOM
   set -e
-  id=$(echo "$PAYLOAD" | http $auth "$security/orgs/$1/groups/$2/rights" | jq -r '.id')
+  id=$(echo "$PAYLOAD" | http "$security/orgs/$1/groups/$2/rights" | jq -r '.id')
 }
 
 grantGroupRight $gfOrgId   $gfAdminGrpId "**"
