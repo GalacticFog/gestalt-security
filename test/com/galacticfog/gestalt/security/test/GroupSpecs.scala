@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.test
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, ConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
 
 class GroupSpecs extends SpecWithSDK {
@@ -151,12 +151,26 @@ class GroupSpecs extends SpecWithSDK {
         throwA[ConflictException](".*group name already exists in directory.*")
     }
 
-    "properly handle error when adding multiple accounts to a group" in {
+    "properly handle bad account UUID when adding multiple accounts to a group" in {
       val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("bad-account-add")))
-      await(newOrgGrp.updateMembership(
-        add = Seq(newAcct3.id, UUID.randomUUID(), newAcct4.id),
+      val members_before = await(newOrgGrp.updateMembership(
+        add = Seq(newAcct1.id),
         remove = Nil
-      )) must throwA[BadRequestException]
+      ))
+      await(newOrgGrp.updateMembership(
+        add = Seq(newAcct2.id, UUID.randomUUID(), newAcct4.id),
+        remove = Nil
+      )) must throwA[BadRequestException](".*cannot add non-existent account to group.*")
+      val members_after = await(newOrgGrp.listAccounts()) map {_.getLink}
+      members_after must containTheSameElementsAs(members_before)
+    }
+
+    "properly handle bad group UUID when adding/removing accounts in a group" in {
+      await(GestaltGroup.updateMembership(
+        groupId = UUID.randomUUID(),
+        add = Seq(newAcct3.id, newAcct4.id),
+        remove = Nil
+      )) must throwA[ResourceNotFoundException](".*could not locate requested group.*")
     }
 
   }
