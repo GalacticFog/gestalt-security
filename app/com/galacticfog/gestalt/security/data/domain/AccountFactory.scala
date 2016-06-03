@@ -284,7 +284,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               where asm.app_id = ${appId}
           ) as sub on ${a.id} = sub.account_id or ${a.dirId} = sub.account_store_id
           where ${a.disabled} = false
-      """.map{UserAccountRepository(a)}.list.apply()
+      """.map{UserAccountRepository(a)}.list.apply().distinct
   }
 
   def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {

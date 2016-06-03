@@ -42,7 +42,7 @@ DB running at $DOCKERIP:$DBPORT/$DBNAME
 "
 
 sleep 3
-docker exec $DOCKERDBCONTAINER su postgres -c createdb $DBNAME || true
+docker exec $DOCKERDBCONTAINER su postgres -c "createdb $DBNAME" || true
 
 cleanup_docker_db() {
 while true; do

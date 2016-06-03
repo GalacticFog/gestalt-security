@@ -130,6 +130,11 @@ class OrgAccountSpecs extends SpecWithSDK {
       ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
     }
 
+    "not include duplicates" in {
+      val accounts = await(newOrg.listAccounts())
+      accounts must containTheSameElementsAs(accounts.distinct)
+    }
+
   }
 
   step({
