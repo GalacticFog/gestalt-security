@@ -70,9 +70,7 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
         if (registeredEndpoints.contains(top)) super.onRouteRequest(request)
         else OrgFactory.findByFQON(top) match {
           case Some(org) =>
-            val newRequest = request.copy(path = s"/orgs/${org.id}${tail}")
-            Logger.debug(s"mapped ${request.path} to ${newRequest.path}")
-            super.onRouteRequest(newRequest)
+            super.onRouteRequest(request.copy(path = s"/orgs/${org.id}${tail}"))
           case None =>
             Logger.debug(s"top level path not mappable as fqon: ${top}")
             Some(Action { NotFound(Json.toJson(ResourceNotFoundException(

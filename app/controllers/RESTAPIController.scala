@@ -62,10 +62,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     keyRoot orElse resolveRoot
   }
 
-  private[this] def resolveFQON(fqon: String): Option[UUID] = OrgFactory.findByFQON(fqon) map {
-    _.id.asInstanceOf[UUID]
-  }
-
   private[this] def resolveGrantOrg(grantId: UUID): Option[UUID] = for {
     grant <- RightGrantRepository.find(grantId)
     app <- AppFactory.findByAppId(grant.appId.asInstanceOf[UUID])
@@ -121,14 +117,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
     val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, orgId = request.user.orgId)
-    Ok(Json.toJson(ar))
-  }
-
-  def orgAuthByFQON(fqon: String) = AuthenticatedAction(resolveFQON(fqon)) { implicit request =>
-    val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(accountId = accountId)
-    val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
-    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId)
     Ok(Json.toJson(ar))
   }
 
@@ -217,13 +205,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def getSelf = AuthenticatedAction(None) { implicit request =>
     Ok(Json.toJson[GestaltAccount](request.user.identity))
-  }
-
-  def getOrgByFQON(fqon: String) = AuthenticatedAction(resolveFQON(fqon)) { implicit request =>
-    OrgFactory.findByFQON(fqon) match {
-      case Some(org) => Ok(Json.toJson[GestaltOrg](org))
-      case None => defaultResourceNotFound
-    }
   }
 
   def getOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
@@ -502,7 +483,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   def listOrgTree(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     OrgFactory.find(orgId) match {
       case Some(org) =>
-        Ok(Json.toJson(OrgFactory.getOrgTree(org.id.asInstanceOf[UUID]).map { o => o: GestaltOrg }))
+        Ok(Json.toJson(OrgFactory.getOrgTree(org.id.asInstanceOf[UUID]).filter(_.id != orgId).map { o => o: GestaltOrg }))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested org",
@@ -1226,20 +1207,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     }
   }
 
-  def orgGenTokenFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
-    request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => clientCredGrantFlow(apiKey => for {
-        org <- OrgFactory.findByFQON(fqon)
-        orgId = org.id.asInstanceOf[UUID]
-        app <-  AppFactory.findServiceAppForOrg(orgId)
-        appAccount <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
-      } yield orgId)
-      case Some("password") => passwordGrantFlow(resolveFQON(fqon))
-      case Some(t) => oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")
-      case None => oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")
-    }
-  }
-
   def orgGenTokenUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
     request.body.get("grant_type") flatMap asSingleton match {
       case Some("client_credentials") => clientCredGrantFlow(apiKey => for {
@@ -1288,10 +1255,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def orgTokenIntroUUID(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
     genericTokenIntro(_ => Some(orgId))
-  }
-
-  def orgTokenIntroFQON(fqon: String) = Action(parse.urlFormEncoded) { implicit request =>
-    genericTokenIntro( _ => OrgFactory.findByFQON(fqon) map {_.id.asInstanceOf[UUID]} )
   }
 
   def globalTokenIntro() = Action(parse.urlFormEncoded) { implicit request =>
