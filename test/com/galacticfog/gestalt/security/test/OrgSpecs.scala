@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.test
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.GestaltOrg
 
 class OrgSpecs extends SpecWithSDK {
@@ -337,6 +337,27 @@ class OrgSpecs extends SpecWithSDK {
       await(subSubOrg.listOrgs()) should not contain(
         (o: GestaltOrg) =>  o.id == subSubOrg.id
       )
+    }
+
+  }
+
+  "FQON routing" should {
+
+    "return 401 for invalid fqon on unauthenticated requests" in {
+      await(anonSdk.getJson("bad-org")) must throwA[UnauthorizedAPIException]
+    }
+
+    "return 404 for invalid fqon on authenticated request with fqon path" in {
+      await(keySdk.getJson("bad-org")) must throwA[ResourceNotFoundException].like {
+        case e: ResourceNotFoundException => e.resource must_== "/bad-org"
+      }
+    }
+
+    "return 404 for valid fqon on authenticated request with fqon path" in {
+      val badUrl = "/bad-url/acccounts"
+      await(keySdk.getJson(badUrl)) must throwA[ResourceNotFoundException].like {
+        case e: ResourceNotFoundException => e.resource must_== badUrl
+      }
     }
 
   }

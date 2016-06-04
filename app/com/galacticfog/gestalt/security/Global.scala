@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.security
 
-import controllers.{RESTAPIController, InitController}
+import controllers.{GestaltHeaderAuthentication, RESTAPIController, InitController}
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
 import scala.concurrent.Future
@@ -73,11 +73,10 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
             super.onRouteRequest(request.copy(path = s"/orgs/${org.id}${tail}"))
           case None =>
             Logger.debug(s"top level path not mappable as fqon: ${top}")
-            Some(Action { NotFound(Json.toJson(ResourceNotFoundException(
-              resource = path,
-              message = "resource/endpoint not found",
-              developerMessage = "Resource/endpoint not found."
-            )))})
+            GestaltHeaderAuthentication.authenticateHeader(request) match {
+              case Some(_) => None // default 404
+              case None => Some(Action { GestaltHeaderAuthentication.onUnauthorized(request) })
+            }
         }
       }
     }
