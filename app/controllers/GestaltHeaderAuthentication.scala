@@ -60,7 +60,17 @@ trait GestaltHeaderAuthentication {
     def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({rh: RequestHeader => genFQON}))
   }
 
-  def onUnauthorized(request: RequestHeader) = {
+}
+
+object GestaltHeaderAuthentication {
+
+  case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID, credential: Either[APICredentialRepository,TokenRepository])
+
+  def extractAuthToken(request: RequestHeader): Option[GestaltAPICredentials] = {
+    request.headers.get("Authorization") flatMap GestaltAPICredentials.getCredentials
+  }
+
+  def onUnauthorized(request: RequestHeader): Result = {
     Logger.info("rejected request from " + extractAuthToken(request).map{_.headerValue})
     Results.Unauthorized(
       Json.toJson(UnauthorizedAPIException(
@@ -71,15 +81,6 @@ trait GestaltHeaderAuthentication {
     ).
       withHeaders(("WWW-Authenticate","Basic")).
       withHeaders(("WWW-Authenticate","Bearer"))
-  }
-}
-
-object GestaltHeaderAuthentication {
-
-  case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID, credential: Either[APICredentialRepository,TokenRepository])
-
-  def extractAuthToken(request: RequestHeader): Option[GestaltAPICredentials] = {
-    request.headers.get("Authorization") flatMap GestaltAPICredentials.getCredentials
   }
 
   // find the account by credentials and verify that they are still part of the associated app

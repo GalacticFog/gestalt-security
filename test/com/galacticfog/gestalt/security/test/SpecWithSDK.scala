@@ -79,13 +79,9 @@ trait SpecWithSDK extends PlaySpecification {
   // create a token-based sdk for testing
   lazy val rootAccessToken = TokenFactory.createToken(Some(rootOrg.id), rootAccount.id, 28800, ACCESS_TOKEN, None).get
   lazy val rootBearerCreds = GestaltBearerCredentials(OpaqueToken(rootAccessToken.id.asInstanceOf[UUID], GestaltToken.ACCESS_TOKEN).toString)
-  lazy val tokenSdk: GestaltSecurityClient = GestaltSecurityClient(
-    wsclient = client,
-    protocol = HTTP,
-    hostname = "localhost",
-    port = testServerPort,
-    creds = rootBearerCreds
-  )
+  lazy val tokenSdk: GestaltSecurityClient = keySdk.withCreds(rootBearerCreds)
+
+  lazy val anonSdk: GestaltSecurityClient = keySdk.withCreds(GestaltBearerCredentials(UUID.randomUUID().toString))
 
   lazy val rootDir: GestaltDirectory = await(rootOrg.listDirectories()).head
 
