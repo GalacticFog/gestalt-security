@@ -54,7 +54,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "show up in the root org tree" in {
-      await(rootOrg.listOrgs).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
+      await(rootOrg.listSubOrgs).map(_.id) must containTheSameElementsAs(Seq(newOrg.id))
     }
 
     "return its created description" in {
@@ -221,7 +221,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "have a group in the root directory for the root user, visible by ID but not by name" in {
-      val rootGroupSeq = await(newOrg.listGroups).filter(_.directory.id == rootDir.id)
+      val rootGroupSeq = await(newOrg.listGroups()).filter(_.directory.id == rootDir.id)
       rootGroupSeq must haveSize(1)
       val rootGroup = rootGroupSeq.head
       await(newOrg.getGroupById(rootGroup.id)) must beSome(rootGroup)
@@ -232,7 +232,7 @@ class OrgSpecs extends SpecWithSDK {
       val manualGrp = await(newOrgDir.createGroup(GestaltGroupCreate(
         name = "manually-created-dir-group"
       )))
-      await(newOrg.listGroups) must contain(manualGrp)
+      await(newOrg.listGroups()) must contain(manualGrp)
       await(newOrg.getGroupById(manualGrp.id)) must beSome(manualGrp)
       await(newOrg.getGroupByName(manualGrp.name)) must beSome(manualGrp)
     }
@@ -245,7 +245,7 @@ class OrgSpecs extends SpecWithSDK {
         groups = None,
         credential = GestaltPasswordCredential("letmein")
       )))
-      await(newOrg.listAccounts) must contain(manualAccount)
+      await(newOrg.listAccounts()) must contain(manualAccount)
       await(newOrg.getAccountById(manualAccount.id)) must beSome(manualAccount)
       await(newOrg.getAccountByUsername(manualAccount.username)) must beSome(manualAccount)
       manualAccount.directory.id must_== newOrgDir.id
@@ -272,7 +272,7 @@ class OrgSpecs extends SpecWithSDK {
         groups = Some(Seq(UUID.randomUUID())), // failure
         rights = None
       ))) must throwA[BadRequestException](".*cannot add account to non-existent group.*")
-      await(newOrg.listAccounts) must not contain((a: GestaltAccount) => a.username == failAccountName)
+      await(newOrg.listAccounts()) must not contain((a: GestaltAccount) => a.username == failAccountName)
     }
 
     "should not add account with invalid grant name" in {
@@ -287,7 +287,7 @@ class OrgSpecs extends SpecWithSDK {
           grantName = ""   // fail
         ))
       )))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
-      await(newOrg.listAccounts) must not contain((a: GestaltAccount) => a.username == failAccountName)
+      await(newOrg.listAccounts()) must not contain((a: GestaltAccount) => a.username == failAccountName)
     }
 
     "should not add group with invalid right grants" in {
@@ -298,7 +298,7 @@ class OrgSpecs extends SpecWithSDK {
           grantName = "" // fail
         )))
       ))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
-      await(newOrg.listGroups) must not contain((g: GestaltGroup) => g.name == failGroupName)
+      await(newOrg.listGroups()) must not contain((g: GestaltGroup) => g.name == failGroupName)
     }
 
     "should create new groups in the new directory owned by the org" in {
@@ -308,8 +308,15 @@ class OrgSpecs extends SpecWithSDK {
       newGroup.directory.orgId must_== newOrg.id
     }
 
-    "cleanup" in {
-      await(GestaltOrg.deleteOrg(newOrg.id)) must beTrue
+    lazy val grp1 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-1")))
+    lazy val grp2 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-2")))
+    lazy val grp3 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-3")))
+
+    "list groups with name query strings" in {
+      await(newOrg.listGroups( "name" -> "query-group-*" )) must containTheSameElementsAs(Seq(grp1, grp2, grp3))
+      await(newOrg.listGroups( "name" -> grp2.name )) must containTheSameElementsAs(Seq(grp2))
+      await(newOrg.listGroups( "name" -> "*-3" )) must containTheSameElementsAs(Seq(grp3))
+      await(newOrg.listGroups( "name" -> "*-group-*" )) must containTheSameElementsAs(Seq(grp1,grp2,grp3))
     }
 
   }
@@ -328,13 +335,13 @@ class OrgSpecs extends SpecWithSDK {
   "Orgs" should {
 
     "not show up in their own child org listing" in {
-      await(rootOrg.listOrgs()) should not contain(
+      await(rootOrg.listSubOrgs()) should not contain(
         (o: GestaltOrg) => o.id == rootOrg.id
       )
-      await(subOrg.listOrgs()) should not contain(
+      await(subOrg.listSubOrgs()) should not contain(
         (o: GestaltOrg) => o.id == subOrg.id
       )
-      await(subSubOrg.listOrgs()) should not contain(
+      await(subSubOrg.listSubOrgs()) should not contain(
         (o: GestaltOrg) =>  o.id == subSubOrg.id
       )
     }

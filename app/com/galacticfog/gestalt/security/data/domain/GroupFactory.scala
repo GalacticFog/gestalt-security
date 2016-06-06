@@ -198,16 +198,21 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     The latter is because any user in the directory is assigned to the app, so that any user in any group in the
     directory (therefore, a user in the directory) is in the app.
    */
-  def listAppGroups(appId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
+  def listAppGroups(appId: UUID, nameQuery: Option[String])(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
       AccountStoreMappingRepository.syntax("asm")
       )
-    sql"""select distinct ${grp.result.*}
-          from ${UserGroupRepository.as(grp)},${AccountStoreMappingRepository.as(asm)}
-          where (${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId}) OR
-                (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId})
-      """.map(UserGroupRepository(grp)).list.apply()
+    withSQL {
+      select(sqls.distinct(grp.result.*))
+        .from(UserGroupRepository as grp)
+        .innerJoin(AccountStoreMappingRepository as asm)
+        .on(sqls"""(${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId})
+                OR (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId})""")
+        .where(sqls.toAndConditionOpt(
+          nameQuery.map(q => sqls.like(grp.name, q.replace("*","%")))
+        ))
+    }.map(UserGroupRepository(grp)).list.apply()
   }
 
   def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {

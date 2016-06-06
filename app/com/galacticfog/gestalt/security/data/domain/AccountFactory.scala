@@ -274,17 +274,33 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       """.map{UserAccountRepository(a)}.list.apply().headOption
   }
 
-  def listByAppId(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
-    val a = UserAccountRepository.syntax("a")
-    sql"""select ${a.result.*}
-          from ${UserAccountRepository.as(a)}
-          inner join (
-            select axg.account_id,asm.account_store_id from account_x_group as axg
-              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
-              where asm.app_id = ${appId}
-          ) as sub on ${a.id} = sub.account_id or ${a.dirId} = sub.account_store_id
-          where ${a.disabled} = false
-      """.map{UserAccountRepository(a)}.list.apply().distinct
+  def listByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
+                 (implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+    val (a,axg,asm) = (
+      UserAccountRepository.syntax("a"),
+      GroupMembershipRepository.syntax("axg"),
+      AccountStoreMappingRepository.syntax("asm")
+    )
+    val sub = SubQuery.syntax("sub").include(axg,asm)
+    withSQL {
+      select(sqls.distinct(a.resultAll))
+        .from(UserAccountRepository as a)
+        .innerJoin(
+          {
+            select(axg.result.accountId,asm.result.accountStoreId).from(GroupMembershipRepository as axg)
+              .rightJoin(AccountStoreMappingRepository as asm)
+              .on(sqls"${asm.accountStoreId} = ${axg.groupId} and ${asm.storeType} = 'GROUP'")
+              .where.eq(asm.appId, appId)
+          }.as(sub)
+        )
+        .on(sqls"${a.id} = ${sub(axg).accountId} or ${a.dirId} = ${sub(asm).accountStoreId}")
+        .where(sqls.toAndConditionOpt(
+          Some(sqls.eq(a.disabled, false)),
+          nameQuery.map(q => sqls.like(a.username, q.replace("*","%"))),
+          emailQuery.map(q => sqls.like(a.email, q.replace("*","%"))),
+          phoneQuery.map(q => sqls.like(a.phoneNumber, q.replace("*","%")))
+        ))
+    }.map{UserAccountRepository(a)}.list.apply()
   }
 
   def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
