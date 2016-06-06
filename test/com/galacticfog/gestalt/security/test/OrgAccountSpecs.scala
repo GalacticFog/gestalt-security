@@ -35,7 +35,7 @@ class OrgAccountSpecs extends SpecWithSDK {
     }
 
     "not list an unmapped account in the org" in {
-      await(newOrg.listAccounts) must not contain unmappedActFromRootDir
+      await(newOrg.listAccounts()) must not contain unmappedActFromRootDir
     }
 
     "not list an unmapped account in the service app" in {
@@ -69,7 +69,7 @@ class OrgAccountSpecs extends SpecWithSDK {
       )))
       await(newOrg.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
-      await(newOrg.listAccounts) must contain(unmappedActFromRootDir)
+      await(newOrg.listAccounts()) must contain(unmappedActFromRootDir)
       await(newOrgApp.listAccounts) must contain(unmappedActFromRootDir)
       await(newOrg.getAccountById(unmappedActFromRootDir.id)) must beSome(unmappedActFromRootDir)
       await(newOrgApp.getAccountById(unmappedActFromRootDir.id)) must beSome(unmappedActFromRootDir)
@@ -92,7 +92,7 @@ class OrgAccountSpecs extends SpecWithSDK {
       )))
       await(newOrg.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
-      await(newOrg.listAccounts) must contain(unmappedActFromRootDir)
+      await(newOrg.listAccounts()) must contain(unmappedActFromRootDir)
       await(newOrgApp.listAccounts) must contain(unmappedActFromRootDir)
       await(newOrg.getAccountById(unmappedActFromRootDir.id)) must beSome(unmappedActFromRootDir)
       await(newOrgApp.getAccountById(unmappedActFromRootDir.id)) must beSome(unmappedActFromRootDir)
@@ -120,7 +120,7 @@ class OrgAccountSpecs extends SpecWithSDK {
     "show up in org after creation" in {
       await(newOrg.getAccountById(newOrgAct.id)) must beSome(newOrgAct)
       await(newOrg.getAccountByUsername(newOrgAct.name)) must beSome(newOrgAct)
-      await(newOrg.listAccounts) must contain(newOrgAct)
+      await(newOrg.listAccounts()) must contain(newOrgAct)
     }
 
     "list grants provided at creation" in {
@@ -133,6 +133,46 @@ class OrgAccountSpecs extends SpecWithSDK {
     "not include duplicates" in {
       val accounts = await(newOrg.listAccounts())
       accounts must containTheSameElementsAs(accounts.distinct)
+    }
+
+    lazy val acct1 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "query-acc-1", firstName = "Account-1", lastName = "Query", email = Some("qc1@testorg.com"), phoneNumber = Some("+15051234567"), credential = GestaltPasswordCredential("")
+    )))
+    lazy val acct2 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "query-acc-2", firstName = "Account-2", lastName = "Query", email = None, phoneNumber = None, credential = GestaltPasswordCredential("")
+    )))
+    lazy val acct3 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
+      username = "query-acc-3", firstName = "Account-3", lastName = "Query", email = Some("qc3@testorg.com"), phoneNumber =Some("+15059876543"), credential = GestaltPasswordCredential("")
+    )))
+
+    "list accounts with username query strings" in {
+      await(newOrg.listAccounts( "username" -> "query-acc-*" )) must containTheSameElementsAs(Seq(acct1, acct2, acct3))
+      await(newOrg.listAccounts( "username" -> acct2.username )) must containTheSameElementsAs(Seq(acct2))
+      await(newOrg.listAccounts( "username" -> "*-3" )) must containTheSameElementsAs(Seq(acct3))
+      await(newOrg.listAccounts( "username" -> "*-acc-*" )) must containTheSameElementsAs(Seq(acct1,acct2,acct3))
+    }
+
+    "list accounts with email query strings" in {
+      await(newOrg.listAccounts( "email" -> "*@testorg.com" )) must containTheSameElementsAs(Seq(acct1, acct3))
+      await(newOrg.listAccounts( "email" -> "qc3@*" )) must containTheSameElementsAs(Seq(acct3))
+      await(newOrg.listAccounts( "email" -> "*" )) must not contain(acct2)
+      await(newOrg.listAccounts( "email" -> "*" )) must contain(allOf(acct1,acct3))
+      await(newOrg.listAccounts( "email" -> acct1.email.get )) must containTheSameElementsAs(Seq(acct1))
+    }
+
+    "list accounts with phone query strings" in {
+      await(newOrg.listAccounts( "phoneNumber" -> "+1505*" )) must containTheSameElementsAs(Seq(acct1, acct3))
+      await(newOrg.listAccounts( "phoneNumber" -> "*6543" )) must containTheSameElementsAs(Seq(acct3))
+      await(newOrg.listAccounts( "phoneNumber" -> "*5309" )) must beEmpty
+      await(newOrg.listAccounts( "phoneNumber" -> "*" )) must not contain(acct2)
+      await(newOrg.listAccounts( "phoneNumber" -> "*" )) must contain(allOf(acct1,acct3))
+      await(newOrg.listAccounts( "phoneNumber" -> acct1.phoneNumber.get )) must containTheSameElementsAs(Seq(acct1))
+    }
+
+    "list accounts with multiple query strings" in {
+      await(newOrg.listAccounts( "phoneNumber" -> "+1505*", "email" -> "*@testorg.com" )) must containTheSameElementsAs(Seq(acct1, acct3))
+      await(newOrg.listAccounts( "phoneNumber" -> "+1505*", "email" -> "qc1*" )) must containTheSameElementsAs(Seq(acct1))
+      await(newOrg.listAccounts( "phoneNumber" -> "*6543", "email" -> "qc1*" )) must beEmpty
     }
 
   }

@@ -494,7 +494,12 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppAccounts(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }))
+      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(
+        appId = app.id.asInstanceOf[UUID],
+        nameQuery = None,
+        emailQuery = None,
+        phoneQuery = None
+      ) map { a => a: GestaltAccount }))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested app",
@@ -598,13 +603,21 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson(
-      AccountFactory.listByAppId(request.user.serviceAppId).map { a => a: GestaltAccount }
+      AccountFactory.listByAppId(
+        appId = request.user.serviceAppId,
+        nameQuery = request.getQueryString("username"),
+        emailQuery = request.getQueryString("email"),
+        phoneQuery = request.getQueryString("phoneNumber")
+      ).map { a => a: GestaltAccount }
     ))
   }
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(appId = request.user.serviceAppId).map { g => g: GestaltGroup }
+      GroupFactory.listAppGroups(
+        appId = request.user.serviceAppId,
+        nameQuery = request.getQueryString("name")
+      ).map { g => g: GestaltGroup }
     ))
   }
 
@@ -1124,7 +1137,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppGroupMappings(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(appId).map { g => g: GestaltGroup }
+      GroupFactory.listAppGroups(
+        appId = appId,
+        nameQuery = None
+      ).map { g => g: GestaltGroup }
     ))
   }
 

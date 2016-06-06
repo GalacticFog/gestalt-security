@@ -65,7 +65,7 @@ class RootSpecs extends SpecWithSDK {
     }
 
     "list root admin among accounts" in {
-      await(rootOrg.listAccounts) must contain(exactly(rootAccount))
+      await(rootOrg.listAccounts()) must contain(exactly(rootAccount))
     }
 
     "get the root admin by username" in {
@@ -112,7 +112,7 @@ class RootSpecs extends SpecWithSDK {
     }
 
     "returns the same accounts as the root org" in {
-      await(rootApp.listAccounts) must containTheSameElementsAs(await(rootOrg.listAccounts))
+      await(rootApp.listAccounts()) must containTheSameElementsAs(await(rootOrg.listAccounts()))
     }
 
     "not be capable of deletion" in {

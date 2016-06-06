@@ -27,11 +27,11 @@ class GroupSpecs extends SpecWithSDK {
     }
 
     "not list an unmapped group in the org" in {
-      await(newOrg.listGroups) must not contain unmappedGrpFromRootDir
+      await(newOrg.listGroups()) must not contain unmappedGrpFromRootDir
     }
 
     "not list an unmapped group in the service app" in {
-      await(newOrgApp.listGroups) must not contain unmappedGrpFromRootDir
+      await(newOrgApp.listGroups()) must not contain unmappedGrpFromRootDir
     }
 
     "fail to get an unmapped group by id in the org" in {
@@ -61,8 +61,8 @@ class GroupSpecs extends SpecWithSDK {
       )))
       await(newOrg.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
-      await(newOrg.listGroups) must contain(unmappedGrpFromRootDir)
-      await(newOrgApp.listGroups) must contain(unmappedGrpFromRootDir)
+      await(newOrg.listGroups()) must contain(unmappedGrpFromRootDir)
+      await(newOrgApp.listGroups()) must contain(unmappedGrpFromRootDir)
       await(newOrg.getGroupById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
       await(newOrgApp.getGroupById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
       await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
@@ -84,8 +84,8 @@ class GroupSpecs extends SpecWithSDK {
       )))
       await(newOrg.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
       await(newOrgApp.listAccountStores) must contain( (asm: GestaltAccountStoreMapping) => asm.id == mapping.id )
-      await(newOrg.listGroups) must contain(unmappedGrpFromRootDir)
-      await(newOrgApp.listGroups) must contain(unmappedGrpFromRootDir)
+      await(newOrg.listGroups()) must contain(unmappedGrpFromRootDir)
+      await(newOrgApp.listGroups()) must contain(unmappedGrpFromRootDir)
       await(newOrg.getGroupById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
       await(newOrgApp.getGroupById(unmappedGrpFromRootDir.id)) must beSome(unmappedGrpFromRootDir)
       await(newOrg.getGroupByName(unmappedGrpFromRootDir.name)) must beNone // not in the default group store
@@ -108,7 +108,7 @@ class GroupSpecs extends SpecWithSDK {
     "show up in org after creation" in {
       await(newOrg.getGroupById(newOrgGrp.id)) must beSome(newOrgGrp)
       await(newOrg.getGroupByName(newOrgGrp.name)) must beSome(newOrgGrp)
-      await(newOrg.listGroups) must contain(newOrgGrp)
+      await(newOrg.listGroups()) must contain(newOrgGrp)
     }
 
     "list grants provided at creation" in {
