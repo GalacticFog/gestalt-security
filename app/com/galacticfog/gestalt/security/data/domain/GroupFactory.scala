@@ -220,6 +220,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
       dir <- DirectoryFactory.listByOrgId(orgId)
       group <- dir.listOrgGroupsByName(orgId, groupName)
     } yield group
-
   }
+
 }

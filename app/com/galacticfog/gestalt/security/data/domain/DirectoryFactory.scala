@@ -3,6 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import com.galacticfog.gestalt.security.api.{GestaltAccountCreate, GestaltDirectoryCreate, GestaltGroupCreate, GestaltPasswordCredential}
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
 import org.mindrot.jbcrypt.BCrypt
+import org.postgresql.util.PSQLException
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
@@ -132,35 +133,27 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  // TODO: omg, refactor this
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
-    GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}") match {
-      case Some(_) => Failure(ConflictException(
-        resource = s"/orgs/${orgId}/directories",
-        message = "directory with specified name already exists in org",
-        developerMessage = "The org already contains a directory with the specified name."
-      ))
-      case None =>
-        {
-          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${create.directoryType.label})") match {
-            case None => Failure(BadRequestException(
-              resource = s"/orgs/${orgId}/directories",
-              message = s"directory type ${create.directoryType} not valid",
-              developerMessage = s"During directory creation, the requested directory type ${create.directoryType} was not valid."
-            ))
-            case Some(dirType) => Success(dirType.name.toUpperCase)
-          }
-        } map { directoryType =>
-          GestaltDirectoryRepository.create(
-            id = UUID.randomUUID(),
-            orgId = orgId,
-            name = create.name,
-            description = create.description,
-            config = create.config map {_.toString},
-            directoryType = directoryType
-          )
+    Try {
+      GestaltDirectoryRepository.create(
+        id = UUID.randomUUID(),
+        orgId = orgId,
+        name = create.name,
+        description = create.description,
+        config = create.config map {_.toString},
+        directoryType = create.directoryType.label
+      )
+    } recoverWith {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "directory_name_org_id_key" => Failure(ConflictException(
+            resource = s"/orgs/${orgId}/directories",
+            message = "directory with specified name already exists in org",
+            developerMessage = "The org already contains a directory with the specified name."
+          ))
+          case _ => Failure(t)
         }
-    }
+    } map {d => d: Directory}
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
