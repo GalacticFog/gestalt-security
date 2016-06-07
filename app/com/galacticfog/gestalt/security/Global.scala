@@ -1,8 +1,10 @@
 package com.galacticfog.gestalt.security
 
+import com.galacticfog.gestalt.security.actors.RateLimitingActor
 import controllers.{GestaltHeaderAuthentication, RESTAPIController, InitController}
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
+import play.libs.Akka
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.SecurityServices
@@ -115,6 +117,13 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
     if (Init.isInit) {
       FlywayMigration.migrate(db, "", "")
     }
+
+    val limitLength = EnvConfig.getEnvOpInt("RATE_LIMITING_PERIOD")
+    val attemptPerLimit = EnvConfig.getEnvOpInt("RATE_LIMITING_AMOUNT")
+    Akka.system().actorOf( RateLimitingActor.props(
+      periodLengthMinutes = limitLength getOrElse 1,
+      attemptsPerPeriod = attemptPerLimit getOrElse 10
+    ), RateLimitingActor.ACTOR_NAME )
   }
 
   def handleError(request: RequestHeader, e: Throwable): Result = {

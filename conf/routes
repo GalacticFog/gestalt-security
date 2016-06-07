@@ -160,11 +160,11 @@ GET           /assets/*file                                             controll
 ##########################################
 POST          /apps/:appId/auth                                         controllers.RESTAPIController.appAuth(appId: java.util.UUID)
 #
-POST          /orgs/:orgId/auth                                         controllers.RESTAPIController.orgAuthByUUID(orgId: java.util.UUID)
-POST          /orgs/:orgId/oauth/issue                                  controllers.RESTAPIController.orgGenTokenUUID(orgId: java.util.UUID)
-POST          /orgs/:orgId/oauth/inspect                                controllers.RESTAPIController.orgTokenIntroUUID(orgId: java.util.UUID)
+POST          /orgs/:orgId/auth                                         controllers.RESTAPIController.orgAuth(orgId: java.util.UUID)
+POST          /orgs/:orgId/oauth/issue                                  controllers.RESTAPIController.orgTokenIssue(orgId: java.util.UUID)
+POST          /orgs/:orgId/oauth/inspect                                controllers.RESTAPIController.orgTokenInspect(orgId: java.util.UUID)
 #
 POST          /auth                                                     controllers.RESTAPIController.globalAuth
-POST          /oauth/inspect                                            controllers.RESTAPIController.globalTokenIntro
+POST          /oauth/inspect                                            controllers.RESTAPIController.globalTokenInspect
 POST          /oauth/issue                                              controllers.RESTAPIController.globalTokenIssue
 

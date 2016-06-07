@@ -3,6 +3,8 @@ import play.api.libs.json.Json
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
 
+import scala.util.{Success, Try, Failure}
+
 /**
   * Created by cgbaker on 5/25/16.
   */
@@ -47,5 +49,14 @@ package object controllers {
   def oAuthErr(error: String, error_description: String): Result = BadRequest(Json.toJson(OAuthError(
     error, error_description
   )))
+
+
+  def o2t[T](o: Option[T])(ifEmpty: => Throwable) = o.fold[Try[T]](Failure(ifEmpty))(Success(_))
+
+  def asSingleton[T](s: Seq[T]): Option[T] = s match {
+    case Seq(t) => Some(t)
+    case _ => None
+  }
+
 
 }
