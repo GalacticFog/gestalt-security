@@ -118,8 +118,8 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
       FlywayMigration.migrate(db, "", "")
     }
 
-    val limitLength = EnvConfig.getEnvOpInt("RATE_LIMITING_PERIOD")
-    val attemptPerLimit = EnvConfig.getEnvOpInt("RATE_LIMITING_AMOUNT")
+    val limitLength = EnvConfig.getEnvOpInt("OAUTH_RATE_LIMITING_PERIOD")
+    val attemptPerLimit = EnvConfig.getEnvOpInt("OAUTH_RATE_LIMITING_AMOUNT")
     Akka.system().actorOf( RateLimitingActor.props(
       periodLengthMinutes = limitLength getOrElse 1,
       attemptsPerPeriod = attemptPerLimit getOrElse 10
