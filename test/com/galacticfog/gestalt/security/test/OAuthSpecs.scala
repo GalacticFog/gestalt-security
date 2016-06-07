@@ -9,6 +9,8 @@ import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
 import com.galacticfog.gestalt.security.data.model.TokenRepository
 import org.joda.time.DateTime
 
+import scala.concurrent.Future
+
 class OAuthSpecs extends SpecWithSDK {
 
   lazy val orgName = "new-org-for-oauth"
@@ -77,6 +79,20 @@ class OAuthSpecs extends SpecWithSDK {
       val token = await(GestaltToken.grantPasswordToken(org.fqon, account.username, "letmein"))
       token must beSome
       token.get.tokenType must_== BEARER
+    }
+
+    "rate limit token creation" in {
+      val newAccount = await(GestaltOrg.createAccount(org.id, GestaltAccountCreateWithRights(
+        username = "hack-me",
+        firstName = "", lastName = "",
+        credential = GestaltPasswordCredential("weak-password")
+      )))
+      val tokenFutures = (1 to 200) map {
+        _ => GestaltToken.grantPasswordToken(org.fqon, newAccount.username, "weak-password")
+      }
+      await(Future.sequence(tokenFutures)) must contain (
+        (tokenAttempt: Option[AccessTokenResponse]) => tokenAttempt.isEmpty
+      )
     }
 
     "accept valid access token for authentication" in {
