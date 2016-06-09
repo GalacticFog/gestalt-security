@@ -15,6 +15,7 @@ import play.api.Logger
 import scala.util.{Failure, Success, Try}
 
 trait Directory {
+
   def createAccount(username: String,
                     description: Option[String],
                     firstName: String,
@@ -24,15 +25,35 @@ trait Directory {
                     cred: GestaltPasswordCredential)
                    (implicit session: DBSession = AutoSession): Try[UserAccountRepository]
 
+  def createGroup(name: String,
+                  description: Option[String])
+                 (implicit session: DBSession = AutoSession): Try[UserGroupRepository]
+
   def authenticateAccount(account: UserAccountRepository, plaintext: String)
                          (implicit session: DBSession = AutoSession): Boolean
 
   def lookupAccountByUsername(username: String)
                              (implicit session: DBSession = AutoSession): Option[UserAccountRepository]
+
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    *
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone phone number query parameter (e.g., "+1505*")
+    * @param email email address query parameter (e.g., "*smith@company.com")
+    * @param session database session (optional)
+    * @return List of matching accounts
+    */
+  def queryAccounts(username: Option[String] = None,
+                    phone: Option[String] = None,
+                    email: Option[String] = None)
+                   (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
+
   def lookupGroupByName(groupName: String)
                        (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
 
-  def disableAccount(accountId: UUID)
+  def disableAccount(accountId: UUID, disabled: Boolean = true)
                     (implicit session: DBSession = AutoSession): Unit
 
   def deleteGroup(uuid: UUID)
@@ -44,7 +65,16 @@ trait Directory {
   def listGroupAccounts(groupId: UUID)
                        (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
 
-  def listOrgGroupsByName(orgId: UUID, groupName: String)
+  /**
+  * Directory-specific (i.e., deep) query of groups, supporting wildcard matches on group name.
+  *
+  * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+  *
+  * @param groupName group name query parameter (e.g., "*-admins")
+  * @param session database session (optional)
+  * @return List of matching groups
+  */
+  def listOrgGroupsByName(groupName: String)
                          (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
 
   def id: UUID
@@ -60,17 +90,22 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
   override def description: Option[String] = daoDir.description
 
-  override def disableAccount(accountId: UUID)(implicit session: DBSession): Unit = {
-    AccountFactory.disableAccount(accountId)
+  override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
+    AccountFactory.disableAccount(accountId, disabled)
   }
 
   override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
+    if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
     AccountFactory.checkPassword(account, plaintext)
   }
 
-  override def lookupAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
+  override def lookupAccountByUsername(username: String)
+                                      (implicit session: DBSession): Option[UserAccountRepository] =
+    AccountFactory.directoryLookup(id, username)
 
-  override def lookupGroupByName(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
+  override def lookupGroupByName(groupName: String)
+                                (implicit session: DBSession): Option[UserGroupRepository] =
+    UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
   override def getGroupById(groupId: UUID)(implicit session: DBSession) = {
     GroupFactory.find(groupId) flatMap { grp =>
@@ -101,8 +136,38 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     )
   }
 
-  override def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
-    UserGroupRepository.findAllBy(sqls"org_id = ${orgId} and name = ${groupName}")
+  override def listOrgGroupsByName(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
+    UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name like ${groupName}")
+  }
+
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    *
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone    phone number query parameter (e.g., "+1505*")
+    * @param email    email address query parameter (e.g., "*smith@company.com")
+    * @param session  database session (optional)
+    * @return List of matching accounts
+    */
+  override def queryAccounts(username: Option[String], phone: Option[String], email: Option[String])
+                            (implicit session: DBSession): Seq[UserAccountRepository] = {
+    AccountFactory.queryAccounts(
+      dirId = Some(id),
+      nameQuery = username,
+      phoneQuery = phone,
+      emailQuery = email
+    )
+  }
+
+  override def createGroup(name: String, description: Option[String])
+                          (implicit session: DBSession): Try[UserGroupRepository] = {
+    GroupFactory.create(
+      name = name,
+      description = description,
+      dirId = id,
+      maybeParentOrg = None
+    )
   }
 }
 
@@ -203,11 +268,9 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         message = "could not create group in non-existent directory",
         developerMessage = "Could not create group in non-existent directory. If this error was encountered during an attempt to create a group in an org, it suggests that the org is misconfigured."
       ))
-      case Some(dir) => GroupFactory.create(
+      case Some(dir) => dir.createGroup(
         name = create.name,
-        description = create.description,
-        dirId = dir.id.asInstanceOf[UUID],
-        maybeParentOrg = Some(dir.orgId.asInstanceOf[UUID])
+        description = create.description
       )
     }
   }

@@ -611,23 +611,41 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    Ok(Json.toJson(
-      AccountFactory.listByAppId(
-        appId = request.user.serviceAppId,
-        nameQuery = request.getQueryString("username"),
-        emailQuery = request.getQueryString("email"),
-        phoneQuery = request.getQueryString("phoneNumber")
-      ).map { a => a: GestaltAccount }
-    ))
+    val nameQuery = request.getQueryString("username")
+    val emailQuery = request.getQueryString("email")
+    val phoneQuery = request.getQueryString("phoneNumber")
+    if (nameQuery.isDefined || emailQuery.isDefined || phoneQuery.isDefined) {
+      Ok(Json.toJson(
+        AccountFactory.lookupByAppId(
+          appId = request.user.serviceAppId,
+          nameQuery = nameQuery,
+          emailQuery = emailQuery,
+          phoneQuery = phoneQuery
+        ).map { a => a: GestaltAccount }
+      ))
+    } else {
+      Ok(Json.toJson(
+        AccountFactory.listByAppId(
+          appId = request.user.serviceAppId,
+          nameQuery = None,
+          emailQuery = None,
+          phoneQuery = None
+        ).map { a => a: GestaltAccount }
+      ))
+    }
   }
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(
+    val nameQuery = request.getQueryString("name")
+    val results = if (nameQuery.isDefined) {
+      GroupFactory.lookupAppGroups(
         appId = request.user.serviceAppId,
-        nameQuery = request.getQueryString("name")
-      ).map { g => g: GestaltGroup }
-    ))
+        nameQuery = nameQuery.get
+      )
+    } else {
+      GroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
+    }
+    Ok(Json.toJson[Seq[GestaltGroup]](results.map{ g => g: GestaltGroup }))
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
@@ -1139,7 +1157,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppGroupMappings(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(
+      GroupFactory.queryShadowedAppGroups(
         appId = appId,
         nameQuery = None
       ).map { g => g: GestaltGroup }

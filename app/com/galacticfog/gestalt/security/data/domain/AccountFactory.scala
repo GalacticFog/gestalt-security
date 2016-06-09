@@ -38,6 +38,7 @@ trait AccountFactoryDelegate {
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with AccountFactoryDelegate {
 
+
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
   def instance = this
@@ -61,10 +62,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
 
   override val autoSession = AutoSession
 
-  def disableAccount(accountId: UUID)(implicit session: DBSession = autoSession): Unit = {
+  def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession = autoSession): Unit = {
     val column = UserAccountRepository.column
     withSQL {
-      update(UserAccountRepository).set(column.disabled -> true).where.eq(column.id, accountId)
+      update(UserAccountRepository).set(column.disabled -> disabled).where.eq(column.id, accountId)
     }.update().apply()
   }
 
@@ -245,6 +246,35 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     )
   }
 
+
+  /**
+    * Deep lookup on Directories to find all accounts that are mapped to a given application
+    * @param appId ID for the application
+    * @param nameQuery  username query parameter (e.g., "*smith")
+    * @param emailQuery email query parameter (e.g., "*@company.com")
+    * @param phoneQuery phone number query parameter (e.g., "+1505*")
+    * @param session database session (optional)
+    * @return List of accounts mapped to the application satisfying any specified query parameters
+    */
+  def lookupByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
+                   (implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
+    ???
+//    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
+//    val dirAccounts = for {
+//      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
+//      acc <- dir.lookupAccount(nameQuery = nameQuery, emailQuery = emailQuery, phoneQuery = phoneQuery)
+//    } yield acc
+//    lazy val indirectDirMappings = for {
+//      grpMapping <- groupMappings
+//      group <- UserGroupRepository.find(grpMapping.accountStoreId)
+//    } yield group.dirId.asInstanceOf[UUID]
+//    lazy val groupAccounts = for {
+//      dir <- indirectDirMappings.distinct.flatMap ( DirectoryFactory.find(_).toSeq )
+//      acc <- dir.lookupAccount(nameQuery = nameQuery, emailQuery = emailQuery, phoneQuery = phoneQuery)
+//    } yield acc
+//    (dirAccounts ++ groupAccounts.headOption
+  }
+
   /**
     * For all account stores mapped to a particular application, find the "first" account in those stores against which
     * the given credentials can successfully authenticate.
@@ -262,7 +292,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
       acc <- dir.lookupAccountByUsername(creds.username)
-      authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+      authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
     lazy val indirectDirMappings = for {
       grpMapping <- groupMappings
@@ -270,6 +300,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     } yield group.dirId.asInstanceOf[UUID]
     lazy val groupAccounts = for {
       dir <- indirectDirMappings.distinct.flatMap ( DirectoryFactory.find(_).toSeq )
+      // TODO: This is a bug... I only want the accounts in the group, not all accounts in the Directory
       acc <- dir.lookupAccountByUsername(creds.username)
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
@@ -289,6 +320,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       """.map{UserAccountRepository(a)}.list.apply().headOption
   }
 
+  // TODO: i think this will get deleted, check and see whether it's still necessary
   def listByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
                  (implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     val (a,axg,asm) = (
@@ -310,7 +342,21 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
         )
         .on(sqls"${a.id} = ${sub(axg).accountId} or ${a.dirId} = ${sub(asm).accountStoreId}")
         .where(sqls.toAndConditionOpt(
-          Some(sqls.eq(a.disabled, false)),
+          nameQuery.map(q => sqls.like(a.username, q.replace("*","%"))),
+          emailQuery.map(q => sqls.like(a.email, q.replace("*","%"))),
+          phoneQuery.map(q => sqls.like(a.phoneNumber, q.replace("*","%")))
+        ))
+    }.map{UserAccountRepository(a)}.list.apply()
+  }
+
+  def queryAccounts(dirId: Option[UUID], nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
+                   (implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+    val a = UserAccountRepository.syntax("a")
+    withSQL {
+      select
+        .from(UserAccountRepository as a)
+        .where(sqls.toAndConditionOpt(
+          dirId.map(id => sqls.eq(a.dirId, id)),
           nameQuery.map(q => sqls.like(a.username, q.replace("*","%"))),
           emailQuery.map(q => sqls.like(a.email, q.replace("*","%"))),
           phoneQuery.map(q => sqls.like(a.phoneNumber, q.replace("*","%")))
@@ -418,7 +464,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.disabled} = false
       """.map(UserAccountRepository(a)).list.apply()
   }
 
@@ -435,7 +480,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.id} = ${accountId} and ${a.disabled} = false
+          where ${a.id} = ${accountId}
       """.map(UserAccountRepository(a)).single().apply()
   }
 
@@ -452,7 +497,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.email} = ${email} and ${a.disabled} = false
+          where ${a.email} = ${email}
       """.map(UserAccountRepository(a)).list.apply()
   }
 
@@ -469,7 +514,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.username} = ${username} and ${a.disabled} = false
+          where ${a.username} = ${username}
       """.map(UserAccountRepository(a)).list.apply()
   }
 

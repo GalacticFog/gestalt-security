@@ -55,6 +55,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   SecurityUtils.setSecurityManager(securityMgr)
 
   override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
+    if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
     var result = true
     val sep = if (searchBase.startsWith(",")) "" else ","
     val dn = primaryField + "=" + account.username + sep + searchBase
@@ -87,8 +88,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   // Returns the shadowed group
   override def lookupGroupByName(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
-  override def disableAccount(accountId: UUID)(implicit session: DBSession): Unit = {
-    AccountFactory.disableAccount(accountId)
+  override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
+    AccountFactory.disableAccount(accountId, disabled)
   }
 
   override def lookupAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = {
@@ -145,8 +146,22 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     }
   }
 
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    *
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone    phone number query parameter (e.g., "+1505*")
+    * @param email    email address query parameter (e.g., "*smith@company.com")
+    * @param session  database session (optional)
+    * @return List of matching accounts
+    */
+  override def queryAccounts(username: Option[String], phone: Option[String], email: Option[String])
+                            (implicit session: DBSession): Seq[UserAccountRepository] = ???
+
   // Syncs with LDAP before returning matching groups
-  override def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
+  override def listOrgGroupsByName(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
+    // TODO: get list and list
     for (sgroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${this.id}")) {
       if (this.ldapFindGroupnamesByName(groupName).get.isEmpty) {
         this.unshadowGroup(sgroup)
@@ -159,7 +174,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     } yield shadowGroup
   }
 
-  override def getGroupById(groupId: UUID)(implicit session: DBSession) = {
+  override def getGroupById(groupId: UUID)(implicit session: DBSession): Option[UserGroupRepository] = {
     GroupFactory.find(groupId) flatMap { grp =>
       if (grp.dirId == id) Some(grp)
       else None
@@ -172,9 +187,24 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     GroupFactory.delete(groupId)
   }
 
-  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential)(implicit session: DBSession): Try[UserAccountRepository] = {
+  override def createGroup(name: String, description: Option[String])(implicit session: DBSession): Try[UserGroupRepository] = {
     Failure(BadRequestException(
-      resource = s"/orgs/${orgId}/directories/${id}/account",
+      resource = "",
+      message = "Group create request not valid",
+      developerMessage = "LDAP Directory does not support group creation."
+    ))
+  }
+
+  override def createAccount(username: String,
+                             description: Option[String],
+                             firstName: String,
+                             lastName: String,
+                             email: Option[String],
+                             phoneNumber: Option[String],
+                             cred: GestaltPasswordCredential)
+                            (implicit session: DBSession): Try[UserAccountRepository] = {
+    Failure(BadRequestException(
+      resource = "",
       message = "Account create request not valid",
       developerMessage = "LDAP Directory does not support account creation."
     ))
@@ -230,7 +260,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   }
 
   // Find an LDAP group by user
-  private def ldapFindGroupnamesByUser(username: String): Try[List[String]] = {
+  def ldapFindGroupnamesByUser(username: String): Try[List[String]] = {
     Try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
@@ -263,7 +293,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     }
   }
 
-  private def ldapFindGroupnamesByName(groupName: String): Try[List[String]] = {
+  def ldapFindGroupnamesByName(groupName: String): Try[List[String]] = {
     try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
