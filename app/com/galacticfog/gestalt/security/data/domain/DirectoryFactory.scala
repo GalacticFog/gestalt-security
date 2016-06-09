@@ -21,25 +21,37 @@ trait Directory {
                     lastName: String,
                     email: Option[String],
                     phoneNumber: Option[String],
-                    cred: GestaltPasswordCredential): Try[UserAccountRepository]
+                    cred: GestaltPasswordCredential)
+                   (implicit session: DBSession = AutoSession): Try[UserAccountRepository]
 
-  def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean
-  def lookupAccountByPrimary(primary: String): Option[UserAccountRepository]
-  def lookupAccountByUsername(username: String): Option[UserAccountRepository]
-  def lookupGroupByName(groupName: String): Option[UserGroupRepository]
+  def authenticateAccount(account: UserAccountRepository, plaintext: String)
+                         (implicit session: DBSession = AutoSession): Boolean
+
+  def lookupAccountByUsername(username: String)
+                             (implicit session: DBSession = AutoSession): Option[UserAccountRepository]
+  def lookupGroupByName(groupName: String)
+                       (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
+
+  def disableAccount(accountId: UUID)
+                    (implicit session: DBSession = AutoSession): Unit
+
+  def deleteGroup(uuid: UUID)
+                 (implicit session: DBSession = AutoSession): Boolean
+
+  def getGroupById(groupId: UUID)
+                  (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
+
+  def listGroupAccounts(groupId: UUID)
+                       (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
+
+  def listOrgGroupsByName(orgId: UUID, groupName: String)
+                         (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
 
   def id: UUID
   def name: String
   def description: Option[String]
   def orgId: UUID
 
-  def disableAccount(accountId: UUID): Unit
-  def deleteGroup(uuid: UUID): Boolean
-
-  def getGroupById(groupId: UUID): Option[UserGroupRepository]
-
-  def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository]
-  def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository]
 }
 
 case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
@@ -48,35 +60,32 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
   override def description: Option[String] = daoDir.description
 
-  override def disableAccount(accountId: UUID): Unit = {
+  override def disableAccount(accountId: UUID)(implicit session: DBSession): Unit = {
     AccountFactory.disableAccount(accountId)
   }
 
-  override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
+  override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
     AccountFactory.checkPassword(account, plaintext)
   }
 
-  override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = None
+  override def lookupAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
 
+  override def lookupGroupByName(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
-  override def lookupAccountByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
-
-  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
-
-  override def getGroupById(groupId: UUID) = {
+  override def getGroupById(groupId: UUID)(implicit session: DBSession) = {
     GroupFactory.find(groupId) flatMap { grp =>
       if (grp.dirId == id) Some(grp)
       else None
     }
   }
 
-  override def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository] = GroupFactory.listGroupAccounts(groupId)
+  override def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository] = GroupFactory.listGroupAccounts(groupId)
 
-  override def deleteGroup(groupId: UUID): Boolean = {
+  override def deleteGroup(groupId: UUID)(implicit session: DBSession): Boolean = {
     GroupFactory.delete(groupId)
   }
 
-  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
+  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential)(implicit session: DBSession): Try[UserAccountRepository] = {
     AccountFactory.createAccount(
       dirId = id,
       username = username,
@@ -92,7 +101,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     )
   }
 
-  override def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository] = {
+  override def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
     UserGroupRepository.findAllBy(sqls"org_id = ${orgId} and name = ${groupName}")
   }
 }

@@ -17,9 +17,23 @@ import scala.util.{Failure, Try}
 import scala.util.matching.Regex
 
 trait AccountFactoryDelegate {
-  def createAccount(dirId: UUID, username: String, description: Option[String] = None, email: Option[String] = None, phoneNumber: Option[String] = None,
-                    firstName: String, lastName: String, hashMethod: String, salt: String, secret: String, disabled: Boolean)(implicit session: DBSession): Try[UserAccountRepository]
-  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession): Option[UserAccountRepository]
+
+  def createAccount(dirId: UUID,
+                    username: String,
+                    description: Option[String] = None,
+                    email: Option[String] = None,
+                    phoneNumber: Option[String] = None,
+                    firstName: String,
+                    lastName: String,
+                    hashMethod: String,
+                    salt: String,
+                    secret: String,
+                    disabled: Boolean)
+                   (implicit session: DBSession): Try[UserAccountRepository]
+
+  def directoryLookup(dirId: UUID, username: String)
+                     (implicit session: DBSession): Option[UserAccountRepository]
+
 }
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with AccountFactoryDelegate {
@@ -73,6 +87,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
+      case "shadowed" =>
+        Logger.warn("Cannot perform direct authentication against a shadow account")
+        false
       case "disabled" =>
         Logger.info("Account password authenticated marked disabled")
         false
@@ -228,37 +245,35 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     )
   }
 
-  def frameworkAuth(appId: UUID, request: RequestHeader)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    val usernameAuths = for {
-      token <- GestaltHeaderAuthentication.extractAuthToken(request).flatMap {_ match {
-        case t: GestaltBasicCredentials => Some(t)
-        case _ => None
-      }}.toSeq
-      acc <- AccountFactory.authenticate(appId, GestaltBasicCredsToken(token.username, token.password))
-    } yield acc
-    // first success is good enough
-    usernameAuths.headOption
-  }
-
+  /**
+    * For all account stores mapped to a particular application, find the "first" account in those stores against which
+    * the given credentials can successfully authenticate.
+    *
+    * This uses the methods on the Directory interface for the relevant account stores, and therefore may result in calls to the
+    * backing store (e.g., LDAP/AD) for the directory and potentially result in newly created shadow accounts.
+    *
+    * @param appId The app context for authentication
+    * @param creds The user credentials to authenticate
+    * @param session db session
+    * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
+    */
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    val authAttempt = for {
-      acc <- findAppUsersByUsername(appId,creds.username)
-      dir <- DirectoryFactory.find(acc.dirId.asInstanceOf[java.util.UUID])
+    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
+    val dirAccounts = for {
+      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
+      acc <- dir.lookupAccountByUsername(creds.username)
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    val shadowedAccounts = for {
-        app <- AppFactory.findByAppId(appId).toSeq
-        dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID]).filter {d => d.isInstanceOf[LDAPDirectory]}
-        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password)  // Creates shadow account if found, then authenticates
-    } yield saccount
-    // TODO - query all indirect LDAPDirectories
-//    val indirectAccounts = for {
-//        app <- AppFactory.findByAppId(appId).toSeq
-//        grp <- GroupFactory.listAppGroups(appId)
-//        dir <- Some(DirectoryFactory.find(grp.dirId)).toSeq
-//        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
-//    } yield saccount
-    (authAttempt.headOption orElse shadowedAccounts.headOption) // orElse indirectAccounts.headOption
+    lazy val indirectDirMappings = for {
+      grpMapping <- groupMappings
+      group <- UserGroupRepository.find(grpMapping.accountStoreId)
+    } yield group.dirId.asInstanceOf[UUID]
+    lazy val groupAccounts = for {
+      dir <- indirectDirMappings.distinct.flatMap ( DirectoryFactory.find(_).toSeq )
+      acc <- dir.lookupAccountByUsername(creds.username)
+      authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+    } yield authedAcc
+    dirAccounts.headOption orElse groupAccounts.headOption
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {

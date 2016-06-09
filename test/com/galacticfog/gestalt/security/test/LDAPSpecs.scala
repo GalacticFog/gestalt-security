@@ -33,12 +33,19 @@ class LDAPSpecs extends SpecWithSDK {
     "be addable to the root org" in {
       ldapDir must haveName("LdapTestDir")
       await(newOrg.listDirectories()) must contain(ldapDir)
+      await(GestaltOrg.mapAccountStore(
+        orgId = newOrg.id,
+        createRequest = GestaltAccountStoreMappingCreate(
+          name = "test-ldap-mapping",
+          storeType = DIRECTORY,
+          accountStoreId = ldapDir.id,
+          isDefaultAccountStore = false,
+          isDefaultGroupStore = false
+        )
+      )) must (
+        (asm: GestaltAccountStoreMapping) => asm.storeType == DIRECTORY && asm.storeId == ldapDir.id
+      )
     }
-
-//    "allow user to create sub-org with LDAP directory" in {
-//      val ldapOrg = newOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
-//      val ldapDir = newOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP))
-//    }
 
 //    "NOT allow a new group to be created" in {
 //      await(ldapdir.createGroup(GestaltGroupCreate("testGroup3"))) must throwA[BadRequestException](".*cannot add group.*")
@@ -58,18 +65,15 @@ class LDAPSpecs extends SpecWithSDK {
     "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
       // verify account is not shadowed
       AccountFactory.directoryLookup(ldapDir.id, "newton") must beNone
-      val token = await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password"))
-      token must beSome
-      // verify account is shadowed
-      val newton = AccountFactory.directoryLookup(ldapDir.id, "newton")
-      newton must beSome(
-        (uar: UserAccountRepository) =>
+      val maybeAuthAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password"))
+      maybeAuthAccount must beSome( (uar: UserAccountRepository) =>
           uar.username == "newton" && uar.dirId == ldapDir.id
       )
-      TokenFactory.findValidById(token.get.accessToken.id) must beSome(
-        (t: TokenRepository) => t.accountId == newton.get.id
+      // verify account is shadowed
+      AccountFactory.directoryLookup(ldapDir.id, "newton") must beSome( (uar: UserAccountRepository) =>
+          uar.username == "newton" && uar.dirId == ldapDir.id && uar.id == maybeAuthAccount.get.id
       )
-      // check that already shadowed account can be authenticated
+      // check that already shadowed account can be authenticated and get token
       await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beSome
     }
 

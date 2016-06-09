@@ -18,7 +18,8 @@ trait GroupFactoryDelegate {
   def create(name: String, description: Option[String], dirId: UUID, maybeParentOrg: Option[UUID])(implicit session: DBSession): Try[UserGroupRepository]
   def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Unit
   def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Try[GroupMembershipRepository]
-  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]}
+  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]
+}
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFactoryDelegate {
 
@@ -213,13 +214,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
           nameQuery.map(q => sqls.like(grp.name, q.replace("*","%")))
         ))
     }.map(UserGroupRepository(grp)).list.apply()
-  }
-
-  def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
-    for {
-      dir <- DirectoryFactory.listByOrgId(orgId)
-      group <- dir.listOrgGroupsByName(orgId, groupName)
-    } yield group
   }
 
 }
