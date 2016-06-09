@@ -57,7 +57,6 @@ PATCH         /orgs/:orgId/groups/:groupId/rights/:grantName            controll
 DELETE        /orgs/:orgId/groups/:groupId/rights/:grantName            controllers.RESTAPIController.deleteOrgGroupRight(orgId: java.util.UUID, groupId: java.util.UUID, grantName)
 #
 GET           /orgs/:orgId/groupnames/:groupName                        controllers.RESTAPIController.getOrgGroupByName(orgId: java.util.UUID, groupName)
-GET           /orgs/:orgId/groups?name=:groupName                       controllers.RESTAPIController.listOrgGroupsByName(orgId: java.util.UUID, groupName)
 
 ##########################################
 # accounts
