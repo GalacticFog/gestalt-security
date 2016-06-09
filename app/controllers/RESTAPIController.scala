@@ -30,7 +30,7 @@ import scala.concurrent.duration._
 
 object RESTAPIController extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
-  val defaultTokenExpiration: Long =  8.hours.toSeconds
+  val defaultTokenExpiration: Long =  Global.tokenLifetime.getStandardSeconds
 
   val services = Global.services
 
@@ -627,13 +627,6 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
         appId = request.user.serviceAppId,
         nameQuery = request.getQueryString("name")
       ).map { g => g: GestaltGroup }
-    ))
-  }
-
-  def listOrgGroupsByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    requireAuthorization(READ_DIRECTORY)
-    Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listOrgGroupsByName(orgId, groupName).map { g => g: GestaltGroup }
     ))
   }
 
