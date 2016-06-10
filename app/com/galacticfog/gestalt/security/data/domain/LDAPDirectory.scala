@@ -135,7 +135,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       Logger.info(s"Attempting: LDAP lookupAccountByUsername - search of DN: ${searchdn}")
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
 
-      if (answer.hasMore) {
+      while (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
         val fname: String         = attrs.get(firstnameField)
@@ -149,7 +149,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           this.shadowAccount(username, desc, fname, lname, email, phone).toOption
         }
       } else {
-        None
+        Seq.empty[UserAccountRepository]
       }
     } catch {
       case e: Throwable =>
@@ -157,7 +157,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           Logger.error("Error: LDAP configuration was not setup.")
         }
         Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
-        None
+        Seq.empty[UserAccountRepository]
     }
   }
 
