@@ -85,9 +85,6 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     result
   }
 
-//  // Returns the shadowed group
-//  override def lookupGroups(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
-
   override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
     AccountFactory.disableAccount(accountId, disabled)
   }
@@ -185,16 +182,18 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     * @return List of matching groups
     */
   override def lookupGroups(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
-    // TODO: get list and list
-    for (sgroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${this.id}")) {
-      if (this.ldapFindGroupnamesByName(groupName).get.isEmpty) {
-        this.unshadowGroup(sgroup)
-      }
-    }
-    // Find in LDAP
+    // 1. get a list of matching groups in ldap
+    // 2. get a list of matching shadowed groups
+    // make #2 equal to #1
+    val shadowedGroups = GroupFactory.queryShadowedDirectoryGroups(dirId = Some(id), nameQuery = Some(groupName))
+    val ldapGroupNames = this.ldapFindGroupnamesByName(groupName).get
+    val (staleGroups,notStaleGroups) = shadowedGroups.partition(
+      g => ldapGroupNames.contains(g.name)
+    )
+    staleGroups.foreach(this.unshadowGroup)
     for {
-      ldapGroupname <- this.ldapFindGroupnamesByName(groupName).get
-      shadowGroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name = ${ldapGroupname}").headOption.orElse(this.shadowGroup(ldapGroupname, Some("LDAP Group")).toOption)
+      ldapGroupName <- ldapGroupNames
+      shadowGroup <- notStaleGroups.find(_.name == ldapGroupName) orElse this.shadowGroup(ldapGroupName, Some("LDAP shadow group")).toOption
     } yield shadowGroup
   }
 

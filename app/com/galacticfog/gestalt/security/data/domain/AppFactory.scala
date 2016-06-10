@@ -445,7 +445,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       asm <- getDefaultGroupStore(app.id.asInstanceOf[UUID])
       dirId = asm.id.asInstanceOf[UUID]
-      group <- GroupFactory.directoryLookup(dirId, groupName) match {
+      group <- GroupFactory.findInDirectory(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -461,7 +461,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     for {
       asm <- getDefaultGroupStore(appId)
       dirId = asm.id.asInstanceOf[UUID]
-      group <- GroupFactory.directoryLookup(dirId, groupName) match {
+      group <- GroupFactory.findInDirectory(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",

@@ -204,10 +204,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     }
   }
 
-  def directoryLookup(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
-    UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
-  }
-
   def getAppGroupMapping(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
@@ -245,7 +241,10 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     }.map(UserGroupRepository(grp)).list.apply()
   }
 
-  // TODO: does this need to be deleted?
+  def findInDirectory(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
+  }
+
   def queryShadowedDirectoryGroups(dirId: Option[UUID], nameQuery: Option[String])
                                   (implicit session: DBSession = autoSession): List[UserGroupRepository] = {
     val g = UserGroupRepository.syntax("g")

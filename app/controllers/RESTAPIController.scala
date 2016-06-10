@@ -443,7 +443,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
-        GroupFactory.directoryLookup(dirId, groupName) match {
+        GroupFactory.findInDirectory(dirId, groupName) match {
           case Some(group) => Ok(Json.toJson[GestaltGroup](group))
           case None => NotFound(Json.toJson(ResourceNotFoundException(
             resource = request.path,
@@ -503,12 +503,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppAccounts(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(
-        appId = app.id.asInstanceOf[UUID],
-        nameQuery = None,
-        emailQuery = None,
-        phoneQuery = None
-      ) map { a => a: GestaltAccount }))
+      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](
+        AccountFactory.listAppUsers(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }
+      ))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested app",
@@ -625,12 +622,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
       ))
     } else {
       Ok(Json.toJson(
-        AccountFactory.listByAppId(
-          appId = request.user.serviceAppId,
-          nameQuery = None,
-          emailQuery = None,
-          phoneQuery = None
-        ).map { a => a: GestaltAccount }
+        AccountFactory.listAppUsers(request.user.serviceAppId).map {a => a: GestaltAccount}
       ))
     }
   }

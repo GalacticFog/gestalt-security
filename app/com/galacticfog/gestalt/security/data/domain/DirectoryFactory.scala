@@ -154,7 +154,7 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
                               phone: Option[String],
                               email: Option[String])
                              (implicit session: DBSession): Seq[UserAccountRepository] = {
-    AccountFactory.queryAccounts(
+    AccountFactory.queryShadowedDirectoryAccounts(
       dirId = Some(id),
       nameQuery = username,
       phoneQuery = phone,
