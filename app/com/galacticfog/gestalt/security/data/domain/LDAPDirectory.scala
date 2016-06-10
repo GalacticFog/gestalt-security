@@ -45,7 +45,9 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   var lastnameField = (config \ "lastNameField").asOpt[String].getOrElse("lastName")
   var emailField = (config \ "emailField").asOpt[String].getOrElse("mail")
   var phoneField = (config \ "phoneNumberField").asOpt[String].getOrElse("phoneNumber")
-  var groupField = (config \ "groupField").asOpt[String].getOrElse("ou")
+  var groupField = (config \ "groupField").asOpt[String].getOrElse("cn")
+  var groupObjectClassDefault = if (activeDirectory == true) "group" else "groupOfUniqueNames"
+  var groupObjectClass = (config \ "groupObjectClass").asOpt[String].getOrElse(groupObjectClassDefault)
   var memberField = (config \ "memberField").asOpt[String].getOrElse("uniqueMember")
   val ldapRealm = new ActiveDirectoryRealm()
   ldapRealm.setUrl(url)
@@ -228,7 +230,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
       val constraints = new SearchControls()
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
-      val searchdn = s"(&(${groupField}=*)(${memberField}=${primaryField}=${username}${searchtail}))"
+      val searchdn = s"(&(${groupField}=*)(${memberField}=${primaryField}=${username}${searchtail})(objectClass=${groupObjectClass}))"
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
       var gnames = List.empty[String]
       while (answer.hasMore) {
@@ -259,7 +261,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       // LDAP search value
-      val searchdn = s"${groupField}=${groupName}${sep}${searchBase}"
+      val searchdn = s"(&(${groupField}=${groupName}${sep}${searchBase})(objectClass=${groupObjectClass})"
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
       val constraints = new SearchControls()
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
