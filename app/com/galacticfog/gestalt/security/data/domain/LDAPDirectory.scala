@@ -85,8 +85,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     result
   }
 
-  // Returns the shadowed group
-  override def lookupGroups(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
+//  // Returns the shadowed group
+//  override def lookupGroups(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
   override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
     AccountFactory.disableAccount(accountId, disabled)
@@ -108,6 +108,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
                      phone: Option[String] = None,
                      email: Option[String] = None)
                     (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
+    if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
+    if (group.isDefined) ???
     implicit def attrToString(attr: => Attribute): String = {
       val memo = attr
       if (memo != null) memo.toString
@@ -126,6 +128,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
       val dn = "cn=" + systemUsername + sep + searchBase
+      val queries = Seq(
+          username map (q => s"${primaryField}=$q"),
+          email map (q => s"${emailField}=$q"),
+          phone map (q => s"${phoneField}=$q")
+      ).flatten.foldLeft(","){ case (r,s) => r + "," + s }.stripPrefix(",").stripSuffix(",")
       val searchdn = s"${primaryField}=${username}"
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
@@ -135,22 +142,29 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       Logger.info(s"Attempting: LDAP lookupAccountByUsername - search of DN: ${searchdn}")
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
 
+      var users = Seq.empty[UserAccountRepository]
       while (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
+        val uname: String         = attrs.get(primaryField)
         val fname: String         = attrs.get(firstnameField)
         val lname: String         = attrs.get(lastnameField)
         val desc: Option[String]  = attrs.get(descField)
         val email: Option[String] = attrs.get(emailField)
         val phone: Option[String] = attrs.get(phoneField)
-        Logger.info(s"Attempting: LDAP findShadowAccountByUsername(${username})")
-        this.findShadowedAccountByUsername(username) orElse {
-          Logger.info(s"Attempting: LDAP shadowAccount(${username})")
-          this.shadowAccount(username, desc, fname, lname, email, phone).toOption
+        Logger.info(s"Attempting: LDAP findShadowAccountByUsername(${uname})")
+        this.findShadowedAccountByUsername(uname) orElse {
+          Logger.info(s"Attempting: LDAP shadowAccount(${uname})")
+          this.shadowAccount(uname, desc, fname, lname, email, phone).toOption
+        } match {
+          case Some(account) =>
+            users :+ account
+          case None =>
+            Logger.warn(s"did not find account ${uname}")
+            users
         }
-      } else {
-        Seq.empty[UserAccountRepository]
       }
+      users
     } catch {
       case e: Throwable =>
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
@@ -161,18 +175,16 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     }
   }
 
-  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+  /**
+    * Directory-specific (i.e., deep) query of groups, supporting wildcard match on group name.
     *
-    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    * Wildcard charater '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
     *
-    * @param username username query parameter (e.g., "*smith")
-    * @param phone    phone number query parameter (e.g., "+1505*")
-    * @param email    email address query parameter (e.g., "*smith@company.com")
-    * @param session  database session (optional)
-    * @return List of matching accounts
+    * @param groupName group name query parameter (e.g., "*-admins")
+    * @param session   database session (optional)
+    * @return List of matching groups
     */
-  override def queryAccounts(username: Option[String], phone: Option[String], email: Option[String])
-                            (implicit session: DBSession): Seq[UserAccountRepository] = ???
+  override def lookupGroups(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = ???
 
   // Syncs with LDAP before returning matching groups
   override def listOrgGroupsByName(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
