@@ -423,7 +423,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
+        AccountFactory.findInDirectoryByName(dirId, username) match {
           case Some(account) => Ok(Json.toJson[GestaltAccount](account))
           case None => NotFound(Json.toJson(ResourceNotFoundException(
             resource = request.path,
@@ -443,7 +443,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
-        GroupFactory.findInDirectory(dirId, groupName) match {
+        GroupFactory.findInDirectoryByName(dirId, groupName) match {
           case Some(group) => Ok(Json.toJson[GestaltGroup](group))
           case None => NotFound(Json.toJson(ResourceNotFoundException(
             resource = request.path,

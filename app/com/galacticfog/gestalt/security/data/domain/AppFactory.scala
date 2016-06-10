@@ -397,7 +397,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     for {
       asm <- getDefaultAccountStore(appId)
       dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
-      account <- AccountFactory.directoryLookup(dirId, username) match {
+      account <- AccountFactory.findInDirectoryByName(dirId, username) match {
         case Some(a) => Success(a)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -421,7 +421,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       asm <- getDefaultAccountStore(app.id.asInstanceOf[UUID])
       dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
-      account <- AccountFactory.directoryLookup(dirId, username) match {
+      account <- AccountFactory.findInDirectoryByName(dirId, username) match {
         case Some(a) => Success(a)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -445,7 +445,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       asm <- getDefaultGroupStore(app.id.asInstanceOf[UUID])
       dirId = asm.id.asInstanceOf[UUID]
-      group <- GroupFactory.findInDirectory(dirId, groupName) match {
+      group <- GroupFactory.findInDirectoryByName(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -461,7 +461,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     for {
       asm <- getDefaultGroupStore(appId)
       dirId = asm.id.asInstanceOf[UUID]
-      group <- GroupFactory.findInDirectory(dirId, groupName) match {
+      group <- GroupFactory.findInDirectoryByName(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",

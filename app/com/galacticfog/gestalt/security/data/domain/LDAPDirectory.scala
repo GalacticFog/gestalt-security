@@ -106,17 +106,20 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
                               email: Option[String] = None)
                              (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
     if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
-    if (group.isDefined) ???
+//  TODO  if (group.isDefined) ???
     implicit def attrToString(attr: => Attribute): String = {
       val memo = attr
-      if (memo != null) memo.toString
+      if (memo != null && memo.size() > 0) memo.get(0).toString
       else ""
     }
     implicit def attrToOString(attr: => Attribute): Option[String] = {
       val memo = attr
-      Option[String](memo) map {_.toString} flatMap {
-        s => if (s.trim.isEmpty) None else Some(s.trim)
-      }
+      for {
+        attr <- Option(memo)
+        valueAny <- Option(attr.get(0))
+        value = valueAny.toString
+        if !value.trim.isEmpty
+      } yield value
     }
 
     Logger.info(s"Attempting: LDAP lookupAccountByUsername of ${username}")
@@ -129,8 +132,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           username map (q => s"${primaryField}=$q"),
           email map (q => s"${emailField}=$q"),
           phone map (q => s"${phoneField}=$q")
-      ).flatten.foldLeft(","){ case (r,s) => r + "," + s }.stripPrefix(",").stripSuffix(",")
-      val searchdn = s"${primaryField}=${username}"
+      ).flatten
+      val searchdn = queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",").stripSuffix(",")
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])

@@ -111,15 +111,26 @@ class LDAPSpecs extends SpecWithSDK {
       await(newOrg.listGroups()) map(_.name) must not contain("Mathematicians")
     }
 
+    "shadow accounts on search" in {
+      // verify account is not shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
+      val lookup = ldapDirDAO.lookupAccounts(username = Some("newton"))
+      lookup map {_.username} must containTheSameElementsAs(Seq("newton"))
+      // verify account is shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beSome((uar: UserAccountRepository) =>
+        uar.username == "newton" && uar.dirId == ldapDir.id && uar.id == lookup.head.id
+      )
+    }
+
     "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
       // verify account is not shadowed
-      AccountFactory.directoryLookup(ldapDir.id, "newton") must beNone
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
       val maybeAuthAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password"))
       maybeAuthAccount must beSome( (uar: UserAccountRepository) =>
           uar.username == "newton" && uar.dirId == ldapDir.id
       )
       // verify account is shadowed
-      AccountFactory.directoryLookup(ldapDir.id, "newton") must beSome( (uar: UserAccountRepository) =>
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beSome((uar: UserAccountRepository) =>
           uar.username == "newton" && uar.dirId == ldapDir.id && uar.id == maybeAuthAccount.get.id
       )
       // check that already shadowed account can be authenticated and get token
@@ -149,8 +160,8 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "shadow accounts on search" in {
-      AccountFactory.directoryLookup(ldapDir.id, "euclid") must beNone
-      AccountFactory.directoryLookup(ldapDir.id, "euler") must beNone
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euclid") must beNone
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euler") must beNone
       await(newOrg.listAccounts()) map(_.username) must not contain(anyOf("euclid", "euler"))
       val q = await(newOrg.listAccounts(
         "username" -> "eu*"

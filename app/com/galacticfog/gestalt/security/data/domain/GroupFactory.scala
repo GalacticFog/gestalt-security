@@ -241,7 +241,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     }.map(UserGroupRepository(grp)).list.apply()
   }
 
-  def findInDirectory(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+  def findInDirectoryByName(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
     UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
   }
 

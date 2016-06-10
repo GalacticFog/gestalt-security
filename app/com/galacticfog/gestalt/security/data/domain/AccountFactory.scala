@@ -288,6 +288,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
     */
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    // TODO: test and verify that creds do not include wildcard
     val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
@@ -299,7 +300,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       )
       authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    lazy val groupAccounts = for {
+    // TODO: make this lazy
+    // lazy val groupAccounts = for {
+    val groupAccounts = for {
       grpMapping <- groupMappings
       group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
@@ -311,7 +314,8 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       )
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    dirAccounts.headOption orElse groupAccounts.headOption
+    val result = dirAccounts.headOption orElse groupAccounts.headOption
+    result
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
@@ -358,10 +362,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     }.map{UserAccountRepository(a)}.list.apply()
   }
 
-  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+  def findInDirectoryByName(dirId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
   }
-
 
   def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     findAppUserByAccountId(appId, accountId) match {
