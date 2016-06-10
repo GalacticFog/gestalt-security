@@ -258,21 +258,28 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     */
   def lookupByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
                    (implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
-    ???
-//    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
-//    val dirAccounts = for {
-//      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
-//      acc <- dir.lookupAccount(nameQuery = nameQuery, emailQuery = emailQuery, phoneQuery = phoneQuery)
-//    } yield acc
-//    lazy val indirectDirMappings = for {
-//      grpMapping <- groupMappings
-//      group <- UserGroupRepository.find(grpMapping.accountStoreId)
-//    } yield group.dirId.asInstanceOf[UUID]
-//    lazy val groupAccounts = for {
-//      dir <- indirectDirMappings.distinct.flatMap ( DirectoryFactory.find(_).toSeq )
-//      acc <- dir.lookupAccount(nameQuery = nameQuery, emailQuery = emailQuery, phoneQuery = phoneQuery)
-//    } yield acc
-//    (dirAccounts ++ groupAccounts.headOption
+    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
+    val dirAccounts = for {
+      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
+      acc <- dir.lookupAccounts(
+        group = None,
+        username = nameQuery,
+        phone = phoneQuery,
+        email = emailQuery
+      )
+    } yield acc
+    lazy val groupAccounts = for {
+      grpMapping <- groupMappings
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
+      dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
+      accs <- dir.lookupAccounts(
+        group = Some(group),
+        username = nameQuery,
+        phone = phoneQuery,
+        email = emailQuery
+      )
+    } yield accs
+    (dirAccounts ++ groupAccounts).distinct
   }
 
   /**
@@ -291,17 +298,24 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
-      acc <- dir.lookupAccountByUsername(creds.username)
+      acc <- dir.lookupAccounts(
+        group = None,
+        username = Some(creds.username),
+        phone = None,
+        email = None
+      )
       authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    lazy val indirectDirMappings = for {
-      grpMapping <- groupMappings
-      group <- UserGroupRepository.find(grpMapping.accountStoreId)
-    } yield group.dirId.asInstanceOf[UUID]
     lazy val groupAccounts = for {
-      dir <- indirectDirMappings.distinct.flatMap ( DirectoryFactory.find(_).toSeq )
-      // TODO: This is a bug... I only want the accounts in the group, not all accounts in the Directory
-      acc <- dir.lookupAccountByUsername(creds.username)
+      grpMapping <- groupMappings
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
+      dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
+      acc <- dir.lookupAccounts(
+        group = Some(group),
+        username = Some(creds.username),
+        phone = None,
+        email = None
+      )
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
     dirAccounts.headOption orElse groupAccounts.headOption

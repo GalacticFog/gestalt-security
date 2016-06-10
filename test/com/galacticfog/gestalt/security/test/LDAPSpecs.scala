@@ -95,10 +95,10 @@ class LDAPSpecs extends SpecWithSDK {
       ))
       q.map(_.name) must contain(allOf("chemists", "scientists"))
       // at which point in time, they will be shadowed
-      ldapDirDAO.lookupGroupByName("chemists") must beSome
-      ldapDirDAO.lookupGroupByName("scientists") must beSome
-      ldapDirDAO.lookupGroupByName("mathematicians") must beNone
-      ldapDirDAO.lookupGroupByName("italians") must beNone
+      ldapDirDAO.lookupGroups("chemists") must beSome
+      ldapDirDAO.lookupGroups("scientists") must beSome
+      ldapDirDAO.lookupGroups("mathematicians") must beNone
+      ldapDirDAO.lookupGroups("italians") must beNone
       // ... and returned from the simple listing
       await(newOrg.listGroups()) map(_.name) must contain(allOf("chemists", "scientists"))
       await(newOrg.listGroups()) map(_.name) must not contain(anyOf("mathematicians","italians"))
@@ -125,7 +125,7 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "allow shadowed account to be disabled/enabled with respect to authentication" in {
-      val account = ldapDirDAO.lookupAccountByUsername("newton").get
+      val account = ldapDirDAO.lookupAccounts("newton").get
       // disable
       ldapDirDAO.disableAccount(account.id.asInstanceOf[UUID], disabled = true)
       AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beNone
@@ -135,7 +135,7 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "refuse to perform local password checking" in {
-      val account = ldapDirDAO.lookupAccountByUsername("newton").get
+      val account = ldapDirDAO.lookupAccounts("newton").get
       account.hashMethod must_== "shadowed"
       account.secret must_== ""
       AccountFactory.checkPassword(account, "") must beFalse
@@ -149,8 +149,8 @@ class LDAPSpecs extends SpecWithSDK {
         "username" -> "eu*"
       ))
       q.map(_.username) must containTheSameElementsAs(Seq("euclid", "euler"))
-      ldapDirDAO.lookupAccountByUsername("euclid") must beSome
-      ldapDirDAO.lookupAccountByUsername("euler") must beSome
+      ldapDirDAO.lookupAccounts("euclid") must beSome
+      ldapDirDAO.lookupAccounts("euler") must beSome
       await(newOrg.listAccounts()) map(_.username) must contain(allOf("euclid", "euler"))
     }
 

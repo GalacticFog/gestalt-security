@@ -32,26 +32,34 @@ trait Directory {
   def authenticateAccount(account: UserAccountRepository, plaintext: String)
                          (implicit session: DBSession = AutoSession): Boolean
 
-  def lookupAccountByUsername(username: String)
-                             (implicit session: DBSession = AutoSession): Option[UserAccountRepository]
-
   /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
     *
-    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
     *
+    * @param group  optional group search (no wildcard matching)
     * @param username username query parameter (e.g., "*smith")
     * @param phone phone number query parameter (e.g., "+1505*")
     * @param email email address query parameter (e.g., "*smith@company.com")
     * @param session database session (optional)
-    * @return List of matching accounts
+    * @return List of matching accounts (matching the query strings and belonging to the specified group)
     */
-  def queryAccounts(username: Option[String] = None,
-                    phone: Option[String] = None,
-                    email: Option[String] = None)
-                   (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
+  def lookupAccounts(group: Option[UserGroupRepository] = None,
+                     username: Option[String] = None,
+                     phone: Option[String] = None,
+                     email: Option[String] = None)
+                    (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
 
-  def lookupGroupByName(groupName: String)
-                       (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
+  /**
+    * Directory-specific (i.e., deep) query of groups, supporting wildcard match on group name.
+    *
+    * Wildcard charater '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+ *
+    * @param groupName group name query parameter (e.g., "*-admins")
+    * @param session database session (optional)
+    * @return List of matching groups
+    */
+  def lookupGroups(groupName: String)
+                  (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
 
   def disableAccount(accountId: UUID, disabled: Boolean = true)
                     (implicit session: DBSession = AutoSession): Unit
@@ -99,13 +107,9 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     AccountFactory.checkPassword(account, plaintext)
   }
 
-  override def lookupAccountByUsername(username: String)
-                                      (implicit session: DBSession): Option[UserAccountRepository] =
-    AccountFactory.directoryLookup(id, username)
-
-  override def lookupGroupByName(groupName: String)
-                                (implicit session: DBSession): Option[UserGroupRepository] =
-    UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
+  override def lookupGroups(groupName: String)
+                           (implicit session: DBSession): Seq[UserGroupRepository] =
+    UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name like ${groupName}")
 
   override def getGroupById(groupId: UUID)(implicit session: DBSession) = {
     GroupFactory.find(groupId) flatMap { grp =>
@@ -140,26 +144,6 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
     UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name like ${groupName}")
   }
 
-  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
-    *
-    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
-    *
-    * @param username username query parameter (e.g., "*smith")
-    * @param phone    phone number query parameter (e.g., "+1505*")
-    * @param email    email address query parameter (e.g., "*smith@company.com")
-    * @param session  database session (optional)
-    * @return List of matching accounts
-    */
-  override def queryAccounts(username: Option[String], phone: Option[String], email: Option[String])
-                            (implicit session: DBSession): Seq[UserAccountRepository] = {
-    AccountFactory.queryAccounts(
-      dirId = Some(id),
-      nameQuery = username,
-      phoneQuery = phone,
-      emailQuery = email
-    )
-  }
-
   override def createGroup(name: String, description: Option[String])
                           (implicit session: DBSession): Try[UserGroupRepository] = {
     GroupFactory.create(
@@ -167,6 +151,30 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
       description = description,
       dirId = id,
       maybeParentOrg = None
+    )
+  }
+
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+    *
+    * @param group    optional group search (no wildcard matching)
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone    phone number query parameter (e.g., "+1505*")
+    * @param email    email address query parameter (e.g., "*smith@company.com")
+    * @param session  database session (optional)
+    * @return List of matching accounts (matching the query strings and belonging to the specified group)
+    */
+  override def lookupAccounts(group: Option[UserGroupRepository],
+                              username: Option[String],
+                              phone: Option[String],
+                              email: Option[String])
+                             (implicit session: DBSession): Seq[UserAccountRepository] = {
+    AccountFactory.queryAccounts(
+      dirId = Some(id),
+      nameQuery = username,
+      phoneQuery = phone,
+      emailQuery = email
     )
   }
 }

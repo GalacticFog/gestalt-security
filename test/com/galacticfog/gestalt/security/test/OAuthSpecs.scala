@@ -64,6 +64,10 @@ class OAuthSpecs extends SpecWithSDK {
       await(GestaltToken.grantPasswordToken(org.fqon, account.username, "bad password")) must beNone
     }
 
+    "not issue access tokens on wildcard credential" in {
+      await(GestaltToken.grantPasswordToken(org.fqon, account.username + "*", "letmein")) must beNone
+    }
+
     "cannot be exchanged for tokens using client_credentials flow" in {
       val ar = await(GestaltToken.grantClientToken()(tokenSdk))
       ar must beNone

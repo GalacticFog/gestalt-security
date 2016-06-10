@@ -72,7 +72,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     }
     // If authentication fails, and if account is no longer in LDAP, then remove the shadowedAccount
     // this is an opportunity for a short-circuit... if authentication succeeded, then necessarily the user is still in LDAP
-    if (!result && lookupAccountByUsername(account.username).isEmpty) {
+    if (!result && lookupAccounts(username = Some(account.username)).isEmpty) {
       //
       // for each shadowed group for shadowed user, if not found in LDAP, then remove shadowed group
       GroupFactory.listAccountGroups(account.id.asInstanceOf[UUID]) filter {
@@ -86,13 +86,28 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   }
 
   // Returns the shadowed group
-  override def lookupGroupByName(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
+  override def lookupGroups(groupName: String)(implicit session: DBSession): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
 
   override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
     AccountFactory.disableAccount(accountId, disabled)
   }
 
-  override def lookupAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = {
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+    *
+    * @param group  optional group search (no wildcard matching)
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone phone number query parameter (e.g., "+1505*")
+    * @param email email address query parameter (e.g., "*smith@company.com")
+    * @param session database session (optional)
+    * @return List of matching accounts (matching the query strings and belonging to the specified group)
+    */
+  def lookupAccounts(group: Option[UserGroupRepository] = None,
+                     username: Option[String] = None,
+                     phone: Option[String] = None,
+                     email: Option[String] = None)
+                    (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
     implicit def attrToString(attr: => Attribute): String = {
       val memo = attr
       if (memo != null) memo.toString
