@@ -261,7 +261,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       // LDAP search value
-      val searchdn = s"(&(${groupField}=${groupName}${sep}${searchBase})(objectClass=${groupObjectClass})"
+      val searchdn = s"(&(${groupField}=${groupName})(objectClass=${groupObjectClass}))"
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
       val constraints = new SearchControls()
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
