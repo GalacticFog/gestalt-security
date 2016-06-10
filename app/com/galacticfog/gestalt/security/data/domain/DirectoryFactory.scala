@@ -50,10 +50,10 @@ trait Directory {
                     (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
 
   /**
-    * Directory-specific (i.e., deep) query of groups, supporting wildcard match on group name.
+    * Directory-specific (i.e., deep) query of groups, supporting wildcard matches on group name.
     *
-    * Wildcard charater '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
- *
+    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    *
     * @param groupName group name query parameter (e.g., "*-admins")
     * @param session database session (optional)
     * @return List of matching groups
@@ -72,18 +72,6 @@ trait Directory {
 
   def listGroupAccounts(groupId: UUID)
                        (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
-
-  /**
-  * Directory-specific (i.e., deep) query of groups, supporting wildcard matches on group name.
-  *
-  * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
-  *
-  * @param groupName group name query parameter (e.g., "*-admins")
-  * @param session database session (optional)
-  * @return List of matching groups
-  */
-  def listOrgGroupsByName(groupName: String)
-                         (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
 
   def id: UUID
   def name: String
@@ -138,10 +126,6 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
       secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
       disabled = false
     )
-  }
-
-  override def listOrgGroupsByName(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
-    UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name like ${groupName}")
   }
 
   override def createGroup(name: String, description: Option[String])

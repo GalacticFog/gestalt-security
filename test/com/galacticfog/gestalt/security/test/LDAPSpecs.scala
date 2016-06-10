@@ -51,17 +51,17 @@ class LDAPSpecs extends SpecWithSDK {
 
     "be able to find groups (raw ldap)" in {
       val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
-      ldap.ldapFindGroupnamesByName("scientists") must beASuccessfulTry(containTheSameElementsAs(Seq("scientists")))
-      ldap.ldapFindGroupnamesByName("*ists") must beASuccessfulTry(containTheSameElementsAs(Seq("chemists", "scientists")))
-      ldap.ldapFindGroupnamesByName("*a*") must beASuccessfulTry(containTheSameElementsAs(Seq("italians", "mathematicians")))
-      ldap.ldapFindGroupnamesByName("*") must beASuccessfulTry(containTheSameElementsAs(Seq("italians", "mathematicians", "scientists", "chemists")))
+      ldap.ldapFindGroupnamesByName("Scientists") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists")))
+      ldap.ldapFindGroupnamesByName("*ists") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists", "Scientists")))
+      ldap.ldapFindGroupnamesByName("*a*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians")))
+      ldap.ldapFindGroupnamesByName("*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians", "Scientists", "Chemists")))
     }
 
     "be able to find groups by account (raw ldap)" in {
       val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
       ldap.ldapFindGroupnamesByUser("read-only-admin") must beASuccessfulTry(beEmpty[List[String]])
-      ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("chemists")))
-      ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("scientists","italians")))
+      ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
+      ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
     }
 
     "NOT allow a new group to be created" in {
@@ -81,27 +81,27 @@ class LDAPSpecs extends SpecWithSDK {
 
     "shadow groups on search" in {
       // verify they aren't shadowed
-      GroupFactory.directoryLookup(ldapDir.id, "chemists") must beNone
-      GroupFactory.directoryLookup(ldapDir.id, "scientists") must beNone
-      GroupFactory.directoryLookup(ldapDir.id, "mathematicians") must beNone
-      GroupFactory.directoryLookup(ldapDir.id, "italians") must beNone
+      GroupFactory.directoryLookup(ldapDir.id, "Chemists") must beNone
+      GroupFactory.directoryLookup(ldapDir.id, "Scientists") must beNone
+      GroupFactory.directoryLookup(ldapDir.id, "Mathematicians") must beNone
+      GroupFactory.directoryLookup(ldapDir.id, "Italians") must beNone
       // ... and won't be returned in the list of shadowed groups
       await(newOrg.listGroups()) map(_.name) must not contain(
-        anyOf("chemists", "scientists", "mathematicians", "italians")
+        anyOf("Chemists", "Scientists", "Mathematicians", "Italians")
       )
       // but a query will discover them
       val q = await(newOrg.listGroups(
         "name" -> "*ists"
       ))
-      q.map(_.name) must contain(allOf("chemists", "scientists"))
+      q.map(_.name) must contain(allOf("Chemists", "Scientists"))
       // at which point in time, they will be shadowed
-      ldapDirDAO.lookupGroups("chemists") must haveSize(1)
-      ldapDirDAO.lookupGroups("scientists") must haveSize(1)
-      ldapDirDAO.lookupGroups("mathematicians") must beEmpty
-      ldapDirDAO.lookupGroups("italians") must beEmpty
+      ldapDirDAO.lookupGroups("Chemists") must haveSize(1)
+      ldapDirDAO.lookupGroups("Scientists") must haveSize(1)
+      ldapDirDAO.lookupGroups("Mathematicians") must beEmpty
+      ldapDirDAO.lookupGroups("Italians") must beEmpty
       // ... and returned from the simple listing
-      await(newOrg.listGroups()) map(_.name) must contain(allOf("chemists", "scientists"))
-      await(newOrg.listGroups()) map(_.name) must not contain(anyOf("mathematicians","italians"))
+      await(newOrg.listGroups()) map(_.name) must contain(allOf("Chemists", "Scientists"))
+      await(newOrg.listGroups()) map(_.name) must not contain(anyOf("Mathematicians","Italians"))
     }
 
     "shadow and authenticate user in LDAP and authenticate user already shadowed" in {

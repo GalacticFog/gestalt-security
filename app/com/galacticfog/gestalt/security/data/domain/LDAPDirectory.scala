@@ -103,11 +103,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     * @param session database session (optional)
     * @return List of matching accounts (matching the query strings and belonging to the specified group)
     */
-  def lookupAccounts(group: Option[UserGroupRepository] = None,
-                     username: Option[String] = None,
-                     phone: Option[String] = None,
-                     email: Option[String] = None)
-                    (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
+  override def lookupAccounts(group: Option[UserGroupRepository] = None,
+                              username: Option[String] = None,
+                              phone: Option[String] = None,
+                              email: Option[String] = None)
+                             (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
     if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
     if (group.isDefined) ???
     implicit def attrToString(attr: => Attribute): String = {
@@ -184,10 +184,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     * @param session   database session (optional)
     * @return List of matching groups
     */
-  override def lookupGroups(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = ???
-
-  // Syncs with LDAP before returning matching groups
-  override def listOrgGroupsByName(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
+  override def lookupGroups(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
     // TODO: get list and list
     for (sgroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${this.id}")) {
       if (this.ldapFindGroupnamesByName(groupName).get.isEmpty) {

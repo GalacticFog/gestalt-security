@@ -93,13 +93,13 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     // indirect groups, via their directories
     val dirGroups = dirMappings
       .flatMap( asm => DirectoryFactory.find(asm.accountStoreId.asInstanceOf[UUID]) )
-      .flatMap ( _.listOrgGroupsByName(nameQuery) )
+      .flatMap ( _.lookupGroups(nameQuery) )
     // direct groups, but through the directory first (gives unshadowing a chance to happen)
     val appGroupsFromMappings = groupMappings
       .flatMap( asm => GroupFactory.find(asm.accountStoreId.asInstanceOf[UUID]))
     val appGroups = appGroupsFromMappings
       .flatMap( grp => DirectoryFactory.find(grp.dirId.asInstanceOf[UUID]) )
-      .flatMap( _.listOrgGroupsByName(nameQuery) )
+      .flatMap( _.lookupGroups(nameQuery) )
       .intersect( appGroupsFromMappings )
     (appGroups ++ dirGroups).distinct
   }
