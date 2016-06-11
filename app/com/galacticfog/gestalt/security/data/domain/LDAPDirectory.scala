@@ -106,7 +106,6 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
                               email: Option[String] = None)
                              (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
     if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
-//  TODO  if (group.isDefined) ??? and add test
     implicit def attrToString(attr: => Attribute): String = {
       val memo = attr
       if (memo != null && memo.size() > 0) memo.get(0).toString
@@ -133,7 +132,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           email map (q => s"${emailField}=$q"),
           phone map (q => s"${phoneField}=$q")
       ).flatten
-      val searchdn = queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",").stripSuffix(",")
+      val searchdn = queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",")
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
@@ -163,7 +162,12 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
             Logger.warn(s"did not find account ${uname}")
         }
       }
-      users
+      group match {
+        case None => users
+        case Some(g) => users.filter(
+          u => GroupMembershipRepository.find(accountId = u.id, g.id).isDefined
+        )
+      }
     } catch {
       case e: Throwable =>
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
@@ -256,7 +260,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         for {
           gname <- groupNames
           group = this.findShadowedGroupByName(gname).fold(
-            shadowGroup(gname, Some("LDAP"))
+            shadowGroup(gname, Some("LDAP shadowed group"))
           )(Success(_))
         } yield group.get
       }
@@ -277,11 +281,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   }
 
   private def findShadowedAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = {
-    UserAccountRepository.findBy(sqls"dir_id = ${this.id} and username = ${username}")
+    AccountFactory.findInDirectoryByName(this.id, username)
   }
 
   private def findShadowedGroupByName(groupname: String)(implicit session: DBSession): Option[UserGroupRepository] = {
-    UserGroupRepository.findBy(sqls"dir_id = ${this.id} and name = ${groupname}")
+    GroupFactory.findInDirectoryByName(this.id, groupname)
   }
 
   // Find an LDAP group by user

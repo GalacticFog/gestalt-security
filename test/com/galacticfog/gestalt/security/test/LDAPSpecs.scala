@@ -18,9 +18,9 @@ class LDAPSpecs extends SpecWithSDK {
   )))
   lazy val newOrgApp = await(newOrg.getServiceApp())
 
-  val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://ldap.forumsys.com:389"
-  val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "read-only-admin"
-  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
+  val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://localhost:389"
+  val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "admin"
+  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "***REMOVED***"
 
   "LDAP Directory" should {
 
@@ -165,7 +165,22 @@ class LDAPSpecs extends SpecWithSDK {
       AccountFactory.checkPassword(account, "") must beFalse
     }
 
+    "lookup accounts in a group" in {
+      // unshadow account, verify it's not shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") foreach {_.destroy()}
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
+      val scientists = ldapDirDAO.lookupGroups("Mathematicians").head
+      val query = ldapDirDAO.lookupAccounts(
+        group = Some(scientists),
+        username = Some("e*")
+      )
+      // contain euclid and euler, but not einstein
+      query.map(_.username) must containTheSameElementsAs(Seq("euclid", "euler"))
+    }
+
     "shadow accounts on search" in {
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euclid") foreach {_.destroy()}
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euler") foreach {_.destroy()}
       AccountFactory.findInDirectoryByName(ldapDir.id, "euclid") must beNone
       AccountFactory.findInDirectoryByName(ldapDir.id, "euler") must beNone
       await(newOrg.listAccounts()) map(_.username) must not contain(anyOf("euclid", "euler"))
