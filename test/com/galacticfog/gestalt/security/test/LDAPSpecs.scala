@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.EnvConfig
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
@@ -17,15 +18,19 @@ class LDAPSpecs extends SpecWithSDK {
   )))
   lazy val newOrgApp = await(newOrg.getServiceApp())
 
+  val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://ldap.forumsys.com:389"
+  val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "read-only-admin"
+  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
+
   "LDAP Directory" should {
 
-    val config = Json.parse("""
+    val config = Json.parse(s"""
       |{
       |  "activeDirectory" : false,
-      |  "url" : "ldap://ldap.forumsys.com:389",
+      |  "url" : "$ldapUrl",
       |  "searchBase" : "dc=example,dc=com",
-      |  "systemUsername" : "read-only-admin",
-      |  "systemPassword" : "password",
+      |  "systemUsername" : "$ldapUser",
+      |  "systemPassword" : "$ldapPass",
       |  "primaryField" : "uid"
       |}""".stripMargin)
 

@@ -28,7 +28,8 @@ lazy val root = (project in file(".")).
                       } catch {      case t: Throwable => "get git hash failed"    }
               }}.toString()
     ),
-    buildInfoPackage := "com.galacticfog.gestalt.security"
+    buildInfoPackage := "com.galacticfog.gestalt.security",
+    buildInfoUsePackageAsPath := true
   )
 
 buildInfoOptions += BuildInfoOption.BuildTime
