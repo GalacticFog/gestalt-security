@@ -1,0 +1,218 @@
+dn: uid=newton,dc=example,dc=com
+changetype: add
+uid: newton
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Isaac Newton
+sn: Newton
+mail: newton@ldap.forumsys.com
+
+dn: uid=einstein,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Albert Einstein
+sn: Einstein
+mail: einstein@ldap.forumsys.com
+telephoneNumber: 314-159-2653
+uid: einstein
+
+dn: uid=tesla,dc=example,dc=com
+changetype: add
+objectClass: posixAccount
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Nikola Tesla
+gidNumber: 99999
+homeDirectory: home
+sn: Tesla
+uid: tesla
+uidNumber: 88888
+mail: tesla@ldap.forumsys.com
+
+dn: uid=galieleo,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Galileo Galilei
+sn: Galilei
+mail: galieleo@ldap.forumsys.com
+uid: galieleo
+
+dn: uid=euler,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Leonhard Euler
+sn: Euler
+mail: euler@ldap.forumsys.com
+uid: euler
+
+dn: uid=gauss,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Carl Friedrich Gauss
+sn: Gauss
+mail: gauss@ldap.forumsys.com
+uid: gauss
+
+dn: uid=riemann,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Bernhard Riemann
+sn: Riemann
+mail: riemann@ldap.forumsys.com
+uid: riemann
+
+dn: uid=euclid,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Euclid
+sn: Euclid
+mail: euclid@ldap.forumsys.com
+uid: euclid
+
+dn: ou=mathematicians,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: groupOfUniqueNames
+cn: Mathematicians
+uniqueMember: uid=euclid,dc=example,dc=com
+uniqueMember: uid=riemann,dc=example,dc=com
+uniqueMember: uid=euler,dc=example,dc=com
+uniqueMember: uid=gauss,dc=example,dc=com
+uniqueMember: uid=test,dc=example,dc=com
+ou: mathematicians
+
+dn: ou=scientists,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: groupOfUniqueNames
+cn: Scientists
+uniqueMember: uid=einstein,dc=example,dc=com
+uniqueMember: uid=galieleo,dc=example,dc=com
+uniqueMember: uid=tesla,dc=example,dc=com
+uniqueMember: uid=newton,dc=example,dc=com
+ou: scientists
+
+dn: cn=read-only-admin,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: read-only-admin
+sn: Read Only Admin
+userPassword:: e1NIQX1XNnBoNU1tNVB6OEdnaVVMYlBnekczN21qOWc9
+
+dn: ou=italians,ou=scientists,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: groupOfUniqueNames
+cn: Italians
+uniqueMember: uid=tesla,dc=example,dc=com
+ou: italians
+
+dn: uid=test,dc=example,dc=com
+changetype: add
+objectClass: inetOrgPerson
+objectClass: top
+objectClass: posixAccount
+cn: Test
+gidNumber: 0
+homeDirectory: home
+sn: Test
+uid: test
+uidNumber: 24601
+displayName: Test
+givenName: Test
+initials: TS
+o: Company
+
+dn: ou=chemists,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: groupOfUniqueNames
+cn: Chemists
+uniqueMember: uid=curie,dc=example,dc=com
+uniqueMember: uid=boyle,dc=example,dc=com
+uniqueMember: uid=nobel,dc=example,dc=com
+uniqueMember: uid=pasteur,dc=example,dc=com
+ou: chemists
+
+dn: uid=curie,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Marie Curie
+sn: Curie
+mail: curie@ldap.forumsys.com
+uid: curie
+
+dn: uid=nobel,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Alfred Nobel
+sn: Nobel
+mail: nobel@ldap.forumsys.com
+uid: nobel
+
+dn: uid=boyle,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Robert Boyle
+sn: Boyle
+mail: boyle@ldap.forumsys.com
+telephoneNumber: 999-867-5309
+uid: boyle
+
+dn: uid=pasteur,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: Louis Pasteur
+sn: Pasteur
+mail: pasteur@ldap.forumsys.com
+telephoneNumber: 602-214-4978
+uid: pasteur
+
+dn: uid=nogroup,dc=example,dc=com
+changetype: add
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: No Group
+sn: Group
+mail: nogroup@ldap.forumsys.com
+uid: nogroup
+
