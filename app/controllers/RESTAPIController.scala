@@ -30,7 +30,7 @@ import scala.concurrent.duration._
 
 object RESTAPIController extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
-  val defaultTokenExpiration: Long =  8.hours.toSeconds
+  val defaultTokenExpiration: Long =  Global.tokenLifetime.getStandardSeconds
 
   val services = Global.services
 
@@ -423,7 +423,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
-        AccountFactory.directoryLookup(dirId, username) match {
+        AccountFactory.findInDirectoryByName(dirId, username) match {
           case Some(account) => Ok(Json.toJson[GestaltAccount](account))
           case None => NotFound(Json.toJson(ResourceNotFoundException(
             resource = request.path,
@@ -443,7 +443,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     requireAuthorization(READ_DIRECTORY)
     DirectoryFactory.find(dirId) match {
       case Some(dir) =>
-        GroupFactory.directoryLookup(dirId, groupName) match {
+        GroupFactory.findInDirectoryByName(dirId, groupName) match {
           case Some(group) => Ok(Json.toJson[GestaltGroup](group))
           case None => NotFound(Json.toJson(ResourceNotFoundException(
             resource = request.path,
@@ -503,12 +503,9 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppAccounts(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
-      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](AccountFactory.listByAppId(
-        appId = app.id.asInstanceOf[UUID],
-        nameQuery = None,
-        emailQuery = None,
-        phoneQuery = None
-      ) map { a => a: GestaltAccount }))
+      case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](
+        AccountFactory.listAppUsers(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }
+      ))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested app",
@@ -611,30 +608,36 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    Ok(Json.toJson(
-      AccountFactory.listByAppId(
-        appId = request.user.serviceAppId,
-        nameQuery = request.getQueryString("username"),
-        emailQuery = request.getQueryString("email"),
-        phoneQuery = request.getQueryString("phoneNumber")
-      ).map { a => a: GestaltAccount }
-    ))
+    val nameQuery = request.getQueryString("username")
+    val emailQuery = request.getQueryString("email")
+    val phoneQuery = request.getQueryString("phoneNumber")
+    if (nameQuery.isDefined || emailQuery.isDefined || phoneQuery.isDefined) {
+      Ok(Json.toJson(
+        AccountFactory.lookupByAppId(
+          appId = request.user.serviceAppId,
+          nameQuery = nameQuery,
+          emailQuery = emailQuery,
+          phoneQuery = phoneQuery
+        ).map { a => a: GestaltAccount }
+      ))
+    } else {
+      Ok(Json.toJson(
+        AccountFactory.listAppUsers(request.user.serviceAppId).map {a => a: GestaltAccount}
+      ))
+    }
   }
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(
+    val nameQuery = request.getQueryString("name")
+    val results = if (nameQuery.isDefined) {
+      GroupFactory.lookupAppGroups(
         appId = request.user.serviceAppId,
-        nameQuery = request.getQueryString("name")
-      ).map { g => g: GestaltGroup }
-    ))
-  }
-
-  def listOrgGroupsByName(orgId: java.util.UUID, groupName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    requireAuthorization(READ_DIRECTORY)
-    Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listOrgGroupsByName(orgId, groupName).map { g => g: GestaltGroup }
-    ))
+        nameQuery = nameQuery.get
+      )
+    } else {
+      GroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
+    }
+    Ok(Json.toJson[Seq[GestaltGroup]](results.map{ g => g: GestaltGroup }))
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
@@ -1146,7 +1149,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def listAppGroupMappings(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     Ok(Json.toJson[Seq[GestaltGroup]](
-      GroupFactory.listAppGroups(
+      GroupFactory.queryShadowedAppGroups(
         appId = appId,
         nameQuery = None
       ).map { g => g: GestaltGroup }
@@ -1175,6 +1178,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
         grant_type <- request.body.get("grant_type") flatMap asSingleton
         if grant_type == "password"
         username <- request.body.get("username") flatMap asSingleton
+        if !username.contains("*")
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username = username, password = password))(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `username` or `password`"))
     } yield (orgId,serviceAppId,creds)

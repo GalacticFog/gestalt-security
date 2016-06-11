@@ -2,7 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 import javax.naming.NamingEnumeration
-import javax.naming.directory.{SearchControls, SearchResult}
+import javax.naming.directory.{Attribute, SearchControls, SearchResult}
 
 import com.galacticfog.gestalt.security.api.GestaltPasswordCredential
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
@@ -13,13 +13,12 @@ import org.apache.shiro.mgt.DefaultSecurityManager
 import org.apache.shiro.realm.activedirectory.ActiveDirectoryRealm
 import org.apache.shiro.realm.ldap.JndiLdapContextFactory
 import org.apache.shiro.subject.Subject
-import org.mindrot.jbcrypt.BCrypt
 import play.api.Logger
 import play.api.libs.json.Json
 import scalikejdbc._
+import scalikejdbc.TxBoundary.Try._
 
 import scala.util.{Failure, Success, Try}
-
 
 case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: AccountFactoryDelegate, groupFactory: GroupFactoryDelegate) extends Directory {
   override def id: UUID = daoDir.id.asInstanceOf[UUID]
@@ -27,8 +26,6 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
   override def description: Option[String] = daoDir.description
 
-  val autoSession = AutoSession
-  val session = autoSession
   val config = Json.parse(daoDir.config.getOrElse("{}"))
   val activeDirectory = (config \ "activeDirectory").asOpt[Boolean].getOrElse(false)
   val url = (config \ "url").asOpt[String].getOrElse("")
@@ -57,7 +54,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   val securityMgr = new DefaultSecurityManager(ldapRealm)
   SecurityUtils.setSecurityManager(securityMgr)
 
-  override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
+  override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
+    if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
     var result = true
     val sep = if (searchBase.startsWith(",")) "" else ","
     val dn = primaryField + "=" + account.username + sep + searchBase
@@ -73,154 +71,222 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         }
     }
     // If authentication fails, and if account is no longer in LDAP, then remove the shadowedAccount
-    if (!result && lookupAccountByPrimary(account.username).isEmpty) {
+    // this is an opportunity for a short-circuit... if authentication succeeded, then necessarily the user is still in LDAP
+    if (!result && lookupAccounts(username = Some(account.username)).isEmpty) {
       //
       // for each shadowed group for shadowed user, if not found in LDAP, then remove shadowed group
-      for (g <- GroupFactory.listAccountGroups(account.id.asInstanceOf[UUID])) {
-        if (this.ldapFindGroupnamesByName(g.name).get.isEmpty) {
-          GroupFactory.delete(g.id.asInstanceOf[UUID])
-        }
+      GroupFactory.listAccountGroups(account.id.asInstanceOf[UUID]) filter {
+        g => this.ldapFindGroupnamesByName(g.name).toOption.exists(_.isEmpty)
+      } foreach {
+        _.destroy()
       }
-      // find shadowed groups the shadowed user is in (Gestalt)
-      UserAccountRepository.destroy(account)
+      account.destroy()
     }
     result
   }
 
-  // Returns the shadowed group
-  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
+  override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {
+    AccountFactory.disableAccount(accountId, disabled)
+  }
 
-  override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = {
-    Logger.info(s"Attempting: LDAP lookupAccountByPrimary of ${primary}")
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+    *
+    * @param group  optional group search (no wildcard matching)
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone phone number query parameter (e.g., "+1505*")
+    * @param email email address query parameter (e.g., "*smith@company.com")
+    * @param session database session (optional)
+    * @return List of matching accounts (matching the query strings and belonging to the specified group)
+    */
+  override def lookupAccounts(group: Option[UserGroupRepository] = None,
+                              username: Option[String] = None,
+                              phone: Option[String] = None,
+                              email: Option[String] = None)
+                             (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
+    if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
+//  TODO  if (group.isDefined) ??? and add test
+    implicit def attrToString(attr: => Attribute): String = {
+      val memo = attr
+      if (memo != null && memo.size() > 0) memo.get(0).toString
+      else ""
+    }
+    implicit def attrToOString(attr: => Attribute): Option[String] = {
+      val memo = attr
+      for {
+        attr <- Option(memo)
+        valueAny <- Option(attr.get(0))
+        value = valueAny.toString
+        if !value.trim.isEmpty
+      } yield value
+    }
+
+    Logger.info(s"Attempting: LDAP lookupAccountByUsername of ${username}")
     try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
       val dn = "cn=" + systemUsername + sep + searchBase
-      val searchdn = s"${primaryField}=${primary}"
+      val queries = Seq(
+          username map (q => s"${primaryField}=$q"),
+          email map (q => s"${emailField}=$q"),
+          phone map (q => s"${phoneField}=$q")
+      ).flatten
+      val searchdn = queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",").stripSuffix(",")
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
       val constraints = new SearchControls()
       constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
-      Logger.info(s"Attempting: LDAP lookupAccountByPrimary - search of DN: ${searchdn}")
+      Logger.info(s"Attempting: LDAP lookupAccountByUsername - search of DN: ${searchdn}")
       val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
 
-      if (answer.hasMore) {
+      var users = Seq.empty[UserAccountRepository]
+      while (answer.hasMore) {
         val current = answer.next()
         val attrs = current.getAttributes
-        val username = primary
-        val firstname = if (attrs.get(firstnameField) != null) attrs.get(firstnameField).toString else ""
-        val lastname = if (attrs.get(lastnameField) != null) attrs.get(lastnameField).toString else ""
-        val description = if (attrs.get(descField) != null) Some(attrs.get(descField).toString) else None
-        val email = if (attrs.get(emailField) != null) Some(attrs.get(emailField).toString) else None
-        val phone = if (attrs.get(phoneField) != null) Some(attrs.get(phoneField).toString) else None
-        Logger.info(s"Attempting: LDAP lookupAccountByPrimary - found: ${username}")
-        // Create subject in shadow directory for auth
-        for {
-          account <- this.findAccountByUsername(username).orElse(this.shadowAccount(username, description, firstname, lastname, email, phone, GestaltPasswordCredential("Notused")).toOption)
-        } yield account
-      } else {
-        None
+        val uname: String         = attrs.get(primaryField)
+        val fname: String         = attrs.get(firstnameField)
+        val lname: String         = attrs.get(lastnameField)
+        val desc: Option[String]  = attrs.get(descField)
+        val email: Option[String] = attrs.get(emailField)
+        val phone: Option[String] = attrs.get(phoneField)
+        Logger.info(s"Attempting: LDAP findShadowAccountByUsername(${uname})")
+        this.findShadowedAccountByUsername(uname) orElse {
+          Logger.info(s"Attempting: LDAP shadowAccount(${uname})")
+          this.shadowAccount(uname, desc, fname, lname, email, phone).toOption
+        } match {
+          case Some(account) =>
+            users = users :+ account
+          case None =>
+            Logger.warn(s"did not find account ${uname}")
+        }
       }
+      users
     } catch {
       case e: Throwable =>
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
           Logger.error("Error: LDAP configuration was not setup.")
         }
         Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
-        None
+        Seq.empty[UserAccountRepository]
     }
   }
 
-  override def disableAccount(accountId: UUID): Unit = {
-    AccountFactory.disableAccount(accountId)
-  }
-
-  override def lookupAccountByUsername(username: String): Option[UserAccountRepository] = {
-    UserAccountRepository.findBy(sqls"dir_id=${id} and username=${username}")
-  }
-
-  // Syncs with LDAP before returning matching groups
-  override def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository] = {
-
-    for (sgroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${this.id}")) {
-      if (this.ldapFindGroupnamesByName(groupName).get.isEmpty) {
-        this.unshadowGroup(sgroup)
-      }
-    }
-    // Find in LDAP
+  /**
+    * Directory-specific (i.e., deep) query of groups, supporting wildcard match on group name.
+    *
+    * Wildcard charater '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+    *
+    * @param groupName group name query parameter (e.g., "*-admins")
+    * @param session   database session (optional)
+    * @return List of matching groups
+    */
+  override def lookupGroups(groupName: String)(implicit session: DBSession): Seq[UserGroupRepository] = {
+    // 1. get a list of matching groups in ldap
+    // 2. get a list of matching shadowed groups
+    // make #2 equal to #1
+    val shadowedGroups = GroupFactory.queryShadowedDirectoryGroups(dirId = Some(id), nameQuery = Some(groupName))
+    val ldapGroupNames = this.ldapFindGroupnamesByName(groupName).get
+    val (staleGroups,notStaleGroups) = shadowedGroups.partition(
+      g => ldapGroupNames.contains(g.name)
+    )
+    staleGroups.foreach(this.unshadowGroup)
     for {
-      ldapGroupname <- this.ldapFindGroupnamesByName(groupName).get
-      shadowGroup <- UserGroupRepository.findAllBy(sqls"dir_id = ${id} and name = ${ldapGroupname}").headOption.orElse(this.shadowGroup(ldapGroupname, Some("LDAP Group")).toOption)
+      ldapGroupName <- ldapGroupNames
+      shadowGroup <- notStaleGroups.find(_.name == ldapGroupName) orElse this.shadowGroup(ldapGroupName, Some("LDAP shadow group")).toOption
     } yield shadowGroup
   }
 
-  override def getGroupById(groupId: UUID) = {
+  override def getGroupById(groupId: UUID)(implicit session: DBSession): Option[UserGroupRepository] = {
     GroupFactory.find(groupId) flatMap { grp =>
       if (grp.dirId == id) Some(grp)
       else None
     }
   }
 
-  override def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository] = groupFactory.listGroupAccounts(groupId)(session)
+  override def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository] = groupFactory.listGroupAccounts(groupId)(session)
 
-  override def deleteGroup(groupId: UUID): Boolean = {
+  override def deleteGroup(groupId: UUID)(implicit session: DBSession): Boolean = {
     GroupFactory.delete(groupId)
   }
 
-  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
+  override def createGroup(name: String, description: Option[String])(implicit session: DBSession): Try[UserGroupRepository] = {
     Failure(BadRequestException(
-      resource = s"/orgs/${orgId}/directories/${id}/account",
+      resource = "",
+      message = "Group create request not valid",
+      developerMessage = "LDAP Directory does not support group creation."
+    ))
+  }
+
+  override def createAccount(username: String,
+                             description: Option[String],
+                             firstName: String,
+                             lastName: String,
+                             email: Option[String],
+                             phoneNumber: Option[String],
+                             cred: GestaltPasswordCredential)
+                            (implicit session: DBSession): Try[UserAccountRepository] = {
+    Failure(BadRequestException(
+      resource = "",
       message = "Account create request not valid",
       developerMessage = "LDAP Directory does not support account creation."
     ))
   }
 
-  private def shadowAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
-    val saccount = accountFactory.createAccount(
-      dirId = id,
-      username = username,
-      description = description,
-      firstName = firstName,
-      lastName = lastName,
-      email = email,
-      phoneNumber = phoneNumber,
-      hashMethod = "bcrypt",
-      salt = "",
-      secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
-      disabled = false
-    )(session)
-    val groups = for {
-      gname <- this.ldapFindGroupnamesByUser(username).toOption.get.headOption
-      group <- this.findGroupsByName(gname).headOption.orElse(shadowGroup(gname, Some("LDAP")).toOption)
-//      group <- shadowGroup(gname, Some("LDAP")).toOption
-    } yield group
-    for (g <- groups) {
-      groupFactory.addAccountToGroup(g.id.asInstanceOf[UUID], saccount.get.id.asInstanceOf[UUID])(session)
-    }
-    saccount
+  private def shadowAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String])
+                           (implicit session: DBSession): Try[UserAccountRepository] = DB localTx { implicit session =>
+    for {
+      saccount <- accountFactory.createAccount(
+        dirId = id,
+        username = username,
+        description = description,
+        firstName = firstName,
+        lastName = lastName,
+        email = email,
+        phoneNumber = phoneNumber,
+        hashMethod = "shadowed",
+        salt = "",
+        secret = "",
+        disabled = false
+      )
+      groupNames <- this.ldapFindGroupnamesByUser(username)
+      groups <- Try {
+        for {
+          gname <- groupNames
+          group = this.findShadowedGroupByName(gname).fold(
+            shadowGroup(gname, Some("LDAP"))
+          )(Success(_))
+        } yield group.get
+      }
+      groupMemberships <- Try {
+        groups map { g =>
+          groupFactory.addAccountToGroup(g.id.asInstanceOf[UUID], saccount.id.asInstanceOf[UUID])
+        } map {_.get}
+      }
+    } yield saccount
   }
 
-  private def shadowGroup(groupName: String, description: Option[String]): Try[UserGroupRepository] = {
-    groupFactory.create(groupName, description, id, Some(orgId))(session)
+  private def shadowGroup(groupName: String, description: Option[String])(implicit session: DBSession): Try[UserGroupRepository] = {
+    groupFactory.create(groupName, description, id, Some(orgId))
   }
 
-  private def unshadowGroup(group: UserGroupRepository): Try[Boolean] = {
-    Try(groupFactory.delete(group.id.asInstanceOf[UUID])(session))
+  private def unshadowGroup(group: UserGroupRepository)(implicit session: DBSession): Try[Boolean] = {
+    Try(groupFactory.delete(group.id.asInstanceOf[UUID]))
   }
 
-  private def findAccountByUsername(username: String): Option[UserAccountRepository] = {
+  private def findShadowedAccountByUsername(username: String)(implicit session: DBSession): Option[UserAccountRepository] = {
     UserAccountRepository.findBy(sqls"dir_id = ${this.id} and username = ${username}")
   }
 
-  private def findGroupsByName(groupname: String): List[UserGroupRepository] = {
-    UserGroupRepository.findAllBy(sqls"dir_id = ${this.id} and name = ${groupname}")
+  private def findShadowedGroupByName(groupname: String)(implicit session: DBSession): Option[UserGroupRepository] = {
+    UserGroupRepository.findBy(sqls"dir_id = ${this.id} and name = ${groupname}")
   }
 
   // Find an LDAP group by user
-  private def ldapFindGroupnamesByUser(username: String): Try[List[String]] = {
-    try {
+  def ldapFindGroupnamesByUser(username: String): Try[List[String]] = {
+    Try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val searchtail = if (searchBase.startsWith(",")) searchBase else s",${searchBase}"
@@ -241,8 +307,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           gnames = raw.split(" ").last :: gnames
         }
       }
-      Success(gnames)
-    } catch {
+      gnames
+    } recoverWith {
       case e: Throwable =>
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
           Logger.error("Error: LDAP configuration was not setup.")

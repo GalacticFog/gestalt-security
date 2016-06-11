@@ -5,6 +5,7 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.GestaltOrg
+import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
 
 class OrgSpecs extends SpecWithSDK {
 
@@ -311,8 +312,10 @@ class OrgSpecs extends SpecWithSDK {
     lazy val grp1 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-1")))
     lazy val grp2 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-2")))
     lazy val grp3 = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("query-group-3")))
+    lazy val queryGroups = Seq(grp1, grp2, grp3)
 
     "list groups with name query strings" in {
+      DirectoryFactory.find(newOrgDir.id).get.lookupGroups("query-group-*").map(_.name) must containTheSameElementsAs(queryGroups.map(_.name))
       await(newOrg.listGroups( "name" -> "query-group-*" )) must containTheSameElementsAs(Seq(grp1, grp2, grp3))
       await(newOrg.listGroups( "name" -> grp2.name )) must containTheSameElementsAs(Seq(grp2))
       await(newOrg.listGroups( "name" -> "*-3" )) must containTheSameElementsAs(Seq(grp3))

@@ -100,7 +100,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       }
     }
     val orgGroups = (orgTree flatMap {
-      case (org,sApp) => GroupFactory.listAppGroups(sApp.id.asInstanceOf[UUID], None)
+      case (org,sApp) => GroupFactory.queryShadowedAppGroups(sApp.id.asInstanceOf[UUID], None)
     } distinct) map { ugr => ugr: GestaltGroup }
     val memberships = orgGroups.map {g =>
       (g.id -> GroupFactory.listGroupAccounts(g.id).map{_.id.asInstanceOf[UUID]})

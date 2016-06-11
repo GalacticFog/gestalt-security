@@ -1,42 +1,80 @@
 package com.galacticfog.gestalt.security.test
 
+import java.util.UUID
+
+import com.galacticfog.gestalt.security.EnvConfig
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
+import com.galacticfog.gestalt.security.data.domain._
+import com.galacticfog.gestalt.security.data.model.{TokenRepository, UserAccountRepository}
 import play.api.libs.json.Json
 
 class LDAPSpecs extends SpecWithSDK {
 
+  lazy val newOrgName = "new-org-for-ldap-testing"
+  lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+    name = newOrgName,
+    createDefaultUserGroup = false
+  )))
+  lazy val newOrgApp = await(newOrg.getServiceApp())
+
+  val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://ldap.forumsys.com:389"
+  val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "read-only-admin"
+  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
+
   "LDAP Directory" should {
 
-    val config = Json.parse(
-	 """
-          {
-            "activeDirectory" : false,
-            "url" : "ldap://ldap.forumsys.com:389",
-            "searchBase" : "dc=example,dc=com",
-            "systemUsername" : "read-only-admin",
-            "systemPassword" : "password",
-            "primaryField" : "uid"
-          }
-	 """.stripMargin)
-    lazy val ldapdir = await(rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP, Some("Test LDAP"), Some(config))))
+    val config = Json.parse(s"""
+      |{
+      |  "activeDirectory" : false,
+      |  "url" : "$ldapUrl",
+      |  "searchBase" : "dc=example,dc=com",
+      |  "systemUsername" : "$ldapUser",
+      |  "systemPassword" : "$ldapPass",
+      |  "primaryField" : "uid"
+      |}""".stripMargin)
+
+    lazy val ldapDir = await(newOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP, Some("Test LDAP"), Some(config))))
+    lazy val ldapDirDAO = DirectoryFactory.find(ldapDir.id).get
 
     "be addable to the root org" in {
-      ldapdir must haveName("LdapTestDir")
-      await(rootOrg.listDirectories()) must contain(ldapdir)
+      ldapDir must haveName("LdapTestDir")
+      await(newOrg.listDirectories()) must contain(ldapDir)
+      await(GestaltOrg.mapAccountStore(
+        orgId = newOrg.id,
+        createRequest = GestaltAccountStoreMappingCreate(
+          name = "test-ldap-mapping",
+          storeType = DIRECTORY,
+          accountStoreId = ldapDir.id,
+          isDefaultAccountStore = false,
+          isDefaultGroupStore = false
+        )
+      )) must (
+        (asm: GestaltAccountStoreMapping) => asm.storeType == DIRECTORY && asm.storeId == ldapDir.id
+      )
     }
 
-//    "allow user to create sub-org with LDAP directory" in {
-//      val ldapOrg = rootOrg.createSubOrg(GestaltOrgCreate("LdapTest", false, Some("A test sub-organization with LDAP integration.")))
-//      val ldapDir = rootOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP))
-//    }
+    "be able to find groups (raw ldap)" in {
+      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
+      ldap.ldapFindGroupnamesByName("Scientists") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists")))
+      ldap.ldapFindGroupnamesByName("*ists") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists", "Scientists")))
+      ldap.ldapFindGroupnamesByName("*a*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians")))
+      ldap.ldapFindGroupnamesByName("*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians", "Scientists", "Chemists")))
+    }
 
-//    "NOT allow a new group to be created" in {
-//      await(ldapdir.createGroup(GestaltGroupCreate("testGroup3"))) must throwA[BadRequestException](".*cannot add group.*")
-//    }
+    "be able to find groups by account (raw ldap)" in {
+      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
+      ldap.ldapFindGroupnamesByUser("read-only-admin") must beASuccessfulTry(beEmpty[List[String]])
+      ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
+      ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
+    }
+
+    "NOT allow a new group to be created" in {
+      await(ldapDir.createGroup(GestaltGroupCreate("testGroup3"))) must throwA[BadRequestException](".*Group create request not valid.*")
+    }
 
     "NOT allow a new user to be created" in {
-      await(ldapdir.createAccount(GestaltAccountCreate(
+      await(ldapDir.createAccount(GestaltAccountCreate(
         username = "testAccount3",
         firstName = "test",
         lastName = "account3",
@@ -46,20 +84,98 @@ class LDAPSpecs extends SpecWithSDK {
       ))) must throwA[BadRequestException](".*Account create request not valid.*")
     }
 
-    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
-
-      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
-       token must beSome
-      // Check account is shadowed
-//      await(rootOrg.getAccountByUsername("newton")) must beSome
-      // Check that already shadowed account can be authenticated
-      val token2 = await(GestaltToken.grantPasswordToken(rootOrg.id, "newton", "password"))
-       token2 must beSome
+    "shadow groups on search" in {
+      // verify none are shadowed
+      GroupFactory.listByDirectoryId(ldapDir.id).map(_.name) must not contain(
+        anyOf("Chemists", "Scientists", "Mathematicians", "Italians")
+      )
+      // ... and won't be returned in the list of shadowed groups
+      await(newOrg.listGroups()) map(_.name) must not contain(
+        anyOf("Chemists", "Scientists", "Mathematicians", "Italians")
+      )
+      // but a query will discover them
+      val q = await(newOrg.listGroups(
+        "name" -> "*ists"
+      ))
+      q.map(_.name) must contain(allOf("Chemists", "Scientists"))
+      GroupFactory.listByDirectoryId(ldapDir.id).map(_.name) must contain(
+        allOf("Chemists", "Scientists")
+      )
+      GroupFactory.listByDirectoryId(ldapDir.id).map(_.name) must not contain(
+        anyOf("Mathematicians", "Italians")
+      )
+      // at which point in time, they will be shadowed
+      // ... and returned from the simple listing
+      await(newOrg.listGroups()) map(_.name) must contain(allOf("Chemists", "Scientists"))
+      await(newOrg.listGroups()) map(_.name) must not contain(anyOf("Mathematicians","Italians"))
+      // another search won't harm existing shadowed groups
+      await(newOrg.listGroups(
+        "name" -> "Italians"
+      )).map(_.name) must contain(allOf("Italians"))
+      await(newOrg.listGroups()) map(_.name) must contain(allOf("Chemists", "Scientists", "Italians"))
+      await(newOrg.listGroups()) map(_.name) must not contain("Mathematicians")
     }
 
-    "NOT allow account to authenticate against a password not in LDAP" in {
-      val token = await(GestaltToken.grantPasswordToken(rootOrg.id, "einstein", "letmein"))
+    "shadow accounts on search" in {
+      // verify account is not shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
+      val lookup = ldapDirDAO.lookupAccounts(username = Some("newton"))
+      lookup map {_.username} must containTheSameElementsAs(Seq("newton"))
+      // verify account is shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beSome((uar: UserAccountRepository) =>
+        uar.username == "newton" && uar.dirId == ldapDir.id && uar.id == lookup.head.id
+      )
+    }
+
+    "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
+      // unshadow account, verify it's not shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") foreach {_.destroy()}
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
+      val maybeAuthAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password"))
+      maybeAuthAccount must beSome( (uar: UserAccountRepository) =>
+          uar.username == "newton" && uar.dirId == ldapDir.id
+      )
+      // verify account is shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beSome((uar: UserAccountRepository) =>
+          uar.username == "newton" && uar.dirId == ldapDir.id && uar.id == maybeAuthAccount.get.id
+      )
+      // check that already shadowed account can be authenticated and get token
+      await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beSome
+    }
+
+    "not allow account to authenticate against a password not in LDAP" in {
+      val token = await(GestaltToken.grantPasswordToken(newOrg.id, "not-newton", "password"))
        token must beNone
+    }
+
+    "allow shadowed account to be disabled/enabled with respect to authentication" in {
+      val account = ldapDirDAO.lookupAccounts(username = Some("newton")).head
+      // disable
+      ldapDirDAO.disableAccount(account.id.asInstanceOf[UUID], disabled = true)
+      AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beNone
+      // re-enable
+      ldapDirDAO.disableAccount(account.id.asInstanceOf[UUID], disabled = false)
+      AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beSome
+    }
+
+    "refuse to perform local password checking" in {
+      val account = ldapDirDAO.lookupAccounts(username = Some("newton")).head
+      account.hashMethod must_== "shadowed"
+      account.secret must_== ""
+      AccountFactory.checkPassword(account, "") must beFalse
+    }
+
+    "shadow accounts on search" in {
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euclid") must beNone
+      AccountFactory.findInDirectoryByName(ldapDir.id, "euler") must beNone
+      await(newOrg.listAccounts()) map(_.username) must not contain(anyOf("euclid", "euler"))
+      val q = await(newOrg.listAccounts(
+        "username" -> "eu*"
+      ))
+      q.map(_.username) must containTheSameElementsAs(Seq("euclid", "euler"))
+      ldapDirDAO.lookupAccounts(username=Some("euclid")) must haveSize(1)
+      ldapDirDAO.lookupAccounts(username=Some("euler")) must haveSize(1)
+      await(newOrg.listAccounts()) map(_.username) must contain(allOf("euclid", "euler"))
     }
 
   }

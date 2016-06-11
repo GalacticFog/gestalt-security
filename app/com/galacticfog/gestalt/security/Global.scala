@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security
 
 import com.galacticfog.gestalt.security.actors.RateLimitingActor
 import controllers.{GestaltHeaderAuthentication, RESTAPIController, InitController}
+import org.joda.time.Duration
 import org.postgresql.util.PSQLException
 import play.api.{Application, GlobalSettings, Logger => log, Play}
 import play.libs.Akka
@@ -16,6 +17,8 @@ import play.api.libs.json.{JsObject, Json}
 import play.api.mvc.{Action, Handler, Result, RequestHeader}
 import play.api.mvc.Results._
 import scalikejdbc._
+
+import scala.util.Try
 
 object Global extends GlobalSettings with GlobalWithMethodOverriding {
 
@@ -159,6 +162,11 @@ object Global extends GlobalSettings with GlobalWithMethodOverriding {
   val services = SecurityServices(
     accountStoreMappingService = new DefaultAccountStoreMappingServiceImpl
   )
+
+  val tokenLifetime = (for {
+    envString <- EnvConfig.getEnvOpt("OAUTH_TOKEN_LIFETIME")
+    lifetime <- Try { Duration.parse(envString) }.toOption
+  } yield lifetime) getOrElse Duration.standardHours(8)
 
 }
 

@@ -326,7 +326,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           developerMessage = "Could not create group in non-existent application. If this was created as a result of an attempt to create a group in an org, it suggests that the org is misconfigured."
         )
       }
-      val newGroupTry = for {
+      for {
         dir <- getDefaultGroupStore(appId)
         dirId = dir.id.asInstanceOf[UUID]
         newGroup <- GroupFactory.create(
@@ -346,16 +346,6 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           }
         }
       } yield newGroup
-      newGroupTry recoverWith {
-        case t: Throwable => Failure(t) // TODO
-        //      if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
-        //        throw new ConflictException(
-        //          resource = s"/apps/${appId}",
-        //          message = "group name already exists",
-        //          developerMessage = "The default directory associated with this app already contains a group with the specified name."
-        //        )
-        //      }
-      }
     }
   }
 
@@ -397,15 +387,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
     for {
       asm <- getDefaultAccountStore(appId)
       dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
-      dir <- DirectoryFactory.find(dirId) match {
-        case Some(dir) => Success(dir)
-        case None => Failure(ResourceNotFoundException(
-          resource = "",
-          message = "could not locate the default account directory for the specified application",
-          developerMessage = "Could not locate the default account directory for the specified application."
-        ))
-      }
-      account <- dir.lookupAccountByUsername(username) match {
+      account <- AccountFactory.findInDirectoryByName(dirId, username) match {
         case Some(a) => Success(a)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -429,15 +411,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
       asm <- getDefaultAccountStore(app.id.asInstanceOf[UUID])
       dirId = asm.fold(_.id,_.dirId).asInstanceOf[UUID]
-      dir <- DirectoryFactory.find(dirId) match {
-        case Some(dir) => Success(dir)
-        case None => Failure(ResourceNotFoundException(
-          resource = "",
-          message = "could not locate the default account directory for the specified org",
-          developerMessage = "Could not locate the default account directory for the specified organization."
-        ))
-      }
-      account <- dir.lookupAccountByUsername(username) match {
+      account <- AccountFactory.findInDirectoryByName(dirId, username) match {
         case Some(a) => Success(a)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -460,15 +434,8 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
         ))
       }
       asm <- getDefaultGroupStore(app.id.asInstanceOf[UUID])
-      dir <- DirectoryFactory.find(asm.id.asInstanceOf[UUID]) match {
-        case Some(dir) => Success(dir)
-        case None => Failure(ResourceNotFoundException(
-          resource = "",
-          message = "could not locate the default group directory for the org",
-          developerMessage = "Could not locate the default group directory for the organization."
-        ))
-      }
-      group <- dir.lookupGroupByName(groupName) match {
+      dirId = asm.id.asInstanceOf[UUID]
+      group <- GroupFactory.findInDirectoryByName(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",
@@ -483,15 +450,8 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def getGroupNameInAppDefaultGroupStore(appId: UUID, groupName: String)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
     for {
       asm <- getDefaultGroupStore(appId)
-      dir <- DirectoryFactory.find(asm.id.asInstanceOf[UUID]) match {
-        case Some(dir) => Success(dir)
-        case None => Failure(ResourceNotFoundException(
-          resource = "",
-          message = "could not locate the default group directory for the application",
-          developerMessage = "Could not locate the default group directory for the application."
-        ))
-      }
-      group <- dir.lookupGroupByName(groupName) match {
+      dirId = asm.id.asInstanceOf[UUID]
+      group <- GroupFactory.findInDirectoryByName(dirId, groupName) match {
         case Some(grp) => Success(grp)
         case None => Failure(ResourceNotFoundException(
           resource = "",

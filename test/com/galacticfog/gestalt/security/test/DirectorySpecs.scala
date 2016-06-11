@@ -1,6 +1,10 @@
 package com.galacticfog.gestalt.security.test
 
 import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
+import com.galacticfog.gestalt.security.api.json.JsonImports
+import com.galacticfog.gestalt.security.data.domain.{AccountFactory, DirectoryFactory}
+import play.api.libs.json.Json
 
 class DirectorySpecs extends SpecWithSDK {
 
@@ -52,6 +56,51 @@ class DirectorySpecs extends SpecWithSDK {
       await(GestaltAccount.deleteAccount(testUser2.id)) must beTrue
       await(GestaltAccount.getById(testUser2.id)) must beSome(testUser2)
       await(rootDir.getAccountByUsername("testAccount2")) must beSome(testUser2)
+    }
+
+  }
+
+  lazy val newOrgName = "new-org-for-directory-testing"
+  lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+    name = newOrgName,
+    createDefaultUserGroup = false
+  )))
+  lazy val newOrgApp = await(newOrg.getServiceApp())
+
+  "Directory creation" should {
+
+    lazy val testDir = await(newOrg.createDirectory(GestaltDirectoryCreate(
+      "test-dir", DIRECTORY_TYPE_INTERNAL
+    )))
+
+    "prohibit duplicate names" in {
+      await(newOrg.createDirectory(GestaltDirectoryCreate(
+        testDir.name, DIRECTORY_TYPE_INTERNAL
+      ))) must throwA[ConflictException](".*name already exists in org.*")
+    }
+
+    "require valid directory type" in {
+      // sdk doesn't allow raw string to be passed, so we'll bypass
+      // this actually presents as a parse error now
+      import JsonImports._
+      await(keySdk.post[GestaltDirectory](s"orgs/${newOrg.id}/directories",Json.obj(
+        "name" -> "bad-directory",
+        "directoryType" -> "badtype"
+      ))) must throwA[BadRequestException](".*invalid payload.*")
+    }
+
+    "not automatically map the directory" in {
+      await(newOrg.listAccountStores()) must not contain(
+        (asm: GestaltAccountStoreMapping) =>  asm.storeId == testDir.id
+      )
+    }
+
+    "not allow unmapped dir accounts to auth" in {
+      val d = DirectoryFactory.find(testDir.id).get
+      val a = d.createAccount("test-account", None, "", "", None, None, GestaltPasswordCredential("test-password"))
+      a must beSuccessfulTry
+      val token = await(GestaltToken.grantPasswordToken(newOrg.id, "test-account", "test-password"))
+      token must beNone
     }
 
   }

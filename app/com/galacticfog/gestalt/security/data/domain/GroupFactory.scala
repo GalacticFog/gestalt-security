@@ -18,7 +18,8 @@ trait GroupFactoryDelegate {
   def create(name: String, description: Option[String], dirId: UUID, maybeParentOrg: Option[UUID])(implicit session: DBSession): Try[UserGroupRepository]
   def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Unit
   def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Try[GroupMembershipRepository]
-  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]}
+  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]
+}
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFactoryDelegate {
 
@@ -27,13 +28,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
   override val autoSession = AutoSession
 
   def find(groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
-    // TODO - for all directories, find group by ID.
     UserGroupRepository.find(groupId)
-  }
-
-  def findGroupByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Try[List[UserGroupRepository]] = {
-    // TODO - for all directories
-    Success(List.empty[UserGroupRepository])
   }
 
   def delete(groupId: UUID)(implicit session: DBSession = autoSession): Boolean = {
@@ -45,7 +40,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
         false
     }
   }
-
 
   def create(name: String,
              description: Option[String],
@@ -72,6 +66,35 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
           case _ => Failure(t)
         }
     }
+  }
+
+  /**
+    * Deep-query of all application groups, with wildcard matching.
+    *
+    * An application group is a group that is:
+    *   - directly assigned to the app, or
+    *   - in an org assigned to the app
+    *
+    * @param appId the specified app
+    * @param nameQuery query parameter for the search, which may include '*' wildcards
+    * @param session
+    * @return All application groups matching the query
+    */
+  def lookupAppGroups(appId: UUID, nameQuery: String)
+                     (implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
+    val (groupMappings, dirMappings) = AppFactory.listAccountStoreMappings(appId).partition(_.storeType == "GROUP")
+    // indirect groups, via their directories
+    val dirGroups = dirMappings
+      .flatMap( asm => DirectoryFactory.find(asm.accountStoreId.asInstanceOf[UUID]) )
+      .flatMap( _.lookupGroups(nameQuery) )
+    // direct groups, but through the directory first (gives unshadowing a chance to happen)
+    val appGroupsFromMappings = groupMappings
+      .flatMap( asm => GroupFactory.find(asm.accountStoreId.asInstanceOf[UUID]))
+    val appGroups = appGroupsFromMappings
+      .flatMap( grp => DirectoryFactory.find(grp.dirId.asInstanceOf[UUID]) )
+      .flatMap( _.lookupGroups(nameQuery) )
+      .intersect( appGroupsFromMappings )
+    (appGroups ++ dirGroups).distinct
   }
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
@@ -174,10 +197,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     }
   }
 
-  def directoryLookup(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
-    UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
-  }
-
   def getAppGroupMapping(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
@@ -198,7 +217,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     The latter is because any user in the directory is assigned to the app, so that any user in any group in the
     directory (therefore, a user in the directory) is in the app.
    */
-  def listAppGroups(appId: UUID, nameQuery: Option[String])(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
+  def queryShadowedAppGroups(appId: UUID, nameQuery: Option[String])(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
     val (grp, asm) = (
       UserGroupRepository.syntax("grp"),
       AccountStoreMappingRepository.syntax("asm")
@@ -215,11 +234,22 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     }.map(UserGroupRepository(grp)).list.apply()
   }
 
-  def listOrgGroupsByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
-    for {
-      dir <- DirectoryFactory.listByOrgId(orgId)
-      group <- dir.listOrgGroupsByName(orgId, groupName)
-    } yield group
-
+  def findInDirectoryByName(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
+    UserGroupRepository.findBy(sqls"dir_id = ${dirId} and name = ${groupName}")
   }
+
+  def queryShadowedDirectoryGroups(dirId: Option[UUID], nameQuery: Option[String])
+                                  (implicit session: DBSession = autoSession): List[UserGroupRepository] = {
+    val g = UserGroupRepository.syntax("g")
+    withSQL {
+      select
+        .from(UserGroupRepository as g)
+        .where(sqls.toAndConditionOpt(
+          dirId.map(id => sqls.eq(g.dirId, id)),
+          nameQuery.map(q => sqls.like(g.name, q.replace("*","%")))
+        ))
+    }.map{UserGroupRepository(g)}.list.apply()
+  }
+
+
 }

@@ -74,7 +74,7 @@ trait SpecWithSDK extends PlaySpecification {
   lazy val rootAccount: GestaltAccount = await(GestaltAccount.getSelf())
   lazy val rootOrg: GestaltOrg = await(GestaltOrg.getCurrentOrg())
   lazy val daoRootDir: Directory = DirectoryFactory.listByOrgId(rootOrg.id).head
-  lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroupByName("admins").get
+  lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroups("admins").head
 
   // create a token-based sdk for testing
   lazy val rootAccessToken = TokenFactory.createToken(Some(rootOrg.id), rootAccount.id, 28800, ACCESS_TOKEN, None).get

@@ -18,7 +18,7 @@ case class RateLimitingActor(periodLengthMinutes: Int, attemptsPerPeriod: Int) e
     case TokenGrantRateLimitCheck(appId, username) =>
       val num = history.getOrElse((appId,username),0) + 1
       history.put( (appId,username), num )
-      log.info(s"(${appId},${username}) set to $num")
+      log.debug(s"(${appId},${username}) set to $num")
       if (num <= attemptsPerPeriod)
         sender ! RequestAccepted
       else

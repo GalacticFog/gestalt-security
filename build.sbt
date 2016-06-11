@@ -4,7 +4,7 @@ name := """gestalt-security"""
 
 organization := "com.galacticfog"
 
-version := "2.2.2-SNAPSHOT"
+version := "2.2.3-SNAPSHOT"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
@@ -28,7 +28,8 @@ lazy val root = (project in file(".")).
                       } catch {      case t: Throwable => "get git hash failed"    }
               }}.toString()
     ),
-    buildInfoPackage := "com.galacticfog.gestalt.security"
+    buildInfoPackage := "com.galacticfog.gestalt.security",
+    buildInfoUsePackageAsPath := true
   )
 
 buildInfoOptions += BuildInfoOption.BuildTime

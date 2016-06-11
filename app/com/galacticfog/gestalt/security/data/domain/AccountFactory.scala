@@ -17,12 +17,24 @@ import scala.util.{Failure, Try}
 import scala.util.matching.Regex
 
 trait AccountFactoryDelegate {
-  def createAccount(dirId: UUID, username: String, description: Option[String] = None, email: Option[String] = None, phoneNumber: Option[String] = None,
-                    firstName: String, lastName: String, hashMethod: String, salt: String, secret: String, disabled: Boolean)(implicit session: DBSession): Try[UserAccountRepository]
-  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession): Option[UserAccountRepository]
+
+  def createAccount(dirId: UUID,
+                    username: String,
+                    description: Option[String] = None,
+                    email: Option[String] = None,
+                    phoneNumber: Option[String] = None,
+                    firstName: String,
+                    lastName: String,
+                    hashMethod: String,
+                    salt: String,
+                    secret: String,
+                    disabled: Boolean)
+                   (implicit session: DBSession): Try[UserAccountRepository]
+
 }
 
 object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with AccountFactoryDelegate {
+
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
@@ -47,10 +59,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
 
   override val autoSession = AutoSession
 
-  def disableAccount(accountId: UUID)(implicit session: DBSession = autoSession): Unit = {
+  def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession = autoSession): Unit = {
     val column = UserAccountRepository.column
     withSQL {
-      update(UserAccountRepository).set(column.disabled -> true).where.eq(column.id, accountId)
+      update(UserAccountRepository).set(column.disabled -> disabled).where.eq(column.id, accountId)
     }.update().apply()
   }
 
@@ -66,13 +78,12 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     UserAccountRepository.findAllBy(sqls"dir_id=${dirId}")
   }
 
-  def directoryLookup(dirId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
-  }
-
   def checkPassword(account: UserAccountRepository, plaintext: String): Boolean = {
     account.hashMethod match {
       case "bcrypt" => BCrypt.checkpw(plaintext, account.secret)
+      case "shadowed" =>
+        Logger.warn("Cannot perform direct authentication against a shadow account")
+        false
       case "disabled" =>
         Logger.info("Account password authenticated marked disabled")
         false
@@ -228,37 +239,81 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     )
   }
 
-  def frameworkAuth(appId: UUID, request: RequestHeader)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    val usernameAuths = for {
-      token <- GestaltHeaderAuthentication.extractAuthToken(request).flatMap {_ match {
-        case t: GestaltBasicCredentials => Some(t)
-        case _ => None
-      }}.toSeq
-      acc <- AccountFactory.authenticate(appId, GestaltBasicCredsToken(token.username, token.password))
+
+  /**
+    * Deep lookup on Directories to find all accounts that are mapped to a given application
+    * @param appId ID for the application
+    * @param nameQuery  username query parameter (e.g., "*smith")
+    * @param emailQuery email query parameter (e.g., "*@company.com")
+    * @param phoneQuery phone number query parameter (e.g., "+1505*")
+    * @param session database session (optional)
+    * @return List of accounts mapped to the application satisfying any specified query parameters
+    */
+  def lookupByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
+                   (implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
+    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
+    val dirAccounts = for {
+      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
+      acc <- dir.lookupAccounts(
+        group = None,
+        username = nameQuery,
+        phone = phoneQuery,
+        email = emailQuery
+      )
     } yield acc
-    // first success is good enough
-    usernameAuths.headOption
+    lazy val groupAccounts = for {
+      grpMapping <- groupMappings
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
+      dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
+      accs <- dir.lookupAccounts(
+        group = Some(group),
+        username = nameQuery,
+        phone = phoneQuery,
+        email = emailQuery
+      )
+    } yield accs
+    (dirAccounts ++ groupAccounts).distinct
   }
 
+  /**
+    * For all account stores mapped to a particular application, find the "first" account in those stores against which
+    * the given credentials can successfully authenticate.
+    *
+    * This uses the methods on the Directory interface for the relevant account stores, and therefore may result in calls to the
+    * backing store (e.g., LDAP/AD) for the directory and potentially result in newly created shadow accounts.
+    *
+    * @param appId The app context for authentication
+    * @param creds The user credentials to authenticate
+    * @param session db session
+    * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
+    */
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    val authAttempt = for {
-      acc <- findAppUsersByUsername(appId,creds.username)
-      dir <- DirectoryFactory.find(acc.dirId.asInstanceOf[java.util.UUID])
+    if (creds.username.contains("*")) throw BadRequestException("", "username cannot contain wildcard characters", "There was an attempt to authenticate an account with a username containing wildcard characters. This is not allowed.")
+    val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
+    val dirAccounts = for {
+      dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
+      acc <- dir.lookupAccounts(
+        group = None,
+        username = Some(creds.username),
+        phone = None,
+        email = None
+      )
+      authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+    } yield authedAcc
+    lazy val groupAccounts = for {
+      grpMapping <- groupMappings
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
+      dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
+      acc <- dir.lookupAccounts(
+        group = Some(group),
+        username = Some(creds.username),
+        phone = None,
+        email = None
+      )
       authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    val shadowedAccounts = for {
-        app <- AppFactory.findByAppId(appId).toSeq
-        dir <- DirectoryFactory.listByOrgId(app.orgId.asInstanceOf[UUID]).filter {d => d.isInstanceOf[LDAPDirectory]}
-        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password)  // Creates shadow account if found, then authenticates
-    } yield saccount
-    // TODO - query all indirect LDAPDirectories
-//    val indirectAccounts = for {
-//        app <- AppFactory.findByAppId(appId).toSeq
-//        grp <- GroupFactory.listAppGroups(appId)
-//        dir <- Some(DirectoryFactory.find(grp.dirId)).toSeq
-//        saccount <- dir.lookupAccountByPrimary(creds.username) if dir.authenticateAccount(saccount, creds.password) == true  // Creates shadow account if found, then authenticates
-//    } yield saccount
-    (authAttempt.headOption orElse shadowedAccounts.headOption) // orElse indirectAccounts.headOption
+    val result = dirAccounts.headOption orElse groupAccounts.headOption
+    result
   }
 
   def getAppAccount(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
@@ -274,33 +329,39 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       """.map{UserAccountRepository(a)}.list.apply().headOption
   }
 
-  def listByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
-                 (implicit session: DBSession = autoSession): List[UserAccountRepository] = {
-    val (a,axg,asm) = (
+  def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+    val (a, axg, asm) = (
       UserAccountRepository.syntax("a"),
       GroupMembershipRepository.syntax("axg"),
       AccountStoreMappingRepository.syntax("asm")
-    )
-    val sub = SubQuery.syntax("sub").include(axg,asm)
+      )
+    sql"""select distinct ${a.result.*}
+          from ${UserAccountRepository.as(a)} inner join (
+            select axg.account_id,asm.account_store_id,asm.store_type
+            from account_x_group as axg
+              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
+              where asm.app_id = ${appId}
+          ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
+      """.map(UserAccountRepository(a)).list.apply()
+  }
+
+  def queryShadowedDirectoryAccounts(dirId: Option[UUID], nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
+                                    (implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+    val a = UserAccountRepository.syntax("a")
     withSQL {
-      select(sqls.distinct(a.resultAll))
+      select
         .from(UserAccountRepository as a)
-        .innerJoin(
-          {
-            select(axg.result.accountId,asm.result.accountStoreId).from(GroupMembershipRepository as axg)
-              .rightJoin(AccountStoreMappingRepository as asm)
-              .on(sqls"${asm.accountStoreId} = ${axg.groupId} and ${asm.storeType} = 'GROUP'")
-              .where.eq(asm.appId, appId)
-          }.as(sub)
-        )
-        .on(sqls"${a.id} = ${sub(axg).accountId} or ${a.dirId} = ${sub(asm).accountStoreId}")
         .where(sqls.toAndConditionOpt(
-          Some(sqls.eq(a.disabled, false)),
+          dirId.map(id => sqls.eq(a.dirId, id)),
           nameQuery.map(q => sqls.like(a.username, q.replace("*","%"))),
           emailQuery.map(q => sqls.like(a.email, q.replace("*","%"))),
           phoneQuery.map(q => sqls.like(a.phoneNumber, q.replace("*","%")))
         ))
     }.map{UserAccountRepository(a)}.list.apply()
+  }
+
+  def findInDirectoryByName(dirId: UUID, username: String)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    UserAccountRepository.findBy(sqls"dir_id=${dirId} and username=${username}")
   }
 
   def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
@@ -390,23 +451,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     }
   }
 
-  def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
-    val (a, axg, asm) = (
-      UserAccountRepository.syntax("a"),
-      GroupMembershipRepository.syntax("axg"),
-      AccountStoreMappingRepository.syntax("asm")
-      )
-    sql"""select distinct ${a.result.*}
-          from ${UserAccountRepository.as(a)} inner join (
-            select axg.account_id,asm.account_store_id,asm.store_type
-            from account_x_group as axg
-              right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
-              where asm.app_id = ${appId}
-          ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.disabled} = false
-      """.map(UserAccountRepository(a)).list.apply()
-  }
-
   private[this] def findAppUserByAccountId(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
     val (a, axg, asm) = (
       UserAccountRepository.syntax("a"),
@@ -420,7 +464,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.id} = ${accountId} and ${a.disabled} = false
+          where ${a.id} = ${accountId}
       """.map(UserAccountRepository(a)).single().apply()
   }
 
@@ -437,7 +481,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.email} = ${email} and ${a.disabled} = false
+          where ${a.email} = ${email}
       """.map(UserAccountRepository(a)).list.apply()
   }
 
@@ -454,7 +498,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
-          where ${a.username} = ${username} and ${a.disabled} = false
+          where ${a.username} = ${username}
       """.map(UserAccountRepository(a)).list.apply()
   }
 

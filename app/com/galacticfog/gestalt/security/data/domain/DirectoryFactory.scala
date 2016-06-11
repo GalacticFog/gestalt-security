@@ -1,100 +1,83 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import com.galacticfog.gestalt.security.api.{GestaltAccountCreate, GestaltDirectoryCreate, GestaltGroupCreate, GestaltPasswordCredential}
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
-import org.mindrot.jbcrypt.BCrypt
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException}
+import org.postgresql.util.PSQLException
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.data.model._
 
-import play.api.Logger
-
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Try}
 
 trait Directory {
+
   def createAccount(username: String,
                     description: Option[String],
                     firstName: String,
                     lastName: String,
                     email: Option[String],
                     phoneNumber: Option[String],
-                    cred: GestaltPasswordCredential): Try[UserAccountRepository]
+                    cred: GestaltPasswordCredential)
+                   (implicit session: DBSession = AutoSession): Try[UserAccountRepository]
 
-  def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean
-  def lookupAccountByPrimary(primary: String): Option[UserAccountRepository]
-  def lookupAccountByUsername(username: String): Option[UserAccountRepository]
-  def lookupGroupByName(groupName: String): Option[UserGroupRepository]
+  def createGroup(name: String,
+                  description: Option[String])
+                 (implicit session: DBSession = AutoSession): Try[UserGroupRepository]
+
+  def authenticateAccount(account: UserAccountRepository, plaintext: String)
+                         (implicit session: DBSession = AutoSession): Boolean
+
+  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
+    *
+    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
+    *
+    * @param group  optional group search (no wildcard matching)
+    * @param username username query parameter (e.g., "*smith")
+    * @param phone phone number query parameter (e.g., "+1505*")
+    * @param email email address query parameter (e.g., "*smith@company.com")
+    * @param session database session (optional)
+    * @return List of matching accounts (matching the query strings and belonging to the specified group)
+    */
+  def lookupAccounts(group: Option[UserGroupRepository] = None,
+                     username: Option[String] = None,
+                     phone: Option[String] = None,
+                     email: Option[String] = None)
+                    (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
+
+  /**
+    * Directory-specific (i.e., deep) query of groups, supporting wildcard matches on group name.
+    *
+    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
+    *
+    * @param groupName group name query parameter (e.g., "*-admins")
+    * @param session database session (optional)
+    * @return List of matching groups
+    */
+  def lookupGroups(groupName: String)
+                  (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
+
+  def disableAccount(accountId: UUID, disabled: Boolean = true)
+                    (implicit session: DBSession = AutoSession): Unit
+
+  def deleteGroup(uuid: UUID)
+                 (implicit session: DBSession = AutoSession): Boolean
+
+  def getGroupById(groupId: UUID)
+                  (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
+
+  def listGroupAccounts(groupId: UUID)
+                       (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
 
   def id: UUID
   def name: String
   def description: Option[String]
   def orgId: UUID
 
-  def disableAccount(accountId: UUID): Unit
-  def deleteGroup(uuid: UUID): Boolean
-
-  def getGroupById(groupId: UUID): Option[UserGroupRepository]
-
-  def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository]
-  def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository]
 }
 
-case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directory {
-  override def id: UUID = daoDir.id.asInstanceOf[UUID]
-  override def name: String = daoDir.name
-  override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
-  override def description: Option[String] = daoDir.description
 
-  override def disableAccount(accountId: UUID): Unit = {
-    AccountFactory.disableAccount(accountId)
-  }
-
-  override def authenticateAccount(account: UserAccountRepository, plaintext: String): Boolean = {
-    AccountFactory.checkPassword(account, plaintext)
-  }
-
-  override def lookupAccountByPrimary(primary: String): Option[UserAccountRepository] = None
-
-
-  override def lookupAccountByUsername(username: String): Option[UserAccountRepository] = AccountFactory.directoryLookup(id, username)
-
-  override def lookupGroupByName(groupName: String): Option[UserGroupRepository] = UserGroupRepository.findBy(sqls"dir_id = ${id} and name = ${groupName}")
-
-  override def getGroupById(groupId: UUID) = {
-    GroupFactory.find(groupId) flatMap { grp =>
-      if (grp.dirId == id) Some(grp)
-      else None
-    }
-  }
-
-  override def listGroupAccounts(groupId: UUID): Seq[UserAccountRepository] = GroupFactory.listGroupAccounts(groupId)
-
-  override def deleteGroup(groupId: UUID): Boolean = {
-    GroupFactory.delete(groupId)
-  }
-
-  override def createAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String], cred: GestaltPasswordCredential): Try[UserAccountRepository] = {
-    AccountFactory.createAccount(
-      dirId = id,
-      username = username,
-      description = description,
-      firstName = firstName,
-      lastName = lastName,
-      email = email,
-      phoneNumber = phoneNumber,
-      hashMethod = "bcrypt",
-      salt = "",
-      secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
-      disabled = false
-    )
-  }
-
-  override def listOrgGroupsByName(orgId: UUID, groupName: String): Seq[UserGroupRepository] = {
-    UserGroupRepository.findAllBy(sqls"org_id = ${orgId} and name = ${groupName}")
-  }
-}
 
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
@@ -132,35 +115,27 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  // TODO: omg, refactor this
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
-    GestaltDirectoryRepository.findBy(sqls"name = ${create.name} and org_id = ${orgId}") match {
-      case Some(_) => Failure(ConflictException(
-        resource = s"/orgs/${orgId}/directories",
-        message = "directory with specified name already exists in org",
-        developerMessage = "The org already contains a directory with the specified name."
-      ))
-      case None =>
-        {
-          GestaltDirectoryTypeRepository.findBy(sqls"UPPER(name) = UPPER(${create.directoryType.label})") match {
-            case None => Failure(BadRequestException(
-              resource = s"/orgs/${orgId}/directories",
-              message = s"directory type ${create.directoryType} not valid",
-              developerMessage = s"During directory creation, the requested directory type ${create.directoryType} was not valid."
-            ))
-            case Some(dirType) => Success(dirType.name.toUpperCase)
-          }
-        } map { directoryType =>
-          GestaltDirectoryRepository.create(
-            id = UUID.randomUUID(),
-            orgId = orgId,
-            name = create.name,
-            description = create.description,
-            config = create.config map {_.toString},
-            directoryType = directoryType
-          )
+    Try {
+      GestaltDirectoryRepository.create(
+        id = UUID.randomUUID(),
+        orgId = orgId,
+        name = create.name,
+        description = create.description,
+        config = create.config map {_.toString},
+        directoryType = create.directoryType.label
+      )
+    } recoverWith {
+      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+        t.getServerErrorMessage.getConstraint match {
+          case "directory_name_org_id_key" => Failure(ConflictException(
+            resource = s"/orgs/${orgId}/directories",
+            message = "directory with specified name already exists in org",
+            developerMessage = "The org already contains a directory with the specified name."
+          ))
+          case _ => Failure(t)
         }
-    }
+    } map {d => d: Directory}
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
@@ -201,11 +176,9 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         message = "could not create group in non-existent directory",
         developerMessage = "Could not create group in non-existent directory. If this error was encountered during an attempt to create a group in an org, it suggests that the org is misconfigured."
       ))
-      case Some(dir) => GroupFactory.create(
+      case Some(dir) => dir.createGroup(
         name = create.name,
-        description = create.description,
-        dirId = dir.id.asInstanceOf[UUID],
-        maybeParentOrg = Some(dir.orgId.asInstanceOf[UUID])
+        description = create.description
       )
     }
   }
