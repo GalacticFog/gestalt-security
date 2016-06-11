@@ -1178,6 +1178,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
         grant_type <- request.body.get("grant_type") flatMap asSingleton
         if grant_type == "password"
         username <- request.body.get("username") flatMap asSingleton
+        if !username.contains("*")
         password <- request.body.get("password") flatMap asSingleton
       } yield GestaltBasicCredsToken(username = username, password = password))(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `username` or `password`"))
     } yield (orgId,serviceAppId,creds)

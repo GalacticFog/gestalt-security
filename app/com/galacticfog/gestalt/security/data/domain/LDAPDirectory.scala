@@ -106,7 +106,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
                               email: Option[String] = None)
                              (implicit session: DBSession = AutoSession): Seq[UserAccountRepository] = {
     if (username.isEmpty && phone.isEmpty && email.isEmpty) throw new RuntimeException("LDAPDirectory.lookupAccounts requires some search term")
-//  TODO  if (group.isDefined) ???
+//  TODO  if (group.isDefined) ??? and add test
     implicit def attrToString(attr: => Attribute): String = {
       val memo = attr
       if (memo != null && memo.size() > 0) memo.get(0).toString
@@ -158,10 +158,9 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           this.shadowAccount(uname, desc, fname, lname, email, phone).toOption
         } match {
           case Some(account) =>
-            users :+ account
+            users = users :+ account
           case None =>
             Logger.warn(s"did not find account ${uname}")
-            users
         }
       }
       users

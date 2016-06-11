@@ -28,13 +28,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
   override val autoSession = AutoSession
 
   def find(groupId: UUID)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {
-    // TODO - for all directories, find group by ID.
     UserGroupRepository.find(groupId)
-  }
-
-  def findGroupByName(orgId: UUID, groupName: String)(implicit session: DBSession = autoSession): Try[List[UserGroupRepository]] = {
-    // TODO - for all directories
-    Success(List.empty[UserGroupRepository])
   }
 
   def delete(groupId: UUID)(implicit session: DBSession = autoSession): Boolean = {
@@ -46,7 +40,6 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
         false
     }
   }
-
 
   def create(name: String,
              description: Option[String],
@@ -93,7 +86,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     // indirect groups, via their directories
     val dirGroups = dirMappings
       .flatMap( asm => DirectoryFactory.find(asm.accountStoreId.asInstanceOf[UUID]) )
-      .flatMap ( _.lookupGroups(nameQuery) )
+      .flatMap( _.lookupGroups(nameQuery) )
     // direct groups, but through the directory first (gives unshadowing a chance to happen)
     val appGroupsFromMappings = groupMappings
       .flatMap( asm => GroupFactory.find(asm.accountStoreId.asInstanceOf[UUID]))

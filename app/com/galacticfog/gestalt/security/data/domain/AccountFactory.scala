@@ -288,7 +288,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
     */
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
-    // TODO: test and verify that creds do not include wildcard
+    if (creds.username.contains("*")) throw BadRequestException("", "username cannot contain wildcard characters", "There was an attempt to authenticate an account with a username containing wildcard characters. This is not allowed.")
     val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
@@ -300,9 +300,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       )
       authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
     } yield authedAcc
-    // TODO: make this lazy
-    // lazy val groupAccounts = for {
-    val groupAccounts = for {
+    lazy val groupAccounts = for {
       grpMapping <- groupMappings
       group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq

@@ -326,7 +326,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           developerMessage = "Could not create group in non-existent application. If this was created as a result of an attempt to create a group in an org, it suggests that the org is misconfigured."
         )
       }
-      val newGroupTry = for {
+      for {
         dir <- getDefaultGroupStore(appId)
         dirId = dir.id.asInstanceOf[UUID]
         newGroup <- GroupFactory.create(
@@ -346,16 +346,6 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
           }
         }
       } yield newGroup
-      newGroupTry recoverWith {
-        case t: Throwable => Failure(t) // TODO
-        //      if (UserGroupRepository.findBy(sqls"name = ${create.name} and dir_id = ${dirId}").isDefined) {
-        //        throw new ConflictException(
-        //          resource = s"/apps/${appId}",
-        //          message = "group name already exists",
-        //          developerMessage = "The default directory associated with this app already contains a group with the specified name."
-        //        )
-        //      }
-      }
     }
   }
 

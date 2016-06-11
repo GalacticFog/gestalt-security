@@ -128,7 +128,8 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "shadow and authenticate user in LDAP and authenticate user already shadowed" in {
-      // verify account is not shadowed
+      // unshadow account, verify it's not shadowed
+      AccountFactory.findInDirectoryByName(ldapDir.id, "newton") foreach {_.destroy()}
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
       val maybeAuthAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password"))
       maybeAuthAccount must beSome( (uar: UserAccountRepository) =>
