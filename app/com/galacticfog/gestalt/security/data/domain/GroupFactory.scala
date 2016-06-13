@@ -124,34 +124,10 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
   }
 
   def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Unit = {
-//    UserGroupRepository.find(groupId) match {
-//      case None => throw new BadRequestException(
-//        resource = s"/groups/${groupId}",
-//        message = "cannot remove account to non-existent group",
-//        developerMessage = "Cannot remove account from non-existent group. Verify that the correct group ID was provided."
-//      )
-//      case Some(group) => UserAccountRepository.find(accountId) match {
-//        case None => throw new BadRequestException(
-//          resource = s"/accounts/${groupId}",
-//          message = "cannot remove non-existent account from group",
-//          developerMessage = "Cannot remove non-existent account from group. Verify that the correct account ID was provided."
-//        )
-//        case Some(account) =>
-//          if (group.dirId.asInstanceOf[UUID] != account.dirId.asInstanceOf[UUID]) throw new BadRequestException(
-//            resource = s"/groups/${groupId}",
-//            message = "account and group were not in the same directory",
-//            developerMessage = "Account and group were not in the same directory. Removing an account from a group requires that they are contained in the same directory."
-//          )
-//          GroupMembershipRepository.destroy(GroupMembershipRepository(
-//            accountId = accountId,
-//            groupId = groupId
-//          ))
-//      }
-//    }
-    GroupMembershipRepository.destroy(GroupMembershipRepository(
+    Try{GroupMembershipRepository.destroy(GroupMembershipRepository(
       accountId = accountId,
       groupId = groupId
-    ))
+    ))}
   }
 
   def updateGroupMembership(groupId: UUID, payload: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[Seq[UserAccountRepository]] = {

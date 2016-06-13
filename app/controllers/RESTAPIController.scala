@@ -13,7 +13,6 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
-import org.joda.time.Duration
 import play.api.libs.json._
 import play.api._
 import play.api.mvc._

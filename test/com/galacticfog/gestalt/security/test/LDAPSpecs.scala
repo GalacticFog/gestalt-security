@@ -6,7 +6,7 @@ import com.galacticfog.gestalt.security.EnvConfig
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{TokenRepository, UserAccountRepository}
+import com.galacticfog.gestalt.security.data.model.{UserGroupRepository, GroupMembershipRepository, TokenRepository, UserAccountRepository}
 import play.api.libs.json.Json
 
 class LDAPSpecs extends SpecWithSDK {
@@ -67,6 +67,22 @@ class LDAPSpecs extends SpecWithSDK {
       ldap.ldapFindGroupnamesByUser("read-only-admin") must beASuccessfulTry(beEmpty[List[String]])
       ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
       ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
+    }
+
+    "be able to find accounts by group (raw ldap)" in {
+      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
+      ldap.ldapFindUserDNsByGroup("Mathematicians") must beASuccessfulTry(containTheSameElementsAs(Seq(
+        "uid=test,dc=example,dc=com","uid=gauss,dc=example,dc=com","uid=euler,dc=example,dc=com","uid=riemann,dc=example,dc=com","uid=euclid,dc=example,dc=com"
+      )))
+      ldap.ldapFindUserDNsByGroup("Chemists") must beASuccessfulTry(containTheSameElementsAs(Seq(
+        "uid=pasteur,dc=example,dc=com","uid=nobel,dc=example,dc=com","uid=boyle,dc=example,dc=com","uid=curie,dc=example,dc=com"
+      )))
+      ldap.ldapFindUserDNsByGroup("Scientists") must beASuccessfulTry(containTheSameElementsAs(Seq(
+        "uid=newton,dc=example,dc=com", "uid=tesla,dc=example,dc=com", "uid=galieleo,dc=example,dc=com", "uid=einstein,dc=example,dc=com"
+      )))
+      ldap.ldapFindUserDNsByGroup("Italians") must beASuccessfulTry(containTheSameElementsAs(Seq(
+        "uid=tesla,dc=example,dc=com"
+      )))
     }
 
     "NOT allow a new group to be created" in {
@@ -143,9 +159,14 @@ class LDAPSpecs extends SpecWithSDK {
       await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beSome
     }
 
-    "not allow account to authenticate against a password not in LDAP" in {
+    "not allow inexistant account to authenticate" in {
       val token = await(GestaltToken.grantPasswordToken(newOrg.id, "not-newton", "password"))
        token must beNone
+    }
+
+    "not allow account to authenticate with bad password" in {
+      val token = await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "not-password"))
+      token must beNone
     }
 
     "allow shadowed account to be disabled/enabled with respect to authentication" in {
@@ -169,9 +190,9 @@ class LDAPSpecs extends SpecWithSDK {
       // unshadow account, verify it's not shadowed
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") foreach {_.destroy()}
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
-      val scientists = ldapDirDAO.lookupGroups("Mathematicians").head
+      val mathematicians = ldapDirDAO.lookupGroups("Mathematicians").head
       val query = ldapDirDAO.lookupAccounts(
-        group = Some(scientists),
+        group = Some(mathematicians),
         username = Some("e*")
       )
       // contain euclid and euler, but not einstein
@@ -191,6 +212,76 @@ class LDAPSpecs extends SpecWithSDK {
       ldapDirDAO.lookupAccounts(username=Some("euclid")) must haveSize(1)
       ldapDirDAO.lookupAccounts(username=Some("euler")) must haveSize(1)
       await(newOrg.listAccounts()) map(_.username) must contain(allOf("euclid", "euler"))
+    }
+
+    "shadow account memberships on account search" in {
+      AccountFactory.findInDirectoryByName(ldapDir.id, "tesla") foreach {_.destroy()}
+      AccountFactory.findInDirectoryByName(ldapDir.id, "tesla") must beNone
+      await(newOrg.listAccounts()) map(_.username) must not contain("tesla")
+      val q = await(newOrg.listAccounts(
+        "username" -> "tesla"
+      ))
+      q.map(_.username) must containTheSameElementsAs(Seq("tesla"))
+      ldapDirDAO.lookupAccounts(username=Some("tesla")) must haveSize(1)
+      val tesla = await(newOrg.listAccounts()) find(_.username == "tesla")
+      tesla must beSome
+      await(tesla.get.listGroupMemberships()) map {_.name} must containTheSameElementsAs(Seq(
+        "Scientists", "Italians"
+      ))
+    }
+
+    "be capable of updating stale group memberships" in {
+      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
+      val newtonIsIn = Seq("Scientists")
+      val newtonIsNotIn = Seq("Chemists", "Mathematicians", "Italians")   // Newton is a Mathematician, though!
+      val newton = ldap.lookupAccounts(username = Some("newton")).head
+      val groups = await(newOrg.listGroups("name" -> "*"))
+      groups map {_.name} must contain( allOf((newtonIsIn ++ newtonIsNotIn):_*) )
+      // remove shadow newton from Scientists
+      groups filter {g => newtonIsIn.contains(g.name)} foreach {
+        g => GroupFactory.removeAccountFromGroup(groupId = g.id, accountId = newton.id.asInstanceOf[UUID])
+      }
+      // put shadow newton into Mathematicians, Chemists, Italians
+      groups filter {g => newtonIsNotIn.contains(g.name)} foreach {
+        g => GroupFactory.addAccountToGroup(groupId = g.id, accountId = newton.id.asInstanceOf[UUID])
+      }
+
+      val tryMemberships = ldap.updateAccountMemberships(account = newton)
+      tryMemberships must beSuccessfulTry
+      val membership = tryMemberships.get
+      membership map {_.name} must contain(allOf(newtonIsIn:_*))
+      membership map {_.name} must not contain(anyOf(newtonIsNotIn:_*))
+    }
+
+    "update stale group memberships on auth" in {
+      val newtonIsIn = Seq("Scientists")
+      val newtonIsNotIn = Seq("Chemists", "Mathematicians", "Italians")   // Newton is a Mathematician, though!
+      val newton = await(newOrg.listAccounts("username" -> "newton")).head
+      val groups = await(newOrg.listGroups("name" -> "*"))
+      groups map {_.name} must contain( allOf((newtonIsIn ++ newtonIsNotIn):_*) )
+      // remove shadow newton from Scientists
+      groups filter {g => newtonIsIn.contains(g.name)} foreach {
+        g => GroupFactory.removeAccountFromGroup(groupId = g.id, accountId = newton.id)
+      }
+      // put shadow newton into Mathematicians, Chemists, Italians
+      groups filter {g => newtonIsNotIn.contains(g.name)} foreach {
+        g => GroupFactory.addAccountToGroup(groupId = g.id, accountId = newton.id)
+      }
+
+      val maybeToken = await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password"))
+      maybeToken must beSome
+
+      val token = maybeToken.get
+
+      GroupFactory.listAccountGroups(newton.id) map {_.name} must contain(allOf(newtonIsIn:_*))
+      GroupFactory.listAccountGroups(newton.id) map {_.name} must not contain(anyOf(newtonIsNotIn:_*))
+
+      val intro = await(GestaltToken.validateToken(newOrg.id, token.accessToken))
+      intro.active must beTrue
+      intro must beAnInstanceOf[ValidTokenResponse]
+      val valid = intro.asInstanceOf[ValidTokenResponse]
+      valid.gestalt_groups.map(_.name) must contain(allOf(newtonIsIn:_*))
+      valid.gestalt_groups.map(_.name) must not contain(anyOf(newtonIsNotIn:_*))
     }
 
   }
