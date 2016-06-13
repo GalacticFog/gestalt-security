@@ -21,6 +21,8 @@ import scalikejdbc.TxBoundary.Try._
 import scala.util.{Failure, Success, Try}
 
 case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: AccountFactoryDelegate, groupFactory: GroupFactoryDelegate) extends Directory {
+
+
   override def id: UUID = daoDir.id.asInstanceOf[UUID]
   override def name: String = daoDir.name
   override def orgId: UUID = daoDir.orgId.asInstanceOf[UUID]
@@ -53,6 +55,32 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   ldapRealm.setSystemPassword(systemPassword)
   val securityMgr = new DefaultSecurityManager(ldapRealm)
   SecurityUtils.setSecurityManager(securityMgr)
+
+  def updateAccountMemberships(account: UserAccountRepository)
+                              (implicit session: DBSession = AutoSession): Try[Seq[UserGroupRepository]] = {
+    val shadowedGroups = GroupFactory.listAccountGroups(account.id.asInstanceOf[UUID])
+    for {
+      inGroupNames <- this.ldapFindGroupnamesByUser(account.username)
+      inGroups <- Try {
+        for {
+          name <- inGroupNames
+          group = this.findShadowedGroupByName(name).fold(
+            shadowGroup(name, Some("LDAP shadowed group"))
+          )(Success(_))
+        } yield group.get
+      }
+      // all groups exist
+      missingMembership = inGroups diff shadowedGroups
+      staleMembership = shadowedGroups diff inGroups
+      _ = staleMembership foreach { g =>
+        groupFactory.removeAccountFromGroup(groupId = g.id.asInstanceOf[UUID], accountId = account.id.asInstanceOf[UUID])
+      }
+      _ = for {
+          g <- missingMembership
+          membership = groupFactory.addAccountToGroup(groupId = g.id.asInstanceOf[UUID], accountId = account.id.asInstanceOf[UUID])
+      } yield membership
+    } yield inGroups
+  }
 
   override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
     if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
@@ -122,7 +150,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     }
 
     Logger.info(s"Attempting: LDAP lookupAccountByUsername of ${username}")
-    try {
+    val users = Try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
@@ -152,11 +180,14 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         val email: Option[String] = attrs.get(emailField)
         val phone: Option[String] = attrs.get(phoneField)
         Logger.info(s"Attempting: LDAP findShadowAccountByUsername(${uname})")
-        this.findShadowedAccountByUsername(uname) orElse {
+        val newAccount = this.findShadowedAccountByUsername(uname) orElse {
           Logger.info(s"Attempting: LDAP shadowAccount(${uname})")
           this.shadowAccount(uname, desc, fname, lname, email, phone).toOption
-        } match {
+        }
+        newAccount match {
           case Some(account) =>
+            Logger.info(s"Attempting: LDAP updateAccountMemberships(${account.username})")
+            logError(this.updateAccountMemberships(account))
             users = users :+ account
           case None =>
             Logger.warn(s"did not find account ${uname}")
@@ -168,14 +199,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           u => GroupMembershipRepository.find(accountId = u.id, g.id).isDefined
         )
       }
-    } catch {
-      case e: Throwable =>
-        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
-          Logger.error("Error: LDAP configuration was not setup.")
-        }
-        Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
-        Seq.empty[UserAccountRepository]
     }
+    logError(users) get
   }
 
   /**
@@ -241,35 +266,61 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
 
   private def shadowAccount(username: String, description: Option[String], firstName: String, lastName: String, email: Option[String], phoneNumber: Option[String])
                            (implicit session: DBSession): Try[UserAccountRepository] = DB localTx { implicit session =>
-    for {
-      saccount <- accountFactory.createAccount(
-        dirId = id,
-        username = username,
-        description = description,
-        firstName = firstName,
-        lastName = lastName,
-        email = email,
-        phoneNumber = phoneNumber,
-        hashMethod = "shadowed",
-        salt = "",
-        secret = "",
-        disabled = false
-      )
-      groupNames <- this.ldapFindGroupnamesByUser(username)
-      groups <- Try {
-        for {
-          gname <- groupNames
-          group = this.findShadowedGroupByName(gname).fold(
-            shadowGroup(gname, Some("LDAP shadowed group"))
-          )(Success(_))
-        } yield group.get
+    accountFactory.createAccount(
+      dirId = id,
+      username = username,
+      description = description,
+      firstName = firstName,
+      lastName = lastName,
+      email = email,
+      phoneNumber = phoneNumber,
+      hashMethod = "shadowed",
+      salt = "",
+      secret = "",
+      disabled = false
+    )
+  }
+
+  // TODO (cgbaker): not using this yet, but there is a test protecting it.
+  // I thought it might be useful for updating group membership on group lookup, but I haven't put it into play yet.
+  def ldapFindUserDNsByGroup(groupName: String): Try[List[String]] = {
+    val names = Try {
+      val contextFactory = new JndiLdapContextFactory()
+      contextFactory.setUrl(url)
+      val sep = if (searchBase.startsWith(",")) "" else ","
+      val dn = "cn=" + systemUsername + sep + searchBase
+      contextFactory.setSystemUsername(systemUsername)
+      contextFactory.setSystemPassword(systemPassword)
+      // LDAP search value
+      val searchdn = s"(&(${groupField}=${groupName})(objectClass=${groupObjectClass}))"
+      val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
+      val constraints = new SearchControls()
+      constraints.setSearchScope(SearchControls.SUBTREE_SCOPE)
+      val answer: NamingEnumeration[SearchResult] = context.search(searchBase, searchdn, constraints)
+      var userNames = List.empty[String]
+      while (answer.hasMore) {
+        val currentGroup = answer.next()
+        val newMembers = for {
+          memberAttr <- Option(currentGroup.getAttributes.get(memberField))
+          members = (0 to memberAttr.size()-1).flatMap { i => Option(memberAttr.get(i).toString) }
+        } yield members
+        userNames = userNames ++ (newMembers getOrElse Seq.empty[String])
       }
-      groupMemberships <- Try {
-        groups map { g =>
-          groupFactory.addAccountToGroup(g.id.asInstanceOf[UUID], saccount.id.asInstanceOf[UUID])
-        } map {_.get}
-      }
-    } yield saccount
+      userNames.distinct
+    }
+    logError(names)
+  }
+
+  private def logError[T](t: Try[T]): Try[T] = {
+    t match {
+      case Success(s) => Success(s)
+      case Failure(e) =>
+        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
+          Logger.error("Error: LDAP configuration was not setup.")
+        }
+        Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
+        Failure(e)
+    }
   }
 
   private def shadowGroup(groupName: String, description: Option[String])(implicit session: DBSession): Try[UserGroupRepository] = {
@@ -290,7 +341,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
 
   // Find an LDAP group by user
   def ldapFindGroupnamesByUser(username: String): Try[List[String]] = {
-    Try {
+    logError(Try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val searchtail = if (searchBase.startsWith(",")) searchBase else s",${searchBase}"
@@ -312,18 +363,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         }
       }
       gnames
-    } recoverWith {
-      case e: Throwable =>
-        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
-          Logger.error("Error: LDAP configuration was not setup.")
-        }
-        Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
-        Failure(e)
-    }
+    })
   }
 
   def ldapFindGroupnamesByName(groupName: String): Try[List[String]] = {
-    try {
+    val names = Try {
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
@@ -345,15 +389,9 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           groupNames = raw.split(" ").last :: groupNames
         }
       }
-      Success(groupNames)
-    } catch {
-      case e: Throwable =>
-        if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
-          Logger.error("Error: LDAP configuration was not setup.")
-        }
-        Logger.error("Error: Error accessing LDAP:  " + e.getMessage)
-        Failure(e)
+      groupNames
     }
+    logError(names)
   }
 
 }
