@@ -284,6 +284,64 @@ class LDAPSpecs extends SpecWithSDK {
       valid.gestalt_groups.map(_.name) must not contain(anyOf(newtonIsNotIn:_*))
     }
 
+    "update stale group memberships pre-auth to prevent false positive" in {
+      val testOrg = await(newOrg.createSubOrg(GestaltOrgCreate(
+        name = "group-mapping-testing-1", createDefaultUserGroup = false
+      )))
+
+      val italians = await(newOrg.listGroups("name" -> "Italians")).head
+      val newton = await(newOrg.listAccounts("username" -> "newton")).head
+
+      // newton not in the org yet
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beNone
+
+      await(testOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "", storeType = GROUP, accountStoreId = italians.id, isDefaultAccountStore = false, isDefaultGroupStore = false
+      ))) must not throwA
+
+      // newton still not in the org
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beNone
+      await(testOrg.listAccounts()) map {_.username} must not contain("newton")
+
+      // but we can manipulate the shadow table and get newton listed in the org (non-passthrough endpoint)
+      GroupFactory.addAccountToGroup(groupId = italians.id, accountId = newton.id)
+      await(testOrg.listAccounts()) map {_.username} must contain("newton")
+
+      // but newton still can't auth against the org, because we update group membership pre-auth
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beNone
+      // and now it isn't shadowed in the group either
+      await(testOrg.listAccounts()) map {_.username} must not contain("newton")
+    }
+
+    "update stale group memberships pre-auth to prevent false negative" in {
+      val testOrg = await(newOrg.createSubOrg(GestaltOrgCreate(
+        name = "group-mapping-testing-2", createDefaultUserGroup = false
+      )))
+
+      val scientists = await(newOrg.listGroups("name" -> "Scientists")).head
+      val newton = await(newOrg.listAccounts("username" -> "newton")).head
+
+      // newton not in the org yet
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beNone
+
+      await(testOrg.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "", storeType = GROUP, accountStoreId = scientists.id, isDefaultAccountStore = false, isDefaultGroupStore = false
+      ))) must not throwA
+
+      // newton in the org now, courtesy of Scientists
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beSome
+      await(testOrg.listAccounts()) map {_.username} must contain("newton")
+
+      // if manipulate the shadow table and remove newton from the group, he doesn't show up in the shadow listing
+      GroupFactory.removeAccountFromGroup(groupId = scientists.id, accountId = newton.id)
+      await(testOrg.listAccounts()) map {_.username} must not contain("newton")
+
+      // but newton can still auth against the org, because we update group membership pre-auth
+      await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beSome
+      // and show up in the org now in a shadowed call
+      await(testOrg.listAccounts()) map {_.username} must contain("newton")
+    }
+
   }
 
   step({

@@ -82,7 +82,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     } yield inGroups
   }
 
-  override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
+  override def authenticateAccount(account: UserAccountRepository, plaintext: String)
+                                  (implicit session: DBSession): Boolean = {
     if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
     var result = true
     val sep = if (searchBase.startsWith(",")) "" else ","
