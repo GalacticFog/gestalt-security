@@ -1,7 +1,6 @@
 package controllers
 
 import java.util.UUID
-import akka.actor.ActorRef
 import akka.util.Timeout
 import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
 import com.galacticfog.gestalt.security.actors.RateLimitingActor
