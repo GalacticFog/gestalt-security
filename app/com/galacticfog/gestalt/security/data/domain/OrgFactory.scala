@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, ConflictException, BadRequestException}
-import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, GestaltOrgRepository}
+import com.galacticfog.gestalt.security.data.model.{GestaltAppRepository, UserAccountRepository, GestaltOrgRepository}
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import org.postgresql.util.PSQLException
 import play.api.Logger
@@ -135,6 +135,11 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
     DB localTx { implicit session =>
       // create org
+      if (create.createDefaultUserGroup && create.inheritParentMappings.contains(true)) return Failure(BadRequestException(
+        resource = "",
+        message = "cannot inherit permissions and create default account group",
+        developerMessage = "Please choose one of either account store mapping inheritance or default user group creation."
+      ))
       val newOrgAndAppIdTry = for {
         newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name, description = create.description)
         newOrgId = newOrg.id.asInstanceOf[UUID]
@@ -183,6 +188,34 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
           _ <- AppFactory.mapDirToApp(appId = newAppId, dirId = newDir.id, defaultAccountStore = false, defaultGroupStore = true)
         } yield usersGroupId
+      }
+      if (create.inheritParentMappings.contains(true)) {
+        for {
+          (newOrg,newAppId) <- newOrgAndAppIdTry
+          newOrgId = newOrg.id.asInstanceOf[UUID]
+          parentApp <- AppFactory.findServiceAppForOrg(parentOrgId).fold[Try[GestaltAppRepository]](Failure(UnknownAPIException(
+            resource = "", code = 500, message = "could not find service app for parent org", developerMessage = "Could not find the service app for the parent org. This is not an expected error."
+          )))(Success(_))
+          parentAppId = parentApp.id.asInstanceOf[UUID]
+          mappings <- Try{ for {
+            parentMapping <- AppFactory.listAccountStoreMappings(parentAppId)
+            childMapping = parentMapping.storeType match {
+              case "DIRECTORY" =>
+                AppFactory.mapDirToApp(
+                  appId = newAppId,
+                  dirId = parentMapping.accountStoreId.asInstanceOf[UUID],
+                  defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId),
+                  defaultGroupStore = parentMapping.defaultGroupStore.contains(parentAppId)
+                )
+              case "GROUP" =>
+                AppFactory.mapGroupToApp(
+                  appId = newAppId,
+                  groupId = parentMapping.accountStoreId.asInstanceOf[UUID],
+                  defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId)
+                )
+            }
+          } yield childMapping.get}
+        } yield mappings
       }
       newOrgAndAppIdTry map {_._1}
     }

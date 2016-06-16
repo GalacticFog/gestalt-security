@@ -5,7 +5,8 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.GestaltOrg
-import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
+import com.galacticfog.gestalt.security.data.domain.{AccountFactory, GroupFactory, DirectoryFactory}
+import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, UserGroupRepository}
 
 class OrgSpecs extends SpecWithSDK {
 
@@ -13,27 +14,27 @@ class OrgSpecs extends SpecWithSDK {
 
     "prohibit a mixed case name" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("hasAcapitalletter"))
-      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
+      await(failure) must throwA[BadRequestException]("org name is invalid")
     }
 
     "prohibit a name with a space" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("has space"))
-      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
+      await(failure) must throwA[BadRequestException]("org name is invalid")
     }
 
     "prohibit a name with preceding dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("-good-but-for-the-dash"))
-      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
+      await(failure) must throwA[BadRequestException]("org name is invalid")
     }
 
     "prohibit a name with a trailing dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("good-but-for-the-dash-"))
-      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
+      await(failure) must throwA[BadRequestException]("org name is invalid")
     }
 
     "prohibit a name with consecutive dash" in {
       val failure = GestaltOrg.createSubOrg(rootOrg.id, GestaltOrgCreate("good-but-for--the-dash"))
-      await(failure) must throwA[BadRequestException](".*org name is invalid.*")
+      await(failure) must throwA[BadRequestException]("org name is invalid")
     }
 
   }
@@ -91,7 +92,7 @@ class OrgSpecs extends SpecWithSDK {
       await(rootOrg.createSubOrg(GestaltOrgCreate(
         name = newOrgName,
         createDefaultUserGroup = false
-      ))) must throwA[ConflictException](".*name already exists.*")
+      ))) must throwA[ConflictException]("name already exists")
     }
 
     lazy val newOrgMappings = await(newOrgApp.listAccountStores)
@@ -153,7 +154,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "be unable to get the root admin by name via the org because there is no default account store" in {
-      await(newOrg.getAccountByUsername(rootAccount.username)) must throwA[BadRequestException](".*does not have a default account store.*")
+      await(newOrg.getAccountByUsername(rootAccount.username)) must throwA[BadRequestException]("does not have a default account store")
     }
 
     "get the new group by id via the org" in {
@@ -165,7 +166,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "be unable to get the new group by name via the org because there is no default group store" in {
-      await(newOrg.getGroupByName(newOrgAdminGroup.get.name)) must throwA[BadRequestException](".*does not have a default group store.*")
+      await(newOrg.getGroupByName(newOrgAdminGroup.get.name)) must throwA[BadRequestException]("does not have a default group store")
     }
 
     "include the root admin in the new org admin group" in {
@@ -272,7 +273,7 @@ class OrgSpecs extends SpecWithSDK {
         credential = GestaltPasswordCredential("letmein"),
         groups = Some(Seq(UUID.randomUUID())), // failure
         rights = None
-      ))) must throwA[BadRequestException](".*cannot add account to non-existent group.*")
+      ))) must throwA[BadRequestException]("cannot add account to non-existent group")
       await(newOrg.listAccounts()) must not contain((a: GestaltAccount) => a.username == failAccountName)
     }
 
@@ -287,7 +288,7 @@ class OrgSpecs extends SpecWithSDK {
         rights = Some(Seq(GestaltGrantCreate(
           grantName = ""   // fail
         ))
-      )))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
+      )))) must throwA[BadRequestException]("right grant must be non-empty without leading or trailing spaces")
       await(newOrg.listAccounts()) must not contain((a: GestaltAccount) => a.username == failAccountName)
     }
 
@@ -298,7 +299,7 @@ class OrgSpecs extends SpecWithSDK {
         rights = Some(Seq(GestaltGrantCreate(
           grantName = "" // fail
         )))
-      ))) must throwA[BadRequestException](".*right grant must be non-empty without leading or trailing spaces.*")
+      ))) must throwA[BadRequestException]("right grant must be non-empty without leading or trailing spaces")
       await(newOrg.listGroups()) must not contain((g: GestaltGroup) => g.name == failGroupName)
     }
 
@@ -320,6 +321,49 @@ class OrgSpecs extends SpecWithSDK {
       await(newOrg.listGroups( "name" -> grp2.name )) must containTheSameElementsAs(Seq(grp2))
       await(newOrg.listGroups( "name" -> "*-3" )) must containTheSameElementsAs(Seq(grp3))
       await(newOrg.listGroups( "name" -> "*-group-*" )) must containTheSameElementsAs(Seq(grp1,grp2,grp3))
+    }
+
+  }
+
+  "New Org with Mapping Inheritance" should {
+
+    lazy val newOrgName = "new-org-with-inheritance"
+    lazy val newOrg = await(rootOrg.createSubOrg(GestaltOrgCreate(
+      name = newOrgName,
+      createDefaultUserGroup = false,
+      inheritParentMappings = Some(true)
+    )))
+    lazy val newOrgApp = await(newOrg.getServiceApp())
+
+    "not allow inheritence and directory creation" in {
+      await(rootOrg.createSubOrg(GestaltOrgCreate(
+        name = "bad-org-with-inher-and-default-user-group",
+        createDefaultUserGroup = true,
+        inheritParentMappings = Some(true)
+      ))) must throwA[BadRequestException]("cannot inherit permissions and create default account group")
+    }
+
+    "not have a new directory" in {
+      await(newOrg.listDirectories()) must beEmpty
+    }
+
+    "have all mappings from the parent org plus one making the creator an admin" in {
+      val parentMappings = await(rootOrg.listAccountStores())
+      val childMappings = await(newOrg.listAccountStores())
+      childMappings.map{_.storeId} must contain(allOf(parentMappings.map(_.storeId):_*))
+      val extraMapping = childMappings.map{_.storeId}.diff(parentMappings.map(_.storeId))
+      extraMapping must haveSize(1)
+      val em = childMappings.find(_.storeId == extraMapping.head)
+      em must beSome(
+        (asm: GestaltAccountStoreMapping) => asm.storeType == GROUP
+      )
+      val adminGroup = GroupFactory.find(em.get.storeId)
+      adminGroup must beSome( (g: UserGroupRepository) => g.name.contains("admins") )
+      val admins = GroupFactory.listGroupAccounts(adminGroup.get.id.asInstanceOf[UUID])
+      admins must haveSize(1)
+      admins must contain(
+        (uar: UserAccountRepository) => uar.username == rootUsername
+      )
     }
 
   }
