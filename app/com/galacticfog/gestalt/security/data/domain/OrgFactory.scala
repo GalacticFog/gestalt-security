@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, ConflictException, BadRequestException}
-import com.galacticfog.gestalt.security.data.model.{GestaltAppRepository, UserAccountRepository, GestaltOrgRepository}
+import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import org.postgresql.util.PSQLException
 import play.api.Logger
@@ -132,7 +132,116 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     GestaltOrgRepository.find(orgId)
   }
 
-  def createSubOrgWithAdmin(parentOrgId: UUID, creator: UserAccountRepository, create: GestaltOrgCreate)(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
+  private def createAdminGroup(newOrg: GestaltOrgRepository,
+                               newApp: GestaltAppRepository,
+                               creator: UserAccountRepository)
+                              (implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    // create admins group, add user
+    val newOrgId = newOrg.id.asInstanceOf[UUID]
+    val newAppId = newApp.id.asInstanceOf[UUID]
+    for {
+      adminGroup <- GroupFactory.create(
+        name = newOrgId + "-admins",
+        dirId = creator.dirId.asInstanceOf[UUID],
+        maybeParentOrg = Some(newOrgId),
+        description = Some(s"automatically created admin group for ${newOrg.fqon} to house creator")
+      )
+      adminGroupId = adminGroup.id.asInstanceOf[UUID]
+      _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
+      adminMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
+      // give admin rights to new admin group
+      _ <- Try { OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {
+        g => RightGrantFactory.addRightToGroup(
+          appId = newAppId,
+          groupId = adminGroupId,
+          right = GestaltGrantCreate(grantName = g, grantValue = None)).get
+      } }
+    } yield adminMapping
+  }
+
+  private def createDefaultUserGroup(newOrg: GestaltOrgRepository,
+                                     newApp: GestaltAppRepository)
+                                    (implicit session: DBSession = autoSession): Try[Seq[AccountStoreMappingRepository]] = {
+    val newAppId = newApp.id.asInstanceOf[UUID]
+    val newOrgId = newOrg.id.asInstanceOf[UUID]
+    for {
+      newDir <- DirectoryFactory.createDirectory(
+        orgId = newOrgId,
+        create = GestaltDirectoryCreate(
+          name = newOrgId + "-user-dir",
+          description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users and groups"),
+          config = None,
+          directoryType = DIRECTORY_TYPE_INTERNAL
+        )
+      )
+      usersGroup <- GroupFactory.create(
+        name = newOrg.fqon + "-users",
+        dirId = newDir.id,
+        maybeParentOrg = Some(newOrgId),
+        description = Some(s"automatically created user group for ${newOrg.fqon} to house users")
+      )
+      usersGroupId = usersGroup.id.asInstanceOf[UUID]
+      groupMapping <- AppFactory.mapGroupToApp(
+        appId = newAppId,
+        groupId = usersGroupId,
+        defaultAccountStore = true
+      )
+      dirMapping <- AppFactory.mapDirToApp(
+        appId = newAppId,
+        dirId = newDir.id,
+        defaultAccountStore = false,
+        defaultGroupStore = true
+      )
+    } yield Seq(groupMapping, dirMapping)
+  }
+
+  private def cloneParentMappingsAndRights(parentOrgId: UUID,
+                                     newOrg: GestaltOrgRepository,
+                                     newApp: GestaltAppRepository)
+                                    (implicit session: DBSession = autoSession): Try[Seq[AccountStoreMappingRepository]] = {
+    val newAppId = newApp.id.asInstanceOf[UUID]
+    val newOrgId = newOrg.id.asInstanceOf[UUID]
+    for {
+      parentApp <- AppFactory.findServiceAppForOrg(parentOrgId).fold[Try[GestaltAppRepository]](Failure(UnknownAPIException(
+        resource = "", code = 500, message = "could not find service app for parent org", developerMessage = "Could not find the service app for the parent org. This is not an expected error."
+      )))(Success(_))
+      parentAppId = parentApp.id.asInstanceOf[UUID]
+      mappings <- Try{ for {
+        parentMapping <- AppFactory.listAccountStoreMappings(parentAppId)
+        childMapping = parentMapping.storeType match {
+          case "DIRECTORY" =>
+            AppFactory.mapDirToApp(
+              appId = newAppId,
+              dirId = parentMapping.accountStoreId.asInstanceOf[UUID],
+              defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId),
+              defaultGroupStore = parentMapping.defaultGroupStore.contains(parentAppId)
+            )
+          case "GROUP" =>
+            AppFactory.mapGroupToApp(
+              appId = newAppId,
+              groupId = parentMapping.accountStoreId.asInstanceOf[UUID],
+              defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId)
+            )
+        }
+      } yield childMapping.get}
+      rights <- Try{ for {
+        parentGrant <- RightGrantFactory.listAllRights(parentAppId)
+        newGrant = RightGrantRepository.create(
+          grantId = UUID.randomUUID(),
+          appId = newAppId,
+          accountId = parentGrant.accountId,
+          groupId = parentGrant.groupId,
+          grantName = parentGrant.grantName,
+          grantValue = parentGrant.grantValue
+        )
+      } yield newGrant }
+    } yield mappings
+  }
+
+  def createSubOrgWithAdmin(parentOrgId: UUID,
+                            creator: UserAccountRepository,
+                            create: GestaltOrgCreate)
+                           (implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
     DB localTx { implicit session =>
       // create org
       if (create.createDefaultUserGroup && create.inheritParentMappings.contains(true)) return Failure(BadRequestException(
@@ -140,84 +249,25 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         message = "cannot inherit permissions and create default account group",
         developerMessage = "Please choose one of either account store mapping inheritance or default user group creation."
       ))
-      val newOrgAndAppIdTry = for {
+      for {
+        // create new org
         newOrg <- createOrg(parentOrgId = parentOrgId, name = create.name, description = create.description)
         newOrgId = newOrg.id.asInstanceOf[UUID]
         // create system app
         newApp <- AppFactory.create(orgId = newOrgId, name = newOrgId + "-system-app", isServiceOrg = true)
         newAppId = newApp.id.asInstanceOf[UUID]
-        // create admins group, add user
-        adminGroup <- GroupFactory.create(
-          name = newOrgId + "-admins",
-          dirId = creator.dirId.asInstanceOf[UUID],
-          maybeParentOrg = Some(newOrgId),
-          description = Some(s"automatically created admin group for ${newOrg.fqon} to house creator")
-        )
-        adminGroupId = adminGroup.id.asInstanceOf[UUID]
-        _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
-        _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
-        // give admin rights to new admin group
-        _ <- Try { OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {
-          g => RightGrantFactory.addRightToGroup(
-            appId = newAppId,
-            groupId = adminGroupId,
-            right = GestaltGrantCreate(grantName = g, grantValue = None)).get
-        } }
-      } yield (newOrg,newAppId)
-      // create users group in a new directory under this org, map new group
-      if (create.createDefaultUserGroup) {
-        for {
-          (newOrg,newAppId) <- newOrgAndAppIdTry
-          newOrgId = newOrg.id.asInstanceOf[UUID]
-          newDir <- DirectoryFactory.createDirectory(
-            orgId = newOrgId,
-            create = GestaltDirectoryCreate(
-              name = newOrgId + "-user-dir",
-              description = Some(s"automatically created directory for ${newOrg.fqon} to house organization users and groups"),
-              config = None,
-              directoryType = DIRECTORY_TYPE_INTERNAL
-            )
-          )
-          usersGroup <- GroupFactory.create(
-            name = newOrg.fqon + "-users",
-            dirId = newDir.id,
-            maybeParentOrg = Some(newOrgId),
-            description = Some(s"automatically created user group for ${newOrg.fqon} to house users")
-          )
-          usersGroupId = usersGroup.id.asInstanceOf[UUID]
-          _ <- AppFactory.mapGroupToApp(appId = newAppId, groupId = usersGroupId, defaultAccountStore = true)
-          _ <- AppFactory.mapDirToApp(appId = newAppId, dirId = newDir.id, defaultAccountStore = false, defaultGroupStore = true)
-        } yield usersGroupId
-      }
-      if (create.inheritParentMappings.contains(true)) {
-        for {
-          (newOrg,newAppId) <- newOrgAndAppIdTry
-          newOrgId = newOrg.id.asInstanceOf[UUID]
-          parentApp <- AppFactory.findServiceAppForOrg(parentOrgId).fold[Try[GestaltAppRepository]](Failure(UnknownAPIException(
-            resource = "", code = 500, message = "could not find service app for parent org", developerMessage = "Could not find the service app for the parent org. This is not an expected error."
-          )))(Success(_))
-          parentAppId = parentApp.id.asInstanceOf[UUID]
-          mappings <- Try{ for {
-            parentMapping <- AppFactory.listAccountStoreMappings(parentAppId)
-            childMapping = parentMapping.storeType match {
-              case "DIRECTORY" =>
-                AppFactory.mapDirToApp(
-                  appId = newAppId,
-                  dirId = parentMapping.accountStoreId.asInstanceOf[UUID],
-                  defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId),
-                  defaultGroupStore = parentMapping.defaultGroupStore.contains(parentAppId)
-                )
-              case "GROUP" =>
-                AppFactory.mapGroupToApp(
-                  appId = newAppId,
-                  groupId = parentMapping.accountStoreId.asInstanceOf[UUID],
-                  defaultAccountStore = parentMapping.defaultAccountStore.contains(parentAppId)
-                )
-            }
-          } yield childMapping.get}
-        } yield mappings
-      }
-      newOrgAndAppIdTry map {_._1}
+        // create mappings and rights according to request
+        mappings <- if (create.inheritParentMappings.contains(true)) {
+          cloneParentMappingsAndRights(parentOrgId, newOrg, newApp)
+        } else if (create.createDefaultUserGroup) {
+          for {
+            defaultUserGroup <- createDefaultUserGroup(newOrg, newApp)
+            adminGroup <- createAdminGroup(newOrg, newApp, creator)
+          } yield Seq(adminGroup)
+        } else {
+          createAdminGroup(newOrg, newApp, creator) map {Seq(_)}
+        }
+      } yield newOrg
     }
   }
 

@@ -5,7 +5,7 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.GestaltOrg
-import com.galacticfog.gestalt.security.data.domain.{AccountFactory, GroupFactory, DirectoryFactory}
+import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, AccountFactory, GroupFactory, DirectoryFactory}
 import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, UserGroupRepository}
 
 class OrgSpecs extends SpecWithSDK {
@@ -347,22 +347,30 @@ class OrgSpecs extends SpecWithSDK {
       await(newOrg.listDirectories()) must beEmpty
     }
 
-    "have all mappings from the parent org plus one making the creator an admin" in {
+    "have exactly the mappings from the parent org" in {
       val parentMappings = await(rootOrg.listAccountStores())
       val childMappings = await(newOrg.listAccountStores())
-      childMappings.map{_.storeId} must contain(allOf(parentMappings.map(_.storeId):_*))
-      val extraMapping = childMappings.map{_.storeId}.diff(parentMappings.map(_.storeId))
-      extraMapping must haveSize(1)
-      val em = childMappings.find(_.storeId == extraMapping.head)
-      em must beSome(
-        (asm: GestaltAccountStoreMapping) => asm.storeType == GROUP
-      )
-      val adminGroup = GroupFactory.find(em.get.storeId)
-      adminGroup must beSome( (g: UserGroupRepository) => g.name.contains("admins") )
-      val admins = GroupFactory.listGroupAccounts(adminGroup.get.id.asInstanceOf[UUID])
-      admins must haveSize(1)
-      admins must contain(
-        (uar: UserAccountRepository) => uar.username == rootUsername
+      childMappings.map{_.storeId} must containTheSameElementsAs(parentMappings.map(_.storeId))
+    }
+
+    "list exactly the groups from the parent org" in {
+      val parentGroups = await(rootOrg.listGroups())
+      val childGroups = await(newOrg.listGroups())
+      childGroups must containTheSameElementsAs(parentGroups)
+    }
+
+    "list exactly the accounts from the parent org" in {
+      val parentAccounts = await(rootOrg.listAccounts())
+      val childAccounts = await(newOrg.listAccounts())
+      childAccounts must containTheSameElementsAs(parentAccounts)
+    }
+
+    "duplicate exactly the right grants from the parent org" in {
+      val ignore = null
+      val parentGrants = RightGrantFactory.listAllRights(newOrgApp.id)
+      val childGrants = RightGrantFactory.listAllRights(rootOrgApp.id)
+      childGrants.map(_.copy(appId = ignore, grantId = ignore)) must containTheSameElementsAs(
+        parentGrants.map(_.copy(appId = ignore, grantId = ignore))
       )
     }
 

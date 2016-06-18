@@ -14,6 +14,7 @@ import scala.util.{Failure, Try}
 
 object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
 
+
   override val autoSession = AutoSession
 
   def recoverRightGrantCreate: PartialFunction[Throwable, Try[RightGrantRepository]] = {
@@ -71,6 +72,10 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
         .leftJoin(GroupMembershipRepository as axg).on(sqls"axg.account_id = ${accountId}")
         .where(sqls"rg.app_id = ${appId} AND (rg.account_id = ${accountId} OR rg.group_id = axg.group_id)")
     }.map(RightGrantRepository(rg.resultName)).list.apply().distinct
+  }
+
+  def listAllRights(appId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
+    RightGrantRepository.findAllBy(sqls"app_id = ${appId}")
   }
 
   def listGroupRights(appId: UUID, groupId: UUID)(implicit session: DBSession = autoSession): List[RightGrantRepository] = {
