@@ -155,7 +155,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
-      val dn = "cn=" + systemUsername + sep + searchBase
+      val dn = if (activeDirectory == true && systemUsername.indexOf("@") > 0) "cn=" + systemUsername.split("@").head + sep + searchBase else "cn=" + systemUsername + sep + searchBase
+
       val queries = Seq(
           username map (q => s"${primaryField}=$q"),
           email map (q => s"${emailField}=$q"),
@@ -289,7 +290,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
-      val dn = "cn=" + systemUsername + sep + searchBase
+      val dn = if (activeDirectory == true && systemUsername.indexOf("@") > 0) "cn=" + systemUsername.split("@").head + sep + searchBase else "cn=" + systemUsername + sep + searchBase
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       // LDAP search value
@@ -346,7 +347,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val searchtail = if (searchBase.startsWith(",")) searchBase else s",${searchBase}"
-      val dn = "cn=" + systemUsername + searchtail
+      val dn = if (activeDirectory == true && systemUsername.indexOf("@") > 0) "cn=" + systemUsername.split("@").head + searchtail else "cn=" + systemUsername + searchtail
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
@@ -372,7 +373,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       val contextFactory = new JndiLdapContextFactory()
       contextFactory.setUrl(url)
       val sep = if (searchBase.startsWith(",")) "" else ","
-      val dn = "cn=" + systemUsername + sep + searchBase
+      val dn = if (activeDirectory == true && systemUsername.indexOf("@") > 0) "cn=" + systemUsername.split("@").head + sep + searchBase else "cn=" + systemUsername + sep + searchBase
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       // LDAP search value
