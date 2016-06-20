@@ -47,6 +47,8 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   var groupField = (config \ "groupField").asOpt[String].getOrElse("cn")
   var groupObjectClassDefault = if (activeDirectory == true) "group" else "groupOfUniqueNames"
   var groupObjectClass = (config \ "groupObjectClass").asOpt[String].getOrElse(groupObjectClassDefault)
+  var userObjectClassDefault = if (activeDirectory == true) "user" else "person"
+  var userObjectClass = (config \ "userObjectClass").asOpt[String].getOrElse(userObjectClassDefault)
   var memberField = (config \ "memberField").asOpt[String].getOrElse("uniqueMember")
   val ldapRealm = new ActiveDirectoryRealm()
   ldapRealm.setUrl(url)
@@ -162,7 +164,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
           email map (q => s"${emailField}=$q"),
           phone map (q => s"${phoneField}=$q")
       ).flatten
-      val searchdn = queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",")
+      val searchdn = s"(&(objectClass=${userObjectClass})(" + queries.foldLeft(""){ case (r,s) => r + "," + s }.stripPrefix(",") + "))"
       contextFactory.setSystemUsername(systemUsername)
       contextFactory.setSystemPassword(systemPassword)
       val context = contextFactory.getLdapContext(dn.asInstanceOf[AnyRef], systemPassword.asInstanceOf[AnyRef])
