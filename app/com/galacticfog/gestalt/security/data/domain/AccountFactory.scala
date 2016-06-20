@@ -13,7 +13,7 @@ import play.api.Logger
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
-import scala.util.{Failure, Try}
+import scala.util.{Success, Failure, Try}
 import scala.util.matching.Regex
 
 trait AccountFactoryDelegate {
@@ -288,29 +288,46 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
     */
   def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+    def safeSeq[A](seq: => Seq[A]): Seq[A] = {
+      Try{seq} match {
+        case Success(s) => s
+        case Failure(e) =>
+          Logger.error("error looking up accounts in AccountFactory.authenticate",e)
+          Seq.empty[A]
+      }
+    }
+    def safeAuth(dir: Directory, acc: UserAccountRepository, plaintext: String): Boolean = {
+      Try{dir.authenticateAccount(acc, plaintext)} match {
+        case Success(b) => b
+        case Failure(e) =>
+          Logger.error(s"error authenticating account ${acc.username} in directory ${dir.id}")
+          false
+      }
+    }
+
     if (creds.username.contains("*")) throw BadRequestException("", "username cannot contain wildcard characters", "There was an attempt to authenticate an account with a username containing wildcard characters. This is not allowed.")
     val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
-      acc <- dir.lookupAccounts(
+      acc <- safeSeq(dir.lookupAccounts(
         group = None,
         username = Some(creds.username),
         phone = None,
         email = None
-      )
-      authedAcc <- if (!acc.disabled && dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+      ))
+      authedAcc <- if (!acc.disabled && safeAuth(dir,acc,creds.password)) Some(acc) else None
     } yield authedAcc
     lazy val groupAccounts = for {
       grpMapping <- groupMappings
       group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
-      acc <- dir.lookupAccounts(
+      acc <- safeSeq(dir.lookupAccounts(
         group = Some(group),
         username = Some(creds.username),
         phone = None,
         email = None
-      )
-      authedAcc <- if (dir.authenticateAccount(acc, creds.password)) Some(acc) else None
+      ))
+      authedAcc <- if (!acc.disabled && safeAuth(dir,acc,creds.password)) Some(acc) else None
     } yield authedAcc
     val result = dirAccounts.headOption orElse groupAccounts.headOption
     result
