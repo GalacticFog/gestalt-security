@@ -84,7 +84,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       dir => (dir.id, dir)
     } toMap
     val orgUsers = (orgTree flatMap {
-      case (org,sApp) => AccountFactory.listAppUsers(sApp.id.asInstanceOf[UUID])
+      case (org,sApp) => AccountFactory.listEnabledAppUsers(sApp.id.asInstanceOf[UUID])
     } distinct) flatMap {
       uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map { dir =>
         GestaltAccount(

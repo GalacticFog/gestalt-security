@@ -346,7 +346,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       """.map{UserAccountRepository(a)}.list.apply().headOption
   }
 
-  def listAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
+  def listEnabledAppUsers(appId: UUID)(implicit session: DBSession = autoSession): List[UserAccountRepository] = {
     val (a, axg, asm) = (
       UserAccountRepository.syntax("a"),
       GroupMembershipRepository.syntax("axg"),
@@ -359,6 +359,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
               right join account_store_mapping as asm on asm.account_store_id = axg.group_id and asm.store_type = 'GROUP'
               where asm.app_id = ${appId}
           ) as sub on (sub.store_type = 'GROUP' and ${a.id} = sub.account_id) or (sub.store_type = 'DIRECTORY' and ${a.dirId} = sub.account_store_id)
+          where ${a.disabled} = false
       """.map(UserAccountRepository(a)).list.apply()
   }
 
