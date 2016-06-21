@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.Init
 import com.galacticfog.gestalt.security.api._
 
 class SyncSpec extends SpecWithSDK {
@@ -44,6 +45,11 @@ class SyncSpec extends SpecWithSDK {
       newOrgGroup.directory.id must_== newOrgAccount.directory.id
       subOrgGroup1.directory.id must_== subOrgAccount.directory.id
       subOrgGroup2.directory.id must_== subOrgAccount.directory.id
+    }
+
+    "match admin in init" in {
+      val admin = Init.getInitSettings.toOption.flatMap(_.rootAccount).map(_.asInstanceOf[UUID])
+      sync.admin.map(_.id) must_== admin
     }
 
     "contain only orgs below sync point" in {
