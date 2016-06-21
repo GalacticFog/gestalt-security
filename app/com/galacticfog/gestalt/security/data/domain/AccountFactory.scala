@@ -300,7 +300,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       Try{dir.authenticateAccount(acc, plaintext)} match {
         case Success(b) => b
         case Failure(e) =>
-          Logger.error(s"error authenticating account ${acc.username} in directory ${dir.id}")
+          Logger.error(s"error authenticating account ${acc.username} in directory ${dir.id}",e)
           false
       }
     }
