@@ -502,7 +502,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   def listAppAccounts(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)) { implicit request =>
     AppFactory.findByAppId(appId) match {
       case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](
-        AccountFactory.listAppUsers(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }
+        AccountFactory.listEnabledAppUsers(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }
       ))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
@@ -620,7 +620,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
       ))
     } else {
       Ok(Json.toJson(
-        AccountFactory.listAppUsers(request.user.serviceAppId).map {a => a: GestaltAccount}
+        AccountFactory.listEnabledAppUsers(request.user.serviceAppId).map { a => a: GestaltAccount}
       ))
     }
   }
@@ -953,7 +953,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def deleteOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
-    requireAuthorization(DELETE_ORG)
+    val orgRights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
+    if (!orgRights.exists(r => (DELETE_ORG == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw new ForbiddenAPIException(
+      message = "Forbidden",
+      developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+    )
     OrgFactory.findByOrgId(orgId) match {
       case Some(org) if org.parent.isDefined =>
         Future {

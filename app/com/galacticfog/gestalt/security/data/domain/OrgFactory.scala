@@ -1,6 +1,7 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
+import com.galacticfog.gestalt.security.Init
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, ConflictException, BadRequestException}
 import com.galacticfog.gestalt.security.data.model._
@@ -77,6 +78,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     import com.galacticfog.gestalt.security.data.APIConversions.dirModelToApi
     import com.galacticfog.gestalt.security.data.APIConversions.orgModelToApi
     import com.galacticfog.gestalt.security.data.APIConversions.groupModelToApi
+    import com.galacticfog.gestalt.security.data.APIConversions.accountModelToApi
     val orgTree = OrgFactory.getOrgTree(orgId) flatMap {
       org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]) map { (org,_) }
     }
@@ -84,7 +86,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       dir => (dir.id, dir)
     } toMap
     val orgUsers = (orgTree flatMap {
-      case (org,sApp) => AccountFactory.listAppUsers(sApp.id.asInstanceOf[UUID])
+      case (org,sApp) => AccountFactory.listEnabledAppUsers(sApp.id.asInstanceOf[UUID])
     } distinct) flatMap {
       uar => dirCache.get(uar.dirId.asInstanceOf[UUID]) map { dir =>
         GestaltAccount(
@@ -99,16 +101,15 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         )
       }
     }
+    val adminId = Init.getInitSettings.get.rootAccount
     val orgGroups = (orgTree flatMap {
       case (org,sApp) => GroupFactory.queryShadowedAppGroups(sApp.id.asInstanceOf[UUID], None)
     } distinct) map { ugr => ugr: GestaltGroup }
-    val memberships = orgGroups.map {g =>
-      (g.id -> GroupFactory.listGroupAccounts(g.id).map{_.id.asInstanceOf[UUID]})
-    }.toMap
     GestaltOrgSync(
       accounts = orgUsers,
       groups = orgGroups,
-      orgs = orgTree map { case (o,_) => o: GestaltOrg }
+      orgs = orgTree map { case (o,_) => o: GestaltOrg },
+      admin = adminId flatMap {id => AccountFactory.find(id.asInstanceOf[UUID])} map {_.getLink()}
     )
   }
 

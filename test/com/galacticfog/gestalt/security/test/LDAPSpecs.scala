@@ -36,6 +36,7 @@ class LDAPSpecs extends SpecWithSDK {
 
     lazy val ldapDir = await(newOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP, Some("Test LDAP"), Some(config))))
     lazy val ldapDirDAO = DirectoryFactory.find(ldapDir.id).get
+    lazy val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
 
     "be addable to the root org" in {
       ldapDir must haveName("LdapTestDir")
@@ -55,7 +56,6 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "be able to find groups (raw ldap)" in {
-      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
       ldap.ldapFindGroupnamesByName("Scientists") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists")))
       ldap.ldapFindGroupnamesByName("*ists") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists", "Scientists")))
       ldap.ldapFindGroupnamesByName("*a*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians")))
@@ -63,14 +63,12 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "be able to find groups by account (raw ldap)" in {
-      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
       ldap.ldapFindGroupnamesByUser("read-only-admin") must beASuccessfulTry(beEmpty[List[String]])
       ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
       ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
     }
 
     "be able to find accounts by group (raw ldap)" in {
-      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
       ldap.ldapFindUserDNsByGroup("Mathematicians") must beASuccessfulTry(containTheSameElementsAs(Seq(
         "uid=test,dc=example,dc=com","uid=gauss,dc=example,dc=com","uid=euler,dc=example,dc=com","uid=riemann,dc=example,dc=com","uid=euclid,dc=example,dc=com"
       )))
@@ -231,7 +229,6 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "be capable of updating stale group memberships" in {
-      val ldap = ldapDirDAO.asInstanceOf[LDAPDirectory]
       val newtonIsIn = Seq("Scientists")
       val newtonIsNotIn = Seq("Chemists", "Mathematicians", "Italians")   // Newton is a Mathematician, though!
       val newton = ldap.lookupAccounts(username = Some("newton")).head
@@ -340,6 +337,20 @@ class LDAPSpecs extends SpecWithSDK {
       await(GestaltToken.grantPasswordToken(testOrg.id, "newton", "password")) must beSome
       // and show up in the org now in a shadowed call
       await(testOrg.listAccounts()) map {_.username} must contain("newton")
+    }
+
+    "delete should disable account but not remove it" in {
+      val newton = ldap.lookupAccounts(username = Some("newton")).head
+      newton.disabled must beFalse
+      ldap.disableAccount(newton.id.asInstanceOf[UUID])
+      ldap.lookupAccounts(username = Some("newton")) must haveSize(1)
+      await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beNone
+      await(GestaltApp.listAccounts(newOrgApp.id)) must not contain(
+        (a: GestaltAccount) => a.username == "newton"
+        )
+      await(GestaltOrg.listAccounts(newOrg.id)) must not contain(
+        (a: GestaltAccount) => a.username == "newton"
+      )
     }
 
   }
