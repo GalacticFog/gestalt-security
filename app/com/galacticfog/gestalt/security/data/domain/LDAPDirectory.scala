@@ -94,6 +94,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     Logger.info(s"Attempting: LDAP authentication of DN: ${dn}")
     try {
       val subject: Subject = SecurityUtils.getSubject
+      subject.logout()
+      val session = subject.getSession(false)
+      if (session != null) {
+        session.stop()
+      }
       subject.login(token)
     } catch {
       case err: Throwable => result = false
