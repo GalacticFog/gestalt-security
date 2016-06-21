@@ -100,7 +100,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
           Logger.error("Error: LDAP configuration was not setup.")
         } else {
-          Logger.error(err.getMessage + " - " + err.getCause.toString)
+          Logger.error("error authenticating with LDAP",err)
         }
     }
     // If authentication fails, and if account is no longer in LDAP, then remove the shadowedAccount
