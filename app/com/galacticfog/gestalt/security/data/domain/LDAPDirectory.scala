@@ -99,6 +99,11 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       if (session != null) {
         session.stop()
       }
+    } catch {
+      case _: Throwable =>  // Ignore any errors cleaning up session
+    }
+    try {
+      val subject: Subject = SecurityUtils.getSubject
       subject.login(token)
     } catch {
       case err: Throwable => result = false
