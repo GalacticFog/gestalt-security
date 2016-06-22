@@ -31,7 +31,8 @@ class LDAPSpecs extends SpecWithSDK {
       |  "searchBase" : "dc=example,dc=com",
       |  "systemUsername" : "$ldapUser",
       |  "systemPassword" : "$ldapPass",
-      |  "primaryField" : "uid"
+      |  "primaryField" : "uid",
+      |  "globalSessionTimeout" : 5000
       |}""".stripMargin)
 
     lazy val ldapDir = await(newOrg.createDirectory(GestaltDirectoryCreate("LdapTestDir", DIRECTORY_TYPE_LDAP, Some("Test LDAP"), Some(config))))
@@ -155,6 +156,12 @@ class LDAPSpecs extends SpecWithSDK {
       )
       // check that already shadowed account can be authenticated and get token
       await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beSome
+    }
+
+    "accounts should authenticate after session timeout" in {
+      AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beSome
+      Thread.sleep(6 * 1000)    // timeout is 5 seconds, wait for 6 seconds and try again
+      AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beSome
     }
 
     "not allow inexistant account to authenticate" in {
