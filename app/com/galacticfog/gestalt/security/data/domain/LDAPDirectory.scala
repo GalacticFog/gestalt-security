@@ -35,7 +35,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
   val systemUsername = (config \ "systemUsername").asOpt[String].getOrElse("")
   val systemPassword = (config \ "systemPassword").asOpt[String].getOrElse("")
   var connectionTimeout = (config \ "connectionTimeout").asOpt[Int]
-  var globalSessionTimeout = (config \ "globalSessionTimeout").asOpt[Int]
+  var globalSessionTimeout = (config \ "globalSessionTimeout").asOpt[Long]
   var credentialsMatcher = (config \ "credentialsMatcher").asOpt[String]
   var authenticationMechanism = (config \ "authenticationMechanism").asOpt[String]
   var primaryField = (config \ "primaryField").asOpt[String].getOrElse("uid")
@@ -105,6 +105,7 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
     try {
       val subject: Subject = SecurityUtils.getSubject
       subject.login(token)
+      if (globalSessionTimeout == Some) subject.getSession(true).setTimeout(globalSessionTimeout.get)
     } catch {
       case err: Throwable => result = false
         if (url == "" || searchBase == "" || systemUsername == "" || systemPassword == "") {
