@@ -215,28 +215,36 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
         )
       }
     })
-    saveAccount(
-      patchedAccount.copy(
-        phoneNumber = patchedAccount.phoneNumber map canonicalE164
-      )
-    )
+    DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
+      case Some(dir) => dir.updateAccount(patchedAccount.copy(phoneNumber = patchedAccount.phoneNumber map canonicalE164))
+      case None => throw new BadRequestException(
+        resource = "",
+        message = "A valid directory was not found for the account",
+        developerMessage = "A valid directory was not found for the account.")
+    }
+
   }
 
   def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     val cred = update.credential map {_.asInstanceOf[GestaltPasswordCredential].password}
     val newpass = cred map {p => BCrypt.hashpw(p, BCrypt.gensalt())}
     val newPhoneNumber = update.phoneNumber map canonicalE164
-    saveAccount(
-      account.copy(
-        username = update.username getOrElse account.username,
-        firstName = update.firstName getOrElse account.firstName,
-        lastName = update.lastName getOrElse account.lastName,
-        email = update.email orElse account.email,
-        phoneNumber = newPhoneNumber orElse account.phoneNumber,
-        hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
-        secret = newpass getOrElse account.secret
-      )
+    val updatedAccount = account.copy(
+      username = update.username getOrElse account.username,
+      firstName = update.firstName getOrElse account.firstName,
+      lastName = update.lastName getOrElse account.lastName,
+      email = update.email orElse account.email,
+      phoneNumber = newPhoneNumber orElse account.phoneNumber,
+      hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
+      secret = newpass getOrElse account.secret
     )
+    DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
+      case Some(dir) => dir.updateAccount(updatedAccount)
+      case None => throw new BadRequestException(
+        resource = "",
+        message = "A valid directory was not found for the account",
+        developerMessage = "A valid directory was not found for the account.")
+    }
   }
 
 

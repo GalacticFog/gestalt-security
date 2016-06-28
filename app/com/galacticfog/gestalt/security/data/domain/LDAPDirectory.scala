@@ -5,7 +5,7 @@ import javax.naming.NamingEnumeration
 import javax.naming.directory.{Attribute, SearchControls, SearchResult}
 
 import com.galacticfog.gestalt.security.api.GestaltPasswordCredential
-import com.galacticfog.gestalt.security.api.errors.BadRequestException
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.model._
 import org.apache.shiro.SecurityUtils
 import org.apache.shiro.authc.UsernamePasswordToken
@@ -127,6 +127,14 @@ case class LDAPDirectory(daoDir: GestaltDirectoryRepository, accountFactory: Acc
       account.destroy()
     }
     result
+  }
+
+  override def updateAccount(account: UserAccountRepository)(implicit session: DBSession): Try[UserAccountRepository] = {
+      Failure(ConflictException(
+                resource = "",
+                message = "LDAP Directory does not support updating accounts.",
+                developerMessage = "LDAP Directory does not support updating accounts."
+              ))
   }
 
   override def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession): Unit = {

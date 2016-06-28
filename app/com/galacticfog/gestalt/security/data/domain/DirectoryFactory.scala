@@ -1,13 +1,15 @@
 package com.galacticfog.gestalt.security.data.domain
 
-import com.galacticfog.gestalt.security.api.{GestaltAccountCreate, GestaltDirectoryCreate, GestaltGroupCreate, GestaltPasswordCredential}
+import com.galacticfog.gestalt.security.api.{GestaltAccountUpdate, _}
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException}
 import org.postgresql.util.PSQLException
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 
+import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.data.model._
+import org.mindrot.jbcrypt.BCrypt
 
 import scala.util.{Failure, Try}
 
@@ -25,6 +27,9 @@ trait Directory {
   def createGroup(name: String,
                   description: Option[String])
                  (implicit session: DBSession = AutoSession): Try[UserGroupRepository]
+
+
+  def updateAccount(account: UserAccountRepository)(implicit session: DBSession = AutoSession): Try[UserAccountRepository]
 
   def authenticateAccount(account: UserAccountRepository, plaintext: String)
                          (implicit session: DBSession = AutoSession): Boolean

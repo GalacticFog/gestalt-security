@@ -4,9 +4,11 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.EnvConfig
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.BadRequestException
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model.{UserGroupRepository, GroupMembershipRepository, TokenRepository, UserAccountRepository}
+import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, TokenRepository, UserAccountRepository, UserGroupRepository}
+import com.galacticfog.gestalt.security.api.json.JsonImports._
+import com.galacticfog.gestalt.security.data.APIConversions._
 import play.api.libs.json.Json
 
 class LDAPSpecs extends SpecWithSDK {
@@ -162,6 +164,13 @@ class LDAPSpecs extends SpecWithSDK {
       AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beSome
       Thread.sleep(6 * 1000)    // timeout is 5 seconds, wait for 6 seconds and try again
       AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")) must beSome
+    }
+
+    "not allow accounts to update fields" in {
+      val newton: GestaltAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password")).get
+      await(newton.update(
+        'secret -> Json.toJson("newPassword")
+      )) must throwA[RuntimeException](".*")   // throwA[ConflictException](".*")
     }
 
     "not allow inexistant account to authenticate" in {

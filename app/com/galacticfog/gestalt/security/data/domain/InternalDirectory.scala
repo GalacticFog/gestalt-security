@@ -2,8 +2,10 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.GestaltPasswordCredential
-import com.galacticfog.gestalt.security.data.model.{UserGroupRepository, UserAccountRepository, GestaltDirectoryRepository}
+import com.galacticfog.gestalt.io.util.PatchOp
+import com.galacticfog.gestalt.security.api.errors.BadRequestException
+import com.galacticfog.gestalt.security.api.{GestaltAccountCredential, GestaltAccountUpdate, GestaltPasswordCredential}
+import com.galacticfog.gestalt.security.data.model.{GestaltDirectoryRepository, UserAccountRepository, UserGroupRepository}
 import org.mindrot.jbcrypt.BCrypt
 import play.api.Logger
 import scalikejdbc.DBSession
@@ -23,6 +25,10 @@ case class InternalDirectory(daoDir: GestaltDirectoryRepository) extends Directo
   override def authenticateAccount(account: UserAccountRepository, plaintext: String)(implicit session: DBSession): Boolean = {
     if (account.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${account.id}")
     AccountFactory.checkPassword(account, plaintext)
+  }
+
+  override def updateAccount(account: UserAccountRepository)(implicit session: DBSession): Try[UserAccountRepository] = {
+    AccountFactory.saveAccount(account)
   }
 
   override def lookupGroups(groupName: String)
