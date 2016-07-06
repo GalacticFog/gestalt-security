@@ -8,7 +8,7 @@ objectClass: inetOrgPerson
 cn: Isaac Newton
 sn: Newton
 mail: newton@ldap.forumsys.com
-userPassword: e3NzaGE1MTJ9WlhWYjVyd2pDQ3JEUTdsZllMLytaRFJBaWVTbTdKRUpHem9PTkZhUFhEOEUrS3BHU3VLWnRGRGZxYlBUay8xMWxES0dIMFFhT0hsMkpsYktMMlJhd1c4OWsvZ0dkdHpU
+userPassword:: e3NzaGF9T0JCL1VMaFlTeXViNDg2b0pLNXpuQ2FYVVVBWnFWMFZYSW82Q2c9PQ==
 
 dn: uid=einstein,dc=example,dc=com
 changetype: add
