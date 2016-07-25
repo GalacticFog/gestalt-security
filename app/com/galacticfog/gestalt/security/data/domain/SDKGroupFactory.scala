@@ -30,7 +30,7 @@ object SDKGroupFactory extends GroupFactoryDelegate {
 
 	override def listAccountGroups(accountId: UUID) = GroupFactory.listAccountGroups(accountId).map { APIConversions.groupModelToApi(_) }
 
-	override def findGroupMembership(accountId: UUID, groupId: UUID) = GroupMembershipRepository.find(accountId, groupId).map { APIConversions.groupMembershipModelToPlugin(_) }
+	override def findGroupMemberships(accountId: UUID, groupId: UUID) = GroupMembershipRepository.find(accountId, groupId).map { APIConversions.groupMembershipModelToPlugin(_) }
 
 	override def listGroupAccounts(groupId: UUID) = GroupFactory.listGroupAccounts(groupId).map { APIConversions.accountModelToApi(_) }
 

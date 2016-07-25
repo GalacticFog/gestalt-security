@@ -8,7 +8,7 @@ import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import com.galacticfog.gestalt.security.plugins.AccountFactoryDelegate
 
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 object SDKAccountFactory extends AccountFactoryDelegate {
 
@@ -25,6 +25,12 @@ object SDKAccountFactory extends AccountFactoryDelegate {
 	override def find(accountId: UUID): Option[GestaltAccount] = AccountFactory.find(accountId).map { APIConversions.accountModelToApi(_) }
 
 	override def findEnabled(accountId: UUID): Option[GestaltAccount] = AccountFactory.findEnabled(accountId).map { APIConversions.accountModelToApi(_) }
+
+	override def delete(accountId: UUID) = AccountFactory.find(accountId) match {
+		case Some(uar) => uar.destroy()
+			Success( APIConversions.accountModelToApi(uar))
+		case None => throw new ResourceNotFoundException(resource = accountId.toString, message = "Error deleting account", developerMessage = "Error deleting account, not found")
+	}
 
 	override def listByDirectoryId(dirId: UUID): List[GestaltAccount] = AccountFactory.listByDirectoryId(dirId).map { APIConversions.accountModelToApi(_) }
 
