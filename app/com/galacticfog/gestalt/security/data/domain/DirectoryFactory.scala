@@ -8,6 +8,7 @@ import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
 
@@ -26,7 +27,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       case "LDAP" =>
 //        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
 //        val ldapdir = ldapClass.newInstance(daoDir, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance).asInstanceOf[LDAPDirectory]
-        val ldapdir = LDAPDirectory(daoDir.asInstanceOf[GestaltDirectory], daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance)
+        val dirapi = APIConversions.dirModelToApi(daoDir)
+        val ldapdir = LDAPDirectory(dirapi, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance)
         ldapdir
       case _ => throw new BadRequestException(
         resource = s"/directories/${daoDir.id}",
