@@ -94,7 +94,7 @@ scalikejdbcSettings
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-io" % "1.0.4" withSources(),
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.6-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.0.0-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.0.0-SNAPSHOT"
 )
 
 // ----------------------------------------------------------------------------
@@ -130,11 +130,5 @@ libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.15" % "test"
 libraryDependencies += "org.apache.commons" % "commons-dbcp2" % "2.1"
 
 libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
-
-// ----------------------------------------------------------------------------
-// Apache Shiro
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.apache.shiro" % "shiro-core" % "1.1.0"
 
 libraryDependencies += "org.slf4j" % "slf4j-simple"   % "1.6.1" % "test"

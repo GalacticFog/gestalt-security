@@ -26,7 +26,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
       case "LDAP" =>
 //        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
 //        val ldapdir = ldapClass.newInstance(daoDir, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance).asInstanceOf[LDAPDirectory]
-        val ldapdir = LDAPDirectory(daoDir.asInstanceOf[GestaltDirectory], config: String, SDKAccountFactory.instance, SDKGroupFactory.instance)
+        val ldapdir = LDAPDirectory(daoDir.asInstanceOf[GestaltDirectory], daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance)
         ldapdir
       case _ => throw new BadRequestException(
         resource = s"/directories/${daoDir.id}",

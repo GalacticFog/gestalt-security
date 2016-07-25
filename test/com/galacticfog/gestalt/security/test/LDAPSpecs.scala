@@ -3,6 +3,7 @@ package com.galacticfog.gestalt.security.test
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.EnvConfig
+import com.galacticfog.gestalt.security.adapter.LDAPDirectory
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.domain._
