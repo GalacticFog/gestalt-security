@@ -3,8 +3,10 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.api.errors.{ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.GestaltGroup
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.model._
+import com.galacticfog.gestalt.security.plugins.GroupFactoryDelegate
 import org.postgresql.util.PSQLException
 import play.api.libs.json.JsResult
 import scalikejdbc._
@@ -12,16 +14,8 @@ import scalikejdbc.TxBoundary.Try._
 
 import scala.util.{Failure, Success, Try}
 
-trait GroupFactoryDelegate {
-  def find(groupId: UUID)(implicit session: DBSession): Option[UserGroupRepository]
-  def delete(groupId: UUID)(implicit session: DBSession): Boolean
-  def create(name: String, description: Option[String], dirId: UUID, maybeParentOrg: Option[UUID])(implicit session: DBSession): Try[UserGroupRepository]
-  def removeAccountFromGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Unit
-  def addAccountToGroup(groupId: UUID, accountId: UUID)(implicit session: DBSession): Try[GroupMembershipRepository]
-  def listGroupAccounts(groupId: UUID)(implicit session: DBSession): Seq[UserAccountRepository]
-}
 
-object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFactoryDelegate {
+object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
 
   def instance = this
 
@@ -81,7 +75,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
     * @return All application groups matching the query
     */
   def lookupAppGroups(appId: UUID, nameQuery: String)
-                     (implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
+                     (implicit session: DBSession = autoSession): Seq[GestaltGroup] = {
     val (groupMappings, dirMappings) = AppFactory.listAccountStoreMappings(appId).partition(_.storeType == "GROUP")
     // indirect groups, via their directories
     val dirGroups = dirMappings
@@ -226,6 +220,5 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] with GroupFact
         ))
     }.map{UserGroupRepository(g)}.list.apply()
   }
-
 
 }

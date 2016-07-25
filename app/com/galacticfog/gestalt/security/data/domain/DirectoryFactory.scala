@@ -1,99 +1,33 @@
 package com.galacticfog.gestalt.security.data.domain
 
-import com.galacticfog.gestalt.security.api.{GestaltAccountUpdate, _}
+import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.adapter.LDAPDirectory
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException}
 import org.postgresql.util.PSQLException
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 
-import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.data.model._
-import org.mindrot.jbcrypt.BCrypt
+import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
 
 import scala.util.{Failure, Try}
 
-trait Directory {
-
-  def createAccount(username: String,
-                    description: Option[String],
-                    firstName: String,
-                    lastName: String,
-                    email: Option[String],
-                    phoneNumber: Option[String],
-                    cred: GestaltPasswordCredential)
-                   (implicit session: DBSession = AutoSession): Try[UserAccountRepository]
-
-  def createGroup(name: String,
-                  description: Option[String])
-                 (implicit session: DBSession = AutoSession): Try[UserGroupRepository]
-
-
-  def updateAccount(account: UserAccountRepository)(implicit session: DBSession = AutoSession): Try[UserAccountRepository]
-
-  def authenticateAccount(account: UserAccountRepository, plaintext: String)
-                         (implicit session: DBSession = AutoSession): Boolean
-
-  /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
-    *
-    * Wildcard character '*' matches any number of characters; multiple wildcards may be present at any location in the query string.
-    *
-    * @param group  optional group search (no wildcard matching)
-    * @param username username query parameter (e.g., "*smith")
-    * @param phone phone number query parameter (e.g., "+1505*")
-    * @param email email address query parameter (e.g., "*smith@company.com")
-    * @param session database session (optional)
-    * @return List of matching accounts (matching the query strings and belonging to the specified group)
-    */
-  def lookupAccounts(group: Option[UserGroupRepository] = None,
-                     username: Option[String] = None,
-                     phone: Option[String] = None,
-                     email: Option[String] = None)
-                    (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
-
-  /**
-    * Directory-specific (i.e., deep) query of groups, supporting wildcard matches on group name.
-    *
-    * Wildcard character '*' matches any number of character; multiple wildcards may be present at any location in the query string.
-    *
-    * @param groupName group name query parameter (e.g., "*-admins")
-    * @param session database session (optional)
-    * @return List of matching groups
-    */
-  def lookupGroups(groupName: String)
-                  (implicit session: DBSession = AutoSession): Seq[UserGroupRepository]
-
-  def disableAccount(accountId: UUID, disabled: Boolean = true)
-                    (implicit session: DBSession = AutoSession): Unit
-
-  def deleteGroup(uuid: UUID)
-                 (implicit session: DBSession = AutoSession): Boolean
-
-  def getGroupById(groupId: UUID)
-                  (implicit session: DBSession = AutoSession): Option[UserGroupRepository]
-
-  def listGroupAccounts(groupId: UUID)
-                       (implicit session: DBSession = AutoSession): Seq[UserAccountRepository]
-
-  def id: UUID
-  def name: String
-  def description: Option[String]
-  def orgId: UUID
+trait Directory extends DirectoryPlugin {
 
 }
 
 
-
-
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
-  implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): Directory = {
+  implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): DirectoryPlugin = {
     daoDir.directoryType.toUpperCase match {
       case "INTERNAL" => InternalDirectory(daoDir)
       case "LDAP" =>
-        // TODO - Use plugin / adapter to get classname
-        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
-        ldapClass.newInstance(daoDir, AccountFactory.instance, GroupFactory.instance).asInstanceOf[LDAPDirectory]
+//        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
+//        val ldapdir = ldapClass.newInstance(daoDir, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance).asInstanceOf[LDAPDirectory]
+        val ldapdir = LDAPDirectory(daoDir.asInstanceOf[GestaltDirectory], config: String, SDKAccountFactory.instance, SDKGroupFactory.instance)
+        ldapdir
       case _ => throw new BadRequestException(
         resource = s"/directories/${daoDir.id}",
         message = "invalid directory type",
@@ -105,12 +39,12 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
   override val autoSession = AutoSession
 
-  def find(dirId: UUID)(implicit session: DBSession = autoSession): Option[Directory] = {
-    GestaltDirectoryRepository.find(dirId) map {d => d:Directory}
+  def find(dirId: UUID)(implicit session: DBSession = autoSession): Option[DirectoryPlugin] = {
+    GestaltDirectoryRepository.find(dirId) map {d => d:DirectoryPlugin}
   }
 
-  def findAll(implicit session: DBSession = autoSession): List[Directory] = {
-    GestaltDirectoryRepository.findAll map {d => d:Directory}
+  def findAll(implicit session: DBSession = autoSession): List[DirectoryPlugin] = {
+    GestaltDirectoryRepository.findAll map { d => d: DirectoryPlugin }
   }
 
   def removeDirectory(dirId: UUID)(implicit session: DBSession = autoSession): Unit = {
@@ -120,7 +54,8 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[Directory] = {
+  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[DirectoryPlugin] = {
+	println(s"config = ${create.config}")
     Try {
       GestaltDirectoryRepository.create(
         id = UUID.randomUUID(),
@@ -140,10 +75,11 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
           ))
           case _ => Failure(t)
         }
-    } map {d => d: Directory}
+    } map {d => d: DirectoryPlugin}
   }
 
-  def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
+  def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[GestaltAccount] = {
+    println("DirectoryFactory.createAccountInDir()....")
     DirectoryFactory.find(dirId) match {
       case None => Failure(ResourceNotFoundException(
         resource = s"/directories/${dirId}",
@@ -174,22 +110,22 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  def createGroupInDir(dirId: UUID, create: GestaltGroupCreate)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+  def createGroupInDir(dirId: UUID, create: GestaltGroupCreate)(implicit session: DBSession = autoSession): Try[GestaltGroup] = {
     GestaltDirectoryRepository.find(dirId) match {
       case None => Failure(ResourceNotFoundException(
         resource = s"/directories/${dirId}",
         message = "could not create group in non-existent directory",
         developerMessage = "Could not create group in non-existent directory. If this error was encountered during an attempt to create a group in an org, it suggests that the org is misconfigured."
       ))
-      case Some(dir) => dir.createGroup(
+      case Some(daodir) => daodir.createGroup(
         name = create.name,
         description = create.description
       )
     }
   }
 
-  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[Directory] = {
-    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}") map {d => d:Directory}
+  def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[DirectoryPlugin] = {
+    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}") map {d => d:DirectoryPlugin}
   }
 
 }

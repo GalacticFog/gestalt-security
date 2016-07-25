@@ -149,8 +149,7 @@ class LDAPSpecs extends SpecWithSDK {
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") foreach {_.destroy()}
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beNone
       val maybeAuthAccount = AccountFactory.authenticate(newOrgApp.id, GestaltBasicCredsToken("newton", "password"))
-      maybeAuthAccount must beSome( (uar: UserAccountRepository) =>
-          uar.username == "newton" && uar.dirId == ldapDir.id
+      maybeAuthAccount must beSome( (acc: GestaltAccount) => acc.username == "newton" && acc.directory.id == ldapDir.id
       )
       // verify account is shadowed
       AccountFactory.findInDirectoryByName(ldapDir.id, "newton") must beSome((uar: UserAccountRepository) =>
@@ -195,9 +194,10 @@ class LDAPSpecs extends SpecWithSDK {
 
     "refuse to perform local password checking" in {
       val account = ldapDirDAO.lookupAccounts(username = Some("newton")).head
-      account.hashMethod must_== "shadowed"
-      account.secret must_== ""
-      AccountFactory.checkPassword(account, "") must beFalse
+      val dao = UserAccountRepository.find(account.id).get
+      dao.hashMethod must_== "shadowed"
+      dao.secret must_== ""
+      AccountFactory.checkPassword(dao, "") must beFalse
     }
 
     "lookup accounts in a group" in {
@@ -249,6 +249,7 @@ class LDAPSpecs extends SpecWithSDK {
       val newtonIsNotIn = Seq("Chemists", "Mathematicians", "Italians")   // Newton is a Mathematician, though!
       val newton = ldap.lookupAccounts(username = Some("newton")).head
       val groups = await(newOrg.listGroups("name" -> "*"))
+      println(s"listGroups = ${groups}")
       groups map {_.name} must contain( allOf((newtonIsIn ++ newtonIsNotIn):_*) )
       // remove shadow newton from Scientists
       groups filter {g => newtonIsIn.contains(g.name)} foreach {
@@ -357,16 +358,13 @@ class LDAPSpecs extends SpecWithSDK {
 
     "delete should disable account but not remove it" in {
       val newton = ldap.lookupAccounts(username = Some("newton")).head
-      newton.disabled must beFalse
+      val dao = UserAccountRepository.find(newton.id).get
+      dao.disabled must beFalse
       ldap.disableAccount(newton.id.asInstanceOf[UUID])
       ldap.lookupAccounts(username = Some("newton")) must haveSize(1)
       await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beNone
-      await(GestaltApp.listAccounts(newOrgApp.id)) must not contain(
-        (a: GestaltAccount) => a.username == "newton"
-        )
-      await(GestaltOrg.listAccounts(newOrg.id)) must not contain(
-        (a: GestaltAccount) => a.username == "newton"
-      )
+      await(GestaltApp.listAccounts(newOrgApp.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
+      await(GestaltOrg.listAccounts(newOrg.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
     }
 
   }
