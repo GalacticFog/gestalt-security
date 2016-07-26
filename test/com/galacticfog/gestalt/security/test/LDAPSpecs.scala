@@ -23,7 +23,7 @@ class LDAPSpecs extends SpecWithSDK {
 
   val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://localhost:389"
   val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "admin"
-  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "***REMOVED***"
+  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
 
   "LDAP Directory" should {
 

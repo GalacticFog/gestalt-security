@@ -9,8 +9,8 @@
 # Required and used for new ldap server only
 LDAP_ORGANISATION: Example Company, Inc.
 LDAP_DOMAIN: example.com
-LDAP_ADMIN_PASSWORD: ***REMOVED***
-LDAP_CONFIG_PASSWORD: ***REMOVED***
+LDAP_ADMIN_PASSWORD: password
+LDAP_CONFIG_PASSWORD: password
 
 LDAP_READONLY_USER: false
 LDAP_READONLY_USER_USERNAME: read-only-admin

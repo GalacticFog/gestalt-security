@@ -18,8 +18,8 @@ variables:
   ROOT_USERNAME: root
   ROOT_PASSWORD: letmein
   TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
-  TEST_LDAP_PASS: ***REMOVED***
   TEST_LDAP_USER: admin
+  TEST_LDAP_PASS: password
   
 build:
   stage: build
