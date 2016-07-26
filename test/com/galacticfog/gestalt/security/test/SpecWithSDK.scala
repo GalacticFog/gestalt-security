@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
+import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration, InitRequest}
@@ -73,7 +74,7 @@ trait SpecWithSDK extends PlaySpecification {
 
   lazy val rootAccount: GestaltAccount = await(GestaltAccount.getSelf())
   lazy val rootOrg: GestaltOrg = await(GestaltOrg.getCurrentOrg())
-  lazy val daoRootDir: Directory = DirectoryFactory.listByOrgId(rootOrg.id).head
+  lazy val daoRootDir: DirectoryPlugin = DirectoryFactory.listByOrgId(rootOrg.id).head
   lazy val rootAdminsGroup: GestaltGroup = daoRootDir.lookupGroups("admins").head
   lazy val rootOrgApp: GestaltApp = await(rootOrg.getServiceApp())
 

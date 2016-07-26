@@ -628,14 +628,14 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     val nameQuery = request.getQueryString("name")
     val results = if (nameQuery.isDefined) {
-      GroupFactory.lookupAppGroups(
+      SDKGroupFactory.lookupAppGroups(
         appId = request.user.serviceAppId,
         nameQuery = nameQuery.get
       )
     } else {
-      GroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
+      SDKGroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
     }
-    Ok(Json.toJson[Seq[GestaltGroup]](results.map{ g => g: GestaltGroup }))
+    Ok(Json.toJson[Seq[GestaltGroup]](results))
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
@@ -815,6 +815,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
+     println("RESTAPIController.updateAccount()....")
     val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
       case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
       case _ => request.body.validate[GestaltAccountUpdate] match {

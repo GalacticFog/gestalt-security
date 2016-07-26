@@ -4,8 +4,9 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.data.domain.{GroupFactory, DirectoryFactory, Directory, OrgFactory}
+import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, GroupFactory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
+import com.galacticfog.gestalt.security.plugins.{DirectoryPlugin, GroupMembership}
 
 object APIConversions {
   implicit def accountModelToApi(uar: UserAccountRepository): GestaltAccount = {
@@ -76,7 +77,16 @@ object APIConversions {
     )
   }
 
-  implicit def dirModelToApi(dir: Directory): GestaltDirectory = {
+  implicit def dirModelToApi(dir: GestaltDirectoryRepository): GestaltDirectory = {
+    GestaltDirectory(
+      id = dir.id.asInstanceOf[UUID],
+      name = dir.name,
+      description = dir.description,
+      orgId = dir.orgId.asInstanceOf[UUID]
+    )
+  }
+
+  implicit def dirPluginToApi(dir: DirectoryPlugin): GestaltDirectory = {
     GestaltDirectory(
       id = dir.id,
       name = dir.name,
@@ -105,5 +115,10 @@ object APIConversions {
     apiSecret = Some(apiKey.apiSecret),
     accountId = apiKey.accountId.asInstanceOf[UUID],
     disabled = apiKey.disabled
+  )
+
+  implicit def groupMembershipModelToPlugin(gmr: GroupMembershipRepository): GroupMembership = GroupMembership(
+    accountId = gmr.accountId.asInstanceOf[UUID],
+    groupId = gmr.groupId.asInstanceOf[UUID]
   )
 }

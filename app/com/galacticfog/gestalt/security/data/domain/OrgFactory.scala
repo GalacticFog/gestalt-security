@@ -1,19 +1,21 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
+
 import com.galacticfog.gestalt.security.Init
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnknownAPIException, ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
+import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
 import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import org.postgresql.util.PSQLException
 import play.api.Logger
-import play.api.libs.json.{Json, JsResultException, JsValue}
+import play.api.libs.json.{JsResultException, JsValue, Json}
 import play.api.mvc.Security
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
-import scala.util.{Success, Try, Failure}
+import scala.util.{Failure, Success, Try}
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
 
@@ -97,7 +99,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           lastName = uar.lastName,
           email = uar.email,
           phoneNumber = uar.phoneNumber,
-          directory = dir
+          directory = APIConversions.dirPluginToApi(dir)
         )
       }
     }

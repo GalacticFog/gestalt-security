@@ -4,8 +4,11 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{UnknownAPIException, ConflictException, BadRequestException, ResourceNotFoundException}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
+import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
+import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
+import com.galacticfog.gestalt.security.adapter.LDAPDirectory
 import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
 import org.postgresql.util.PSQLException
@@ -13,27 +16,11 @@ import play.api.Logger
 import play.api.mvc.RequestHeader
 import scalikejdbc._
 
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
 
-trait AccountFactoryDelegate {
 
-  def createAccount(dirId: UUID,
-                    username: String,
-                    description: Option[String] = None,
-                    email: Option[String] = None,
-                    phoneNumber: Option[String] = None,
-                    firstName: String,
-                    lastName: String,
-                    hashMethod: String,
-                    salt: String,
-                    secret: String,
-                    disabled: Boolean)
-                   (implicit session: DBSession): Try[UserAccountRepository]
-
-}
-
-object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with AccountFactoryDelegate {
+object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
@@ -94,7 +81,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     }
   }
 
-  override def createAccount(dirId: UUID,
+  def createAccount(dirId: UUID,
                     username: String,
                     description: Option[String] = None,
                     email: Option[String] = None,
@@ -216,7 +203,11 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       }
     })
     DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
-      case Some(dir) => dir.updateAccount(patchedAccount.copy(phoneNumber = patchedAccount.phoneNumber map canonicalE164))
+      case Some(dir: InternalDirectory) => AccountFactory.saveAccount(patchedAccount.copy(phoneNumber = patchedAccount.phoneNumber map canonicalE164))
+      case Some(dir: LDAPDirectory) =>
+        Failure(ConflictException(resource = "",
+                                  message = "LDAP Directory does not support updating accounts.",
+                                  developerMessage = "LDAP Directory does not support updating accounts."))
       case None => throw new BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
@@ -239,12 +230,17 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       secret = newpass getOrElse account.secret
     )
     DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
-      case Some(dir) => dir.updateAccount(updatedAccount)
+      case Some(dir: InternalDirectory) => AccountFactory.saveAccount(updatedAccount.copy(phoneNumber = updatedAccount.phoneNumber map canonicalE164))
+      case Some(dir: LDAPDirectory) =>
+        Failure(ConflictException(resource = "",
+                                  message = "LDAP Directory does not support updating accounts.",
+                                  developerMessage = "LDAP Directory does not support updating accounts."))
       case None => throw new BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
         developerMessage = "A valid directory was not found for the account.")
     }
+    throw new BadRequestException(resource = "", message = "", developerMessage = "")
   }
 
 
@@ -258,7 +254,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     * @return List of accounts mapped to the application satisfying any specified query parameters
     */
   def lookupByAppId(appId: UUID, nameQuery: Option[String], emailQuery: Option[String], phoneQuery: Option[String])
-                   (implicit session: DBSession = autoSession): Seq[UserAccountRepository] = {
+                   (implicit session: DBSession = autoSession): Seq[GestaltAccount] = {
     val (dirMappings,groupMappings) = AppFactory.listAccountStoreMappings(appId) partition( _.storeType.toUpperCase == "DIRECTORY" )
     val dirAccounts = for {
       dir <- dirMappings.flatMap {dirMapping => DirectoryFactory.find(dirMapping.accountStoreId.asInstanceOf[UUID]).toSeq}
@@ -274,7 +270,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
       group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
       dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
       accs <- dir.lookupAccounts(
-        group = Some(group),
+        group = Some(APIConversions.groupModelToApi(group)),
         username = nameQuery,
         phone = phoneQuery,
         email = emailQuery
@@ -295,7 +291,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
     * @param session db session
     * @return Some account mapped to the specified application for which the credentials are valid, or None if there is no such account
     */
-  def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[UserAccountRepository] = {
+  def authenticate(appId: UUID, creds: GestaltBasicCredsToken)(implicit session: DBSession = autoSession): Option[GestaltAccount] = {
     def safeSeq[A](seq: => Seq[A]): Seq[A] = {
       Try{seq} match {
         case Success(s) => s
@@ -304,8 +300,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
           Seq.empty[A]
       }
     }
-    def safeAuth(dir: Directory, acc: UserAccountRepository, plaintext: String): Boolean = {
-      Try{dir.authenticateAccount(acc, plaintext)} match {
+    def safeAuth(dir: DirectoryPlugin, acc: UserAccountRepository, plaintext: String): Boolean = {
+      if (acc.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${acc.id}")
+      Try{dir.authenticateAccount(APIConversions.accountModelToApi(acc), plaintext)} match {
         case Success(b) => b
         case Failure(e) =>
           Logger.error(s"error authenticating account ${acc.username} in directory ${dir.id}",e)
@@ -323,19 +320,21 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] with Accou
         phone = None,
         email = None
       ))
-      authedAcc <- if (!acc.disabled && safeAuth(dir,acc,creds.password)) Some(acc) else None
+      dao <- UserAccountRepository.find(acc.id.asInstanceOf[UUID])
+      authedAcc <- if (!dao.disabled && safeAuth(dir,dao,creds.password)) Some(acc) else None
     } yield authedAcc
     lazy val groupAccounts = for {
       grpMapping <- groupMappings
-      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq
-      dir <- DirectoryFactory.find(group.dirId.asInstanceOf[UUID]).toSeq
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq.map { APIConversions.groupModelToApi(_) }
+      dir <- DirectoryFactory.find(group.directory.id.asInstanceOf[UUID]).toSeq
       acc <- safeSeq(dir.lookupAccounts(
         group = Some(group),
         username = Some(creds.username),
         phone = None,
         email = None
       ))
-      authedAcc <- if (!acc.disabled && safeAuth(dir,acc,creds.password)) Some(acc) else None
+      dao <- UserAccountRepository.find(acc.id.asInstanceOf[UUID])
+      authedAcc <- if (!dao.disabled && safeAuth(dir,dao,creds.password)) Some(acc) else None
     } yield authedAcc
     val result = dirAccounts.headOption orElse groupAccounts.headOption
     result
