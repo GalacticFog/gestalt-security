@@ -17,7 +17,9 @@ variables:
   DATABASE_PASSWORD: letmein
   ROOT_USERNAME: root
   ROOT_PASSWORD: letmein
-  TEST_LDAP_URL: "ldap://test-ldap:389"
+  TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
+  TEST_LDAP_PASS: ***REMOVED***
+  TEST_LDAP_USER: admin
   
 build:
   stage: build
