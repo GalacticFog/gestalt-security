@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DBUSER=gestaltdev
-DBPASS=***REMOVED***
+DBPASS=password
 DBNAME=securitytest
 
 set -o errexit
