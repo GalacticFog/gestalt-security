@@ -4,7 +4,7 @@ image: java:latest
 
 services:
   - postgres:9.4
-  - galacticfog/test-ldap:latest
+  - galacticfog/test-ldap:0.1.0
 
 variables:
   POSTGRES_DB: gestalt-security
