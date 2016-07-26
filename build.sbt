@@ -50,8 +50,8 @@ libraryDependencies ++= Seq(
 )
 
 resolvers ++= Seq(
-  "gestalt-snapshots" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
-  "gestalt-releases" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-release-local",
+  "gestalt-snapshots" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
+  "gestalt-releases" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-releases-local",
   "snapshots" at "http://scala-tools.org/repo-snapshots",
   "releases"  at "http://scala-tools.org/repo-releases",
   "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
