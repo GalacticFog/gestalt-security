@@ -12,12 +12,12 @@ variables:
   POSTGRES_PASSWORD: letmein
   DATABASE_HOSTNAME: postgres
   DATABASE_NAME: gestalt-security
-  DATABASE_PORT: 9455
+  DATABASE_PORT: "9455"
   DATABASE_USERNAME: gestaltdev
   DATABASE_PASSWORD: letmein
   ROOT_USERNAME: root
   ROOT_PASSWORD: letmein
-  TEST_LDAP_URL: ldap://test-ldap:389
+  TEST_LDAP_URL: "ldap://test-ldap:389"
   
 build:
   stage: build
