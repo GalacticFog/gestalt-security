@@ -26,7 +26,6 @@ variables:
   TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
   TEST_LDAP_USER: admin
   TEST_LDAP_PASS: password
-  IMAGE: galacticfog.artifactoryonline.com/gestalt-security
 
 build:
   stage: build
@@ -41,10 +40,11 @@ test:
 release-image:
   stage: release
   script: 
-    - docker ps
+    - ./docker-build-push.sh
 
 deploy-to-test:
   stage: deploy
   environment: test
   script: 
-    - echo howdy
+    - echo checking for access to marathon
+    - curl http://marathon.mesos:8080/v2/apps
