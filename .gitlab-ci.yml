@@ -8,6 +8,10 @@ stages:
 - release
 - deploy
 
+cache:
+  key: "$CI_PIPELINE_ID"
+  untracked: true
+
 services:
   - postgres:9.4
   - galacticfog/test-ldap:0.1.0
@@ -31,12 +35,12 @@ build:
   stage: build
   script:
     - ./activator clean update compile test:compile
-    
+
 test:
   stage: test
   script:
     - ./activator test
-    
+
 release-image:
   stage: release
   script: 
@@ -47,4 +51,4 @@ deploy-to-test:
   environment: test
   script: 
     - echo checking for access to marathon
-    - curl http://marathon.mesos:8080/v2/apps
+    - curl http://marathon.mesos:8080/v2/apps/gestalt-test/security || true
