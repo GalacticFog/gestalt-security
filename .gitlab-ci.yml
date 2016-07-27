@@ -21,7 +21,7 @@ variables:
   TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
   TEST_LDAP_USER: admin
   TEST_LDAP_PASS: password
-  IMG: "galacticfog.artifactoryonline.com/gestalt-security"
+  DOCKER_IMG: "galacticfog.artifactoryonline.com/gestalt-security"
 
 test:
   stage: test
@@ -34,11 +34,12 @@ test:
 publish-branch:
   stage: publish
   script: 
-    - VER=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
-    - TAG=$VER-${CI_BUILD_REF:0:8}
+    - export VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
+    - export DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
+    - env
     - cd target/docker/stage
-    - docker build -t $IMG:$TAG
-    - docker push     $IMG:$TAG
+    - docker build -t $DOCKER_IMG:$DOCKER_TAG
+    - docker push     $DOCKER_IMG:$DOCKER_TAG
   only:
     - branches
 
@@ -46,8 +47,8 @@ publish-tag:
   stage: publish
   script:
     - cd target/docker/stage
-    - docker build -t $IMG:$CI_BUILD_TAG
-    - docker push     $IMG:$CI_BUILD_TAG
+    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG
+    - docker push     $DOCKER_IMG:$CI_BUILD_TAG
   only:
     - tags
 
