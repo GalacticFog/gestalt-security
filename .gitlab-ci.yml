@@ -34,11 +34,10 @@ test:
 publish-branch:
   stage: publish
   script: 
-    - export VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
-    - export DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
-    - env
+    - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
+    - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
     - cd target/docker/stage
-    - docker build -t $DOCKER_IMG:$DOCKER_TAG
+    - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
   only:
     - branches
@@ -47,7 +46,7 @@ publish-tag:
   stage: publish
   script:
     - cd target/docker/stage
-    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG
+    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
     - docker push     $DOCKER_IMG:$CI_BUILD_TAG
   only:
     - tags
