@@ -31,6 +31,10 @@ test:
   script:
     - ./activator clean update test docker:stage
 
+before_script:
+  - git remote remove github || true
+  - git remote add github https://$GITHUB_CREDENTIALS@github.com/GalacticFog/gestalt-security.git
+
 publish-branch:
   stage: publish
   script: 
@@ -39,8 +43,12 @@ publish-branch:
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
+    - git push github $CI_BUILD_REF_NAME
   only:
-    - branches
+    - master
+    - /^release-.*$/
+  except:
+    - tags
 
 publish-tag: 
   stage: publish
@@ -48,6 +56,7 @@ publish-tag:
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
     - docker push     $DOCKER_IMG:$CI_BUILD_TAG
+    - git push github $CI_BUILD_TAG
   only:
     - tags
 
