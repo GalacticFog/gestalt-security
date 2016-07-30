@@ -31,14 +31,9 @@ test:
   script:
     - ./activator clean update test docker:stage
 
-before_script:
-    - git remote remove github || true
-    - git remote add github https://$GITHUB_CREDENTIALS@github.com/GalacticFog/gestalt-security.git
-
 publish-branch:
   stage: publish
   script: 
-    - git push github HEAD:$CI_BUILD_REF_NAME
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
     - cd target/docker/stage
@@ -53,11 +48,26 @@ publish-branch:
 publish-tag: 
   stage: publish
   script:
-    - git push github $CI_BUILD_TAG
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
     - docker push     $DOCKER_IMG:$CI_BUILD_TAG
   only:
+    - tags
+
+github-publish:
+  stage: publish
+  script: 
+    - git remote remove github || true
+    - git remote add github https://$GITHUB_CREDENTIALS@github.com/GalacticFog/gestalt-security.git
+    - |
+      if [ -z ${CI_BUILD_TAG} ]; then 
+         git push github HEAD:$CI_BUILD_REF_NAME
+      else 
+         git push github $CI_BUILD_TAG
+      fi
+  only:
+    - master
+    - /^release-.*$/
     - tags
 
 deploy-to-test:
