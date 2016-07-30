@@ -41,4 +41,5 @@ object SDKGroupFactory extends GroupFactoryDelegate {
 	override def getAppGroupMapping(appId: UUID, groupId: UUID) = GroupFactory.getAppGroupMapping(appId, groupId).map { APIConversions.groupModelToApi(_) }
 
 	override def create(name: String, description: Option[String], dirId: UUID, maybeParentOrg: Option[UUID]) = GroupFactory.create(name, description, dirId, maybeParentOrg).map { APIConversions.groupModelToApi(_) }
+
 }

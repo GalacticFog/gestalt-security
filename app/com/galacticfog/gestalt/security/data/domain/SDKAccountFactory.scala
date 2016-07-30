@@ -3,7 +3,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.io.util.PatchOp
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, SecurityRESTException}
-import com.galacticfog.gestalt.security.api.{GestaltAccount, GestaltAccountUpdate, GestaltBasicCredsToken}
+import com.galacticfog.gestalt.security.api.{GestaltAccount, GestaltAccountCreate, GestaltAccountUpdate, GestaltBasicCredsToken}
 import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import com.galacticfog.gestalt.security.plugins.AccountFactoryDelegate
@@ -64,4 +64,11 @@ object SDKAccountFactory extends AccountFactoryDelegate {
 	}
 
 	override def findInDirectoryByName(dirId: UUID, username: String): Option[GestaltAccount] = AccountFactory.findInDirectoryByName(dirId, username).map { APIConversions.accountModelToApi(_) }
+
+	override def checkPassword(account: GestaltAccount, plaintext: String): Boolean = return false
+
+	override def saveAccount(account: GestaltAccountCreate): Try[GestaltAccount] = {
+		throw new ResourceNotFoundException(resource = "", message = "Action not permitted", developerMessage = "Security adapter not allowed to save account")
+	}
+
 }
