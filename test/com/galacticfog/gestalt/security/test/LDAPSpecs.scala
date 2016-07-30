@@ -11,6 +11,7 @@ import com.galacticfog.gestalt.security.data.model.{GroupMembershipRepository, T
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import play.api.libs.json.Json
+import com.galacticfog.gestalt.keymgr.GestaltLicense
 
 class LDAPSpecs extends SpecWithSDK {
 
@@ -24,6 +25,11 @@ class LDAPSpecs extends SpecWithSDK {
   val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://localhost:389"
   val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "admin"
   val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
+  try {
+    GestaltLicense.instance.install("")
+  } catch {
+    case e: Throwable => 
+}
 
   "LDAP Directory" should {
 

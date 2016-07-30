@@ -12,6 +12,8 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model._
+import com.galacticfog.gestalt.keymgr.GestaltLicense
+import com.galacticfog.gestalt.keymgr.GestaltFeature
 import play.api.libs.json._
 import play.api._
 import play.api.mvc._
@@ -703,6 +705,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_DIRECTORY)
     val create = validateBody[GestaltDirectoryCreate]
+    if (create.directoryType == DIRECTORY_TYPE_LDAP && GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory) == false) {
+      throw new UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
+        developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+    }
     val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
     renderTry[GestaltDirectory](Created)(newDir)
   }
