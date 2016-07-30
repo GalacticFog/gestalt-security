@@ -40,10 +40,10 @@ publish-branch:
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
+    - git push github $CI_BUILD_REF_NAME
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
-    - git push github $CI_BUILD_REF_NAME
   only:
     - master
     - /^release-.*$/
@@ -53,10 +53,10 @@ publish-branch:
 publish-tag: 
   stage: publish
   script:
+    - git push github $CI_BUILD_TAG
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
     - docker push     $DOCKER_IMG:$CI_BUILD_TAG
-    - git push github $CI_BUILD_TAG
   only:
     - tags
 
