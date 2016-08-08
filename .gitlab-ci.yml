@@ -21,7 +21,7 @@ variables:
   TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
   TEST_LDAP_USER: admin
   TEST_LDAP_PASS: password
-  DOCKER_IMG: "galacticfog.artifactoryonline.com/gestalt-security"
+  DOCKER_IMG: "galacticfog/gestalt-security"
 
 test:
   stage: test
@@ -29,7 +29,7 @@ test:
     - postgres:9.4
     - galacticfog/test-ldap:0.1.0
   script:
-    - ./activator clean update test docker:stage
+    - sbt clean update test docker:stage
 
 publish-branch:
   stage: publish
