@@ -8,9 +8,11 @@ version := "2.2.5-SNAPSHOT"
 
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
-dockerUpdateLatest := true
+dockerBaseImage := "java:8-jre-alpine"
 
 dockerRepository := Some("galacticfog.artifactoryonline.com")
+
+dockerCommands += ExecCmd("RUN", "apk", "add", "--update", "bash", "&&", "rm", "-rf", "/var/cache/apk/*")
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala,SbtNativePackager).
