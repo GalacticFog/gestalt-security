@@ -12,7 +12,13 @@ dockerBaseImage := "java:8-jre-alpine"
 
 dockerRepository := Some("galacticfog.artifactoryonline.com")
 
-dockerCommands += ExecCmd("RUN", "apk", "add", "--update", "bash", "&&", "rm", "-rf", "/var/cache/apk/*")
+dockerCommands := dockerCommands.value.flatMap {
+  case cmd@Cmd("FROM",_) => List(
+    cmd,
+    Cmd("RUN", "apk add --update bash && rm -rf /var/cache/apk/*")     
+  )
+  case other => List(other)
+}
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala,SbtNativePackager).
