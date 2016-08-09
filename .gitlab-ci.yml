@@ -5,7 +5,7 @@ stages:
 
 cache:
   key: "$CI_PIPELINE_ID"
-  untracked: true
+  untracked: false
 
 variables:
   POSTGRES_DB: gestalt-security
@@ -30,30 +30,23 @@ test:
     - galacticfog/test-ldap:0.1.0
   script:
     - sbt clean update test docker:stage
+    - cd target/docker/stage
+    - docker build -t $DOCKER_IMG:$CI_BUILD_ID .
 
-publish-branch:
+docker-publish:
   stage: publish
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
-    - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
+    - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
+    - echo publishing $DOCKER_IMG:$DOCKER_TAG
     - cd target/docker/stage
-    - docker build -t $DOCKER_IMG:$DOCKER_TAG .
-    - docker push     $DOCKER_IMG:$DOCKER_TAG
-    - docker rmi      $DOCKER_IMG:$DOCKER_TAG
+    - docker tag   $DOCKER_IMG:$CI_BUILD_ID $DOCKER_IMG:$DOCKER_TAG
+    - docker push  $DOCKER_IMG:$DOCKER_TAG
+    - docker rmi   $DOCKER_IMG:$DOCKER_TAG
+    - docker rmi   $DOCKER_IMG:$CI_BUILD_ID
   only:
     - master
     - /^release-.*$/
-  except:
-    - tags
-
-publish-tag: 
-  stage: publish
-  script:
-    - cd target/docker/stage
-    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
-    - docker push     $DOCKER_IMG:$CI_BUILD_TAG
-    - docker rmi      $DOCKER_IMG:$CI_BUILD_TAG
-  only:
     - tags
 
 github-publish:
