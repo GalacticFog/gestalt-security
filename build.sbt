@@ -10,8 +10,6 @@ maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 
 dockerBaseImage := "java:8-jre-alpine"
 
-dockerRepository := Some("galacticfog.artifactoryonline.com")
-
 dockerCommands := dockerCommands.value.flatMap {
   case cmd@Cmd("FROM",_) => List(
     cmd,
