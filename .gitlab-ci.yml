@@ -30,24 +30,21 @@ test:
     - galacticfog/test-ldap:0.1.0
   script:
     - sbt clean update test docker:stage
-    - cd target/docker/stage
-    - echo building $DOCKER_IMG:$CI_PIPELINE_ID
-    - docker build -t $DOCKER_IMG:$CI_PIPELINE_ID .
+  artifacts:
+    expire_in: 30 minutes
+    paths:
+    - target/docker/stage/
 
 docker-publish:
   stage: publish
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
-    - echo publishing $DOCKER_IMG:$DOCKER_TAG
-    - docker tag -f $DOCKER_IMG:$CI_PIPELINE_ID $DOCKER_IMG:$DOCKER_TAG
-    - docker push   $DOCKER_IMG:$DOCKER_TAG
-    - docker rmi    $DOCKER_IMG:$DOCKER_TAG
-    - docker rmi    $DOCKER_IMG:$CI_PIPELINE_ID
-  only:
-    - master
-    - /^release-.*$/
-    - tags
+    - cd target/docker/stage
+    - echo building $DOCKER_IMG:$DOCKER_TAG
+    - docker build -t $DOCKER_IMG:$DOCKER_TAG .
+    - docker push     $DOCKER_IMG:$DOCKER_TAG
+    - docker rmi      $DOCKER_IMG:$DOCKER_TAG
 
 github-publish:
   stage: publish
@@ -64,6 +61,7 @@ github-publish:
     - master
     - /^release-.*$/
     - tags
+  artifacts:
 
 deploy-to-test:
   stage: deploy
@@ -71,3 +69,4 @@ deploy-to-test:
   script: 
     - echo checking for access to marathon
     - curl http://marathon.mesos:8080/v2/apps/gestalt-test/security || true
+  artifacts:
