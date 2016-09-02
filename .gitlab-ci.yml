@@ -63,10 +63,26 @@ github-publish:
     - tags
   artifacts:
 
-deploy-to-test:
+.deploy_template: &deploy_to_test
+  image: galacticfog/gitlab-updater
   stage: deploy
   environment: test
+  tags: 
+    - test-cluster
   script: 
-    - echo checking for access to marathon
-    - curl http://marathon.mesos:8080/v2/apps/gestalt-test/security || true
+    - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
+    - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
+    - /usr/local/bin/update-deployed-app.sh  marathon.mesos:8080 test-gestalt-tasks/security  $DOCKER_IMG:$DOCKER_TAG
+  allow_failure: true
   artifacts:
+
+auto-deploy-master:
+  <<: *deploy_to_test
+  only: 
+    - master
+
+manual-deploy-non-master:
+  <<: *deploy_to_test
+  except: 
+    - master
+  when: manual
