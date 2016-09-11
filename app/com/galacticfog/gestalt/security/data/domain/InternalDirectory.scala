@@ -32,15 +32,11 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
   }
 
   override def updateAccount(account: GestaltAccount, update: GestaltAccountUpdate): Try[GestaltAccount] = {
-    // Currently not called.  TODO - need to address how to update disabled attriute since neither account or update contain it.
+    // Currently not called.  TODO - need to address how to update disabled attribute since neither account or update contain it.
     UserAccountRepository.find(account.id) match {
-      case Some(uar) =>
-
-
-        AccountFactory.saveAccount(uar).map { APIConversions.accountModelToApi(_) }
+      case Some(uar) => AccountFactory.saveAccount(uar).map { APIConversions.accountModelToApi(_) }
       case None => throw new ResourceNotFoundException(resource = account.id.toString, message = "Error finding account for update", developerMessage = "Error finding repository account for update")
     }
-
   }
 
   override def lookupGroups(groupName: String): Seq[GestaltGroup] = {
