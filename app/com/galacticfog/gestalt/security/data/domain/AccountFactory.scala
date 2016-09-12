@@ -208,6 +208,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         Failure(ConflictException(resource = "",
                                   message = "LDAP Directory does not support updating accounts.",
                                   developerMessage = "LDAP Directory does not support updating accounts."))
+      case Some(_) =>
+        Failure(BadRequestException(resource = "",
+          message = "Unknown directory type.",
+          developerMessage = "Directory type is unknown. Please contact support."))
       case None => throw new BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
@@ -235,6 +239,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         Failure(ConflictException(resource = "",
                                   message = "LDAP Directory does not support updating accounts.",
                                   developerMessage = "LDAP Directory does not support updating accounts."))
+      case Some(_) =>
+        Failure(BadRequestException(resource = "",
+          message = "Unknown directory type.",
+          developerMessage = "Directory type is unknown. Please contact support."))
       case None => throw new BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
