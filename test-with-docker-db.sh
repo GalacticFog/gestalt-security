@@ -59,5 +59,6 @@ export TEST_LDAP_URL=ldap://$DOCKERIP:$LDAPPORT
 echo ""
 echo "Running tests!"
 sbt test || true
+#sbt "~testOnly com.galacticfog.gestalt.security.test.AccountSpecs" -jvm-debug 9999 || true
 
 exit 0
