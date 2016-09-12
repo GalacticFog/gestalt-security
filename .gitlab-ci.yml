@@ -76,6 +76,19 @@ github-publish:
   allow_failure: true
   artifacts:
 
+.deploy_template: &deploy_to_int
+  image: galacticfog/gitlab-updater
+  stage: deploy
+  environment: int
+  tags: 
+    - test-cluster
+  script: 
+    - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
+    - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
+    - /usr/local/bin/update-deployed-app.sh  marathon.mesos:8080 sy-int-tasks/security  $DOCKER_IMG:$DOCKER_TAG
+  allow_failure: true
+  artifacts:
+
 auto-deploy-master:
   <<: *deploy_to_test
   only: 
@@ -83,6 +96,17 @@ auto-deploy-master:
 
 manual-deploy-non-master:
   <<: *deploy_to_test
+  except: 
+    - master
+  when: manual
+
+auto-deploy-master:
+  <<: *deploy_to_int
+  only: 
+    - master
+
+manual-deploy-non-master:
+  <<: *deploy_to_int
   except: 
     - master
   when: manual
