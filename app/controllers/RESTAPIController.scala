@@ -821,11 +821,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
-     println("RESTAPIController.updateAccount()....")
     val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
-      case s: JsSuccess[Seq[PatchOp]] => Right(s.get)
+      case JsSuccess(ps: Seq[PatchOp], _) => Right(ps)
       case _ => request.body.validate[GestaltAccountUpdate] match {
-        case s: JsSuccess[GestaltAccountUpdate] => Left(s.get)
+        case JsSuccess(au: GestaltAccountUpdate, _) => Left(au)
         case _ => throw new BadRequestException(
           resource = request.path,
           message = "invalid payload",
@@ -1033,10 +1032,68 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
     }
   }
 
-  def disableAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
+  def hardDeleteAccount(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
     requireAuthorization(DELETE_ACCOUNT)
     AccountFactory.find(accountId) match {
-      case Some(account) if !account.disabled && account.id != request.user.identity.id =>
+      case None =>
+        Future{
+          Ok(Json.toJson(DeleteResult(false)))
+        }
+      case Some(account) if account.id != request.user.identity.id =>
+        Future {
+          account.destroy()
+          Ok(Json.toJson(DeleteResult(true)))
+        }
+      case Some(account) if account.id == request.user.identity.id => Future {
+        BadRequest(Json.toJson(BadRequestException(
+          resource = request.path,
+          message = "cannot delete self",
+          developerMessage = "The authenticated account is the same as the account targeted by the delete operation. You cannot delete yourself. Get someone else to delete you."
+        )))
+      }
+    }
+  }
+
+  def enableAccount(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
+    requireAuthorization(UPDATE_ACCOUNT)
+    AccountFactory.find(accountId) match {
+      case Some(account) if account.id != request.user.identity.id =>
+        Future {
+          DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
+            case None => throw new UnknownAPIException(
+              code = 500,
+              resource = request.path,
+              message = "could not locate directory associated with account",
+              developerMessage = "Could not locate the directory associated with the specified account. Please contact support."
+            )
+            case Some(dir) =>
+              dir.disableAccount(account.id.asInstanceOf[UUID], disabled = false)
+              Ok(Json.obj(
+                "enabled" -> true
+              ))
+          }
+        }
+      case Some(account) if account.id == request.user.identity.id => Future {
+        BadRequest(Json.toJson(BadRequestException(
+          resource = request.path,
+          message = "cannot enable self",
+          developerMessage = "The authenticated account is the same as the account targeted by the enable operation. You cannot enable yourself. Get someone else to enable you."
+        )))
+      }
+      case None => Future {
+        NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "account does not exist",
+          developerMessage = "Could not enable the target account because it does not exist or the provided credentials do not have rights to see it."
+        )))
+      }
+    }
+  }
+
+  def disableAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
+    requireAuthorization(UPDATE_ACCOUNT)
+    AccountFactory.find(accountId) match {
+      case Some(account) if account.id != request.user.identity.id =>
         Future {
           DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
             case None => throw new UnknownAPIException(
@@ -1047,28 +1104,23 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
             )
             case Some(dir) =>
               dir.disableAccount(account.id.asInstanceOf[UUID])
-              Ok(Json.toJson(DeleteResult(true)))
+              Ok(Json.obj(
+                "disabled" -> true
+              ))
           }
         }
-      case Some(account) if account.disabled => Future {
-        BadRequest(Json.toJson(BadRequestException(
-          resource = request.path,
-          message = "account has already been deleted",
-          developerMessage = "The account has already been deleted and cannot therefore be deleted again."
-        )))
-      }
       case Some(account) if account.id == request.user.identity.id => Future {
         BadRequest(Json.toJson(BadRequestException(
           resource = request.path,
-          message = "cannot delete self",
-          developerMessage = "The authenticated account is the same as the account targeted by the delete operation. You cannot delete yourself. Get someone else to delete you."
+          message = "cannot disable self",
+          developerMessage = "The authenticated account is the same as the account targeted by the disable operation. You cannot disable yourself. Get someone else to disable you."
         )))
       }
       case None => Future {
         NotFound(Json.toJson(ResourceNotFoundException(
           resource = request.path,
           message = "account does not exist",
-          developerMessage = "Could not delete the target account because it does not exist or the provided credentials do not have rights to see it."
+          developerMessage = "Could not disable the target account because it does not exist or the provided credentials do not have rights to see it."
         )))
       }
     }

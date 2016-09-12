@@ -4,13 +4,16 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
+import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
+import com.galacticfog.gestalt.security.data.model.UserAccountRepository
+import com.galacticfog.gestalt.security.utils.SecureIdGenerator
+import org.specs2.matcher.{Matcher, JsonMatchers}
 import play.api.libs.json.Json
 
-class AccountSpecs extends SpecWithSDK {
+class AccountSpecs extends SpecWithSDK with JsonMatchers {
 
   val rootPhone = "+1.505.867.5309"
   val rootEmail = "root@root"
@@ -24,6 +27,12 @@ class AccountSpecs extends SpecWithSDK {
     phoneNumber = Some("+1.555.555.5555"),
     credential = GestaltPasswordCredential("letmein")
   )))
+
+
+  def beADisabledAccount: Matcher[UserAccountRepository] = { uar: UserAccountRepository =>
+    (uar.disabled == true, uar.username+" is disabled", uar.username+" is not disabled")
+  }
+
 
   "Accounts" should {
 
@@ -56,6 +65,50 @@ class AccountSpecs extends SpecWithSDK {
 
     "not be able to delete themselves" in {
       await(GestaltAccount.deleteAccount(rootAccount.id)) must throwA[BadRequestException](".*cannot delete self.*")
+    }
+
+    "not be able to disable themselves" in {
+      await(keySdk.postJson(s"accounts/${rootAccount.id}/disable")).toString must throwA[BadRequestException](".*cannot disable self.*")
+    }
+
+    "disabled accounts" in {
+      lazy val raccount = await(GestaltOrg.createAccount(rootOrg.id, GestaltAccountCreateWithRights(
+        username = SecureIdGenerator.genId36(24),
+        firstName = "", lastName = "",
+        credential = GestaltPasswordCredential(SecureIdGenerator.genId36(24))
+      )))
+      lazy val GestaltAPIKey(key,secret,_,_) = await(raccount.generateAPICredentials(Some(rootOrg.id)))
+
+      "cannot auth" in {
+        AccountFactory.find(raccount.id) must beSome(beADisabledAccount.not)
+        val newSDK = keySdk.withCreds(GestaltBasicCredentials(key, secret.get))
+        await(keySdk.postJson(s"accounts/${raccount.id}/disable")).toString must /("disabled" -> true)
+        AccountFactory.find(raccount.id) must beSome(beADisabledAccount)
+        await(GestaltAccount.getSelf()(newSDK)) must throwA[UnauthorizedAPIException]
+      }
+
+      "cannot enable self" in {
+        // because we can't auth, but still needs checking
+        val newSDK = keySdk.withCreds(GestaltBasicCredentials(key, secret.get))
+        AccountFactory.find(raccount.id) must beSome(beADisabledAccount)
+        await(newSDK.postJson(s"accounts/${raccount.id}/enable")) must throwA[UnauthorizedAPIException]
+        AccountFactory.find(raccount.id) must beSome(beADisabledAccount)
+      }
+
+      "can auth after being re-enabled" in {
+        await(keySdk.postJson(s"accounts/${raccount.id}/enable")).toString must /("enabled" -> true)
+        AccountFactory.find(raccount.id) must beSome(beADisabledAccount.not)
+        val newSDK = keySdk.withCreds(GestaltBasicCredentials(key, secret.get))
+        await(GestaltAccount.getSelf()(newSDK)).id must_== raccount.id
+      }
+    }
+
+    "should 404 on enabling non-existent account" in {
+      await(keySdk.postJson(s"accounts/${UUID.randomUUID()}/enable")) must throwA[ResourceNotFoundException]
+    }
+
+    "should 404 on disabling non-existent account" in {
+      await(keySdk.postJson(s"accounts/${UUID.randomUUID()}/disable")) must throwA[ResourceNotFoundException]
     }
 
     "be updated with an email address" in {

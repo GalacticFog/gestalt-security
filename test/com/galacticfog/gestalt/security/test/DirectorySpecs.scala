@@ -1,5 +1,7 @@
 package com.galacticfog.gestalt.security.test
 
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.json.JsonImports
@@ -54,8 +56,18 @@ class DirectorySpecs extends SpecWithSDK {
 
     "process account deletion" in {
       await(GestaltAccount.deleteAccount(testUser2.id)) must beTrue
-      await(GestaltAccount.getById(testUser2.id)) must beSome(testUser2)
-      await(rootDir.getAccountByUsername("testAccount2")) must beSome(testUser2)
+      AccountFactory.find(testUser2.id) must beNone
+      await(GestaltAccount.getById(testUser2.id)) must beNone
+      await(rootDir.getAccountByUsername("testAccount2")) must beNone
+    }
+
+    "return 200/false when deleting deleted accounts" in {
+      // was deleted above
+      await(GestaltAccount.deleteAccount(testUser2.id)) must beFalse
+    }
+
+    "return 200/false when deleting non-existent accounts" in {
+      await(GestaltAccount.deleteAccount(UUID.randomUUID())) must beFalse
     }
 
   }
