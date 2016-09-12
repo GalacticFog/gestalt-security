@@ -363,7 +363,7 @@ class LDAPSpecs extends SpecWithSDK {
       await(testOrg.listAccounts()) map {_.username} must contain("newton")
     }
 
-    "delete should disable account but not remove it" in {
+    "disable should disabled the account but not remove it" in {
       val newton = ldap.lookupAccounts(username = Some("newton")).head
       val dao = UserAccountRepository.find(newton.id).get
       dao.disabled must beFalse
@@ -372,6 +372,21 @@ class LDAPSpecs extends SpecWithSDK {
       await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beNone
       await(GestaltApp.listAccounts(newOrgApp.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
       await(GestaltOrg.listAccounts(newOrg.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
+    }
+
+    "delete account should remove it from security until next lookup or auth" in {
+      val newton = ldap.lookupAccounts(username = Some("newton")).head
+      val dao = UserAccountRepository.find(newton.id).get
+      await(GestaltAccount.deleteAccount(newton.id)) must beTrue
+      await(GestaltApp.listAccounts(newOrgApp.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
+      await(GestaltOrg.listAccounts(newOrg.id)) must not contain( (a: GestaltAccount) => a.username == "newton")
+      await(GestaltAccount.getById(newton.id)) must beNone
+      // but it's still there, and will be brought back in on auth or search
+      await(GestaltToken.grantPasswordToken(newOrg.id, "newton", "password")) must beSome
+      val newNewton = ldap.lookupAccounts(username = Some("newton")).head
+      await(GestaltApp.listAccounts(newOrgApp.id)) must contain( (a: GestaltAccount) => a.username == "newton")
+      await(GestaltOrg.listAccounts(newOrg.id)) must contain( (a: GestaltAccount) => a.username == "newton")
+      newNewton.id must_!= newton.id
     }
 
   }
