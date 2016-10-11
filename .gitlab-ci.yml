@@ -37,6 +37,8 @@ test:
 
 docker-publish:
   stage: publish
+  services:
+    - docker:dind
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
