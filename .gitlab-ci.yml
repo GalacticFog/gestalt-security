@@ -26,6 +26,7 @@ variables:
 test:
   stage: test
   services:
+    - docker:dind
     - postgres:9.4
     - galacticfog/test-ldap:0.1.0
   script:
