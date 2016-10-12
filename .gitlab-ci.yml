@@ -1,3 +1,5 @@
+image: galacticfog/docker-sbt:1.12
+
 stages:
 - test
 - publish
@@ -81,7 +83,7 @@ auto-deploy-master-to-test:
   <<: *deploy_to_env
   environment: test
   variables:
-    DEPLOYID: test-gestalt-tasks/security
+    DEPLOYID: gestalt-test-tasks/security
   only: 
     - master
 
@@ -89,7 +91,7 @@ manual-deploy-non-master-to-test:
   <<: *deploy_to_env
   environment: test
   variables:
-    DEPLOYID: test-gestalt-tasks/security
+    DEPLOYID: gestalt-test-tasks/security
   except: 
     - master
   when: manual
@@ -98,7 +100,7 @@ auto-deploy-master-to-int:
   <<: *deploy_to_env
   environment: int
   variables:
-    DEPLOYID: sy-int-tasks/security
+    DEPLOYID: sy-dev-int-tasks/security
   only: 
     - master
 
@@ -106,7 +108,7 @@ manual-deploy-non-master-to-int:
   <<: *deploy_to_env
   environment: int
   variables:
-    DEPLOYID: sy-int-tasks/security
+    DEPLOYID: sy-dev-int-tasks/security
   except: 
     - master
   when: manual
