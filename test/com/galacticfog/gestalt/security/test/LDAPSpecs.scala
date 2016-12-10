@@ -12,6 +12,7 @@ import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import play.api.libs.json.Json
 import com.galacticfog.gestalt.keymgr.GestaltLicense
+import com.galacticfog.gestalt.keymgr.GestaltLicenseMock
 
 class LDAPSpecs extends SpecWithSDK {
 
@@ -26,8 +27,7 @@ class LDAPSpecs extends SpecWithSDK {
   val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "admin"
   val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
   try {
-    val testlic = "ABwwGgQU6jkbJRMpvAwmuS1NhH1oMhCcWtgCAgQAOOeKdCF3m2grD4VMAspXn4PR8HWr6KnOeXq9W5XAtSBYGhmUhzADzM9KHSq0BqaNcsnkatU0lmcTjtfrIUF45f60ypA/jOuMZr2aMw+7+YRzMpe0syRjSijPFRex8SM4DB5mNHT8wz1e01C9PeD4/39mFyZy20gYmceVu8jSfeR8D8PveYjtY7MUfxsH5QR93SqKzbgVMR3kZjAQFgf1egxk2QDZuzztvgy6ke8hLqbuxH7Pe40LAsMDSzBosTI8pKBAscZ/xiyO64DNGkh0nicGOlU1/d4kOePF+Dpnbt+entRBZMhOeG/tqFRM0dHN+Ou59Wa35e/3gvPTAloN89l1n1/f7bhNuCQJnos/z0c8yeu7+rQ+U2FW1Lqh6QMJS79HLcZnbRy3Ezx4Iu75YiuYMZJvnJ/z"
-    GestaltLicense.instance.install(testlic)
+    GestaltLicense.setInstance(new GestaltLicenseMock())
   } catch {
     case e: Throwable => 
 }
