@@ -56,7 +56,7 @@ github-publish:
     - git remote remove github || true
     - git remote add github https://$GITHUB_CREDENTIALS@github.com/GalacticFog/gestalt-security.git
     - |
-      if [ -z ${CI_BUILD_TAG} ]; then 
+      if [ -z ${CI_BUILD_TAG+x} ]; then 
          git push github HEAD:$CI_BUILD_REF_NAME
       else 
          git push -f github $CI_BUILD_TAG
