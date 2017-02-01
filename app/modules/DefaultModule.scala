@@ -1,3 +1,5 @@
+package modules
+
 import com.galacticfog.gestalt.security.data.domain.{AccountStoreMappingService, DefaultAccountStoreMappingServiceImpl}
 import com.google.inject.AbstractModule
 
