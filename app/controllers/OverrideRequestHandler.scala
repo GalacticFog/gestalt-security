@@ -54,7 +54,7 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
   val overrideParameter: String = config.methodOverrideParameter
 
   private[this] def topLevelEndpoint(path: String): (String,String) = {
-    path.stripPrefix("/").split("/",3) match {
+    path.stripPrefix("/").split("/",2) match {
       case Array(top)       => (top,"")
       case Array(top, tail) => (top,"/" + tail)
       case _ => ("","")
