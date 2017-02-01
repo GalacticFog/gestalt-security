@@ -1,13 +1,14 @@
 package controllers
 
 import java.util.UUID
+import javax.inject.Inject
+
 import akka.util.Timeout
-import com.galacticfog.gestalt.io.util.{PatchUpdate, PatchOp}
 import com.galacticfog.gestalt.security.actors.RateLimitingActor
 import com.galacticfog.gestalt.security.actors.RateLimitingActor.{RequestAccepted, TokenGrantRateLimitCheck}
 import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.{Init, BuildInfo, Global}
+import com.galacticfog.gestalt.security.{BuildInfo, Init, SecurityConfig}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.data.domain._
@@ -18,21 +19,24 @@ import play.api.libs.json._
 import play.api._
 import play.api.mvc._
 import play.libs.Akka
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import OrgFactory.Rights._
+
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
-import PatchUpdate._
 import akka.pattern.ask
+import com.galacticfog.gestalt.patch.PatchOp
+
 import scala.concurrent.duration._
 
-object RESTAPIController extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
+class RESTAPIController @Inject()( config: SecurityConfig,
+                                   accountStoreMappingService: AccountStoreMappingService )
+  extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
-  val defaultTokenExpiration: Long =  Global.tokenLifetime.getStandardSeconds
-
-  val services = Global.services
+  val defaultTokenExpiration: Long =  config.tokenLifetime.getStandardSeconds
 
   def rateCheckActor = Akka.system().actorSelection(s"/user/${RateLimitingActor.ACTOR_NAME}")
 
@@ -113,7 +117,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   } yield dir.orgId
 
   private[this] def resolveMappingOrg(mapId: UUID): Option[UUID] = for {
-    mapping <- services.accountStoreMappingService.find(mapId)
+    mapping <- accountStoreMappingService.find(mapId)
     app <- AppFactory.find(mapping.appId.asInstanceOf[UUID])
   } yield app.orgId.asInstanceOf[UUID]
 
@@ -460,7 +464,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   }
 
   def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)) { implicit request =>
-    services.accountStoreMappingService.find(mapId) match {
+    accountStoreMappingService.find(mapId) match {
       case Some(asm) => Ok(Json.toJson[GestaltAccountStoreMapping](asm))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
@@ -855,11 +859,11 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
       case Some(grant) =>
         validateBody[Seq[PatchOp]] match {
           case Seq(patch) if patch.path == "/grantValue" =>
-            patch.op.toLowerCase match {
-              case update if update == "add" || update == "replace" =>
-                val newvalue = patch.value.as[String]
+            (patch.op.toLowerCase,patch.value) match {
+              case (update,Some(value)) if update == "add" || update == "replace" =>
+                val newvalue = value.as[String]
                 Ok(Json.toJson[GestaltRightGrant](grant.copy(grantValue = Some(newvalue))))
-              case "remove" => Ok(Json.toJson[GestaltRightGrant](
+              case ("remove",None) => Ok(Json.toJson[GestaltRightGrant](
                 grant.copy(grantValue = None).save()
               ))
               case _ => defaultBadPatch
@@ -873,10 +877,10 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
   def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_ACCOUNT_STORE)
     val patch = validateBody[Seq[PatchOp]]
-    services.accountStoreMappingService.find(mapId) match {
+    accountStoreMappingService.find(mapId) match {
       case None => defaultResourceNotFound
       case Some(map) =>
-        val updated: AccountStoreMappingRepository = services.accountStoreMappingService.updateMapping( map, patch )
+        val updated: AccountStoreMappingRepository = accountStoreMappingService.updateMapping( map, patch )
         Ok(Json.toJson[GestaltAccountStoreMapping](updated))
     }
   }
@@ -923,7 +927,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
 
   def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)).async { implicit request =>
     requireAuthorization(DELETE_ACCOUNT_STORE)
-    services.accountStoreMappingService.find(mapId) match {
+    accountStoreMappingService.find(mapId) match {
       case Some(asm) =>
         Future {
           AccountStoreMappingRepository.destroy(asm)
@@ -1261,7 +1265,7 @@ object RESTAPIController extends Controller with GestaltHeaderAuthentication wit
           } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
           case _ => oAuthErr(INVALID_GRANT,"Rate limit exceeded")
         } }
-      case Failure(ex) => Future.successful(Global.handleError(request, ex))
+      case Failure(ex) => Future.successful(handleError(request, ex))
     }
   }
 

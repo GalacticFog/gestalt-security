@@ -1,6 +1,5 @@
 package com.galacticfog.gestalt.security.test
 
-import com.galacticfog.gestalt.security.GlobalWithMethodOverriding
 import org.junit.runner._
 import org.specs2.mutable._
 import org.specs2.runner._

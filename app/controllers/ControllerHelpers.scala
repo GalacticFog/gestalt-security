@@ -1,30 +1,18 @@
 package controllers
 
-import java.util.UUID
-
-import com.galacticfog.gestalt.io.util.PatchOp
-import com.galacticfog.gestalt.security.Global
-import com.galacticfog.gestalt.security.api.AccessTokenResponse.BEARER
-import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
-import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
-import com.galacticfog.gestalt.security.data.APIConversions._
-import com.galacticfog.gestalt.security.data.domain.OrgFactory.Rights._
-import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.data.model._
-import org.joda.time.Duration
-import play.api._
-import play.api.http.MimeTypes
+import org.postgresql.util.PSQLException
+import play.api.Logger
 import play.api.libs.json._
 import play.api.mvc._
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
 trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
   this : Controller =>
+
+  val log = Logger(this.getClass)
 
   def defaultBadPatch(implicit request: RequestHeader) = {
     BadRequest(Json.toJson(BadRequestException(
@@ -42,6 +30,36 @@ trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
     )))
   }
 
+  def handleError(request: RequestHeader, e: Throwable): Result = {
+    val resource = e match {
+      case sre: SecurityRESTException if !sre.resource.isEmpty =>
+        sre.resource
+      case _ => request.path
+    }
+    e match {
+      case sql: PSQLException =>
+        log.error(s"caught psql error with state ${sql.getSQLState}", sql)
+        InternalServerError(Json.toJson(UnknownAPIException(
+          code = 500,
+          resource = "",
+          message = s"PSQL error ${sql.getSQLState}, ${sql.getErrorCode}",
+          developerMessage = sql.getServerErrorMessage.getMessage
+        )))
+      case oauthErr: OAuthError => BadRequest(Json.toJson(oauthErr).as[JsObject] ++ Json.obj("resource" -> resource))
+      case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
+      case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
+      case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
+      case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
+      case conflict: ConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
+      case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
+      case nope: Throwable =>
+        log.error("caught unexpected error", nope)
+        InternalServerError(Json.toJson(UnknownAPIException(
+          code = 500, resource = request.path, message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
+        )))
+    }
+  }
+
   case class TryRenderer[B](status: Status) {
     def apply[A](bodyTry: Try[A])
                 (implicit request: RequestHeader,
@@ -50,7 +68,7 @@ trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
       case Success(body) =>
         status(Json.toJson(body: B))
       case Failure(e) =>
-        Global.handleError(request, e)
+        handleError(request, e)
     }
   }
 

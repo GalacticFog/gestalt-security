@@ -1,24 +1,6 @@
-import com.typesafe.sbt.packager.docker._
-
 name := """gestalt-security"""
 
-organization := "com.galacticfog"
-
-version := "2.2.5-SNAPSHOT"
-
-maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
-
-dockerBaseImage := "java:8-jre-alpine"
-
-dockerExposedPorts := Seq(9000)
-
-dockerCommands := dockerCommands.value.flatMap {
-  case cmd@Cmd("FROM",_) => List(
-    cmd,
-    Cmd("RUN", "apk add --update bash && rm -rf /var/cache/apk/*")     
-  )
-  case other => List(other)
-}
+version := "2.4.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala,SbtNativePackager).
@@ -51,11 +33,17 @@ scalacOptions ++= Seq(
   "-language:postfixOps", "-language:implicitConversions"
 )
 
-libraryDependencies ++= Seq(
-  jdbc,
-  cache,
-  ws
-)
+import com.typesafe.sbt.packager.docker._
+maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+dockerBaseImage := "java:8-jre-alpine"
+dockerExposedPorts := Seq(9000)
+dockerCommands := dockerCommands.value.flatMap {
+  case cmd@Cmd("FROM",_) => List(
+    cmd,
+    Cmd("RUN", "apk add --update bash && rm -rf /var/cache/apk/*")     
+  )
+  case other => List(other)
+}
 
 resolvers ++= Seq(
   "gestalt-snapshots" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
@@ -64,6 +52,17 @@ resolvers ++= Seq(
   "releases"  at "http://scala-tools.org/repo-releases",
   "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
 )
+
+libraryDependencies ++= Seq(
+  jdbc,
+  ws,
+  specs2 % Test,
+  "org.scalikejdbc" %% "scalikejdbc" % "2.2.9",
+  "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.9" % Test,
+  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
+)
+
+libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.6.6" % "test")
 
 //
 // Adds project name to prompt like in a Play project
@@ -83,44 +82,13 @@ scalikejdbcSettings
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" %% "gestalt-io" % "1.0.4" withSources(),
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.7-SNAPSHOT" withSources(),
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
   "com.galacticfog" %% "gestalt-ldapdirectory" % "1.0.0-SNAPSHOT",
   "com.galacticfog" % "gestalt-license-keymgr" % "1.2.1-SNAPSHOT"
 )
 
-// ----------------------------------------------------------------------------
-// Play JSON
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "com.typesafe.play" %% "play-json" % "2.4.0-M2"
-
-// ----------------------------------------------------------------------------
-// ScalikeJDBC
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc" % "2.2.9"
-
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc-test"   % "2.2.9"   % "test"
-
-// ----------------------------------------------------------------------------
-// PostgreSQL
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
-
-// ----------------------------------------------------------------------------
-// Specs 2
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "junit" % "junit" % "4.12" % "test"
-
-libraryDependencies += "org.specs2" %% "specs2-junit" % "2.4.15" % "test"
-
-libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.15" % "test"
+libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 
 libraryDependencies += "org.apache.commons" % "commons-dbcp2" % "2.1"
 
-libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
-
-libraryDependencies += "org.slf4j" % "slf4j-simple"   % "1.6.1" % "test"
+// libraryDependencies += "org.slf4j" % "slf4j-simple"   % "1.6.1" % "test"

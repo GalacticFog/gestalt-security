@@ -2,7 +2,7 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.io.util.PatchOp
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
 import com.galacticfog.gestalt.security.data.APIConversions
@@ -180,21 +180,21 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
                    (implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
     val patchedAccount = patches.foldLeft(account)((acc, patch) => {
       patch.copy(op = patch.op.toLowerCase) match {
-        case PatchOp("replace", "/username",value)     => acc.copy(username = value.as[String])
-        case PatchOp("replace", "/firstName",value)    => acc.copy(firstName = value.as[String])
-        case PatchOp("replace", "/lastName",value)     => acc.copy(lastName = value.as[String])
-        case PatchOp("replace", "/disabled", value)    => acc.copy(disabled = value.as[Boolean])
-        case PatchOp("replace", "/password", value)    => {
+        case PatchOp("replace", "/username",Some(value))     => acc.copy(username = value.as[String])
+        case PatchOp("replace", "/firstName",Some(value))    => acc.copy(firstName = value.as[String])
+        case PatchOp("replace", "/lastName",Some(value))     => acc.copy(lastName = value.as[String])
+        case PatchOp("replace", "/disabled", Some(value))    => acc.copy(disabled = value.as[Boolean])
+        case PatchOp("replace", "/password", Some(value))    => {
           import com.galacticfog.gestalt.security.api.json.JsonImports._
           val newpass = BCrypt.hashpw(value.as[GestaltAccountCredential].asInstanceOf[GestaltPasswordCredential].password, BCrypt.gensalt())
           acc.copy(hashMethod = "bcrypt", secret = newpass)
         }
-        case PatchOp("remove",  "/email", _)           => acc.copy(email = None)
-        case PatchOp("add",     "/email", value)       => acc.copy(email = Some(value.as[String]))
-        case PatchOp("replace", "/email", value)       => acc.copy(email = Some(value.as[String]))
-        case PatchOp("remove",  "/phoneNumber", _)     => acc.copy(phoneNumber = None)
-        case PatchOp("add",     "/phoneNumber", value) => acc.copy(phoneNumber = Some(value.as[String]))
-        case PatchOp("replace", "/phoneNumber", value) => acc.copy(phoneNumber = Some(value.as[String]))
+        case PatchOp("remove",  "/email", None)              => acc.copy(email = None)
+        case PatchOp("add",     "/email", Some(value))       => acc.copy(email = Some(value.as[String]))
+        case PatchOp("replace", "/email", Some(value))       => acc.copy(email = Some(value.as[String]))
+        case PatchOp("remove",  "/phoneNumber", None)        => acc.copy(phoneNumber = None)
+        case PatchOp("add",     "/phoneNumber", Some(value)) => acc.copy(phoneNumber = Some(value.as[String]))
+        case PatchOp("replace", "/phoneNumber", Some(value)) => acc.copy(phoneNumber = Some(value.as[String]))
         case _ => throw new BadRequestException(
           resource = "",
           message = "bad PATCH payload for updating account store",
@@ -217,7 +217,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         message = "A valid directory was not found for the account",
         developerMessage = "A valid directory was not found for the account.")
     }
-
   }
 
   def updateAccountSDK(account: UserAccountRepository, update: GestaltAccountUpdate)(implicit session: DBSession = autoSession): Try[UserAccountRepository] = {
@@ -439,9 +438,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       case Some(grant) =>
         val newGrant = patch.foldLeft(grant)((g, p) => {
           p match {
-            case PatchOp(op,"/grantValue",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+            case PatchOp(op,"/grantValue",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
               g.copy(grantValue = Some(value.as[String]))
-            case PatchOp("remove","/grantValue",value) =>
+            case PatchOp("remove","/grantValue",None) =>
               g.copy(grantValue = None)
             case _ => throw new BadRequestException(
               resource = "",
@@ -464,9 +463,9 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       case Some(grant) =>
         val newGrant = patch.foldLeft(grant)((g, p) => {
           p match {
-            case PatchOp(op,"/grantValue",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+            case PatchOp(op,"/grantValue",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
               g.copy(grantValue = Some(value.as[String]))
-            case PatchOp("remove","/grantValue",value) =>
+            case PatchOp("remove","/grantValue",None) =>
               g.copy(grantValue = None)
             case _ => throw new BadRequestException(
               resource = "",

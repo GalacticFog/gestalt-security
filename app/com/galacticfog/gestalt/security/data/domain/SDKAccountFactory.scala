@@ -1,7 +1,7 @@
 package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
-import com.galacticfog.gestalt.io.util.PatchOp
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, SecurityRESTException}
 import com.galacticfog.gestalt.security.api.{GestaltAccount, GestaltAccountCreate, GestaltAccountUpdate, GestaltBasicCredsToken}
 import com.galacticfog.gestalt.security.data.APIConversions
