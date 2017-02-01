@@ -25,7 +25,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
 
   val E164_PHONE_NUMBER: Regex = """^\+\d{10,15}$""".r
 
-  def instance = this
+  def instance: AccountFactory.type = this
 
   def canonicalE164(phoneNumber: String): String = {
     phoneNumber.replaceAll("[- ().]","")
@@ -35,7 +35,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     Try {
       E164_PHONE_NUMBER.findFirstIn(canonicalE164(phoneNumber)) match {
         case Some(validNumber) => validNumber
-        case None => throw new BadRequestException(
+        case None => throw BadRequestException(
           resource = "",
           message = "badly formatted phoneNumber",
           developerMessage = s"""Badly formatted phone number. Must match E.164 formatting."""
@@ -110,7 +110,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         description = description
       )
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_phone_number_check" => Failure(BadRequestException(
             resource = "",
@@ -142,7 +142,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     Try {
       account.save()
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_phone_number_check" => Failure(BadRequestException(
             resource = "",
@@ -195,7 +195,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         case PatchOp("remove",  "/phoneNumber", None)        => acc.copy(phoneNumber = None)
         case PatchOp("add",     "/phoneNumber", Some(value)) => acc.copy(phoneNumber = Some(value.as[String]))
         case PatchOp("replace", "/phoneNumber", Some(value)) => acc.copy(phoneNumber = Some(value.as[String]))
-        case _ => throw new BadRequestException(
+        case _ => throw BadRequestException(
           resource = "",
           message = "bad PATCH payload for updating account store",
           developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."
@@ -212,7 +212,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         Failure(BadRequestException(resource = "",
           message = "Unknown directory type.",
           developerMessage = "Directory type is unknown. Please contact support."))
-      case None => throw new BadRequestException(
+      case None => throw BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
         developerMessage = "A valid directory was not found for the account.")
@@ -242,12 +242,12 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         Failure(BadRequestException(resource = "",
           message = "Unknown directory type.",
           developerMessage = "Directory type is unknown. Please contact support."))
-      case None => throw new BadRequestException(
+      case None => throw BadRequestException(
         resource = "",
         message = "A valid directory was not found for the account",
         developerMessage = "A valid directory was not found for the account.")
     }
-    throw new BadRequestException(resource = "", message = "", developerMessage = "")
+    throw BadRequestException(resource = "", message = "", developerMessage = "")
   }
 
 
@@ -332,7 +332,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     } yield authedAcc
     lazy val groupAccounts = for {
       grpMapping <- groupMappings
-      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq.map { APIConversions.groupModelToApi(_) }
+      group <- UserGroupRepository.find(grpMapping.accountStoreId).toSeq.map { APIConversions.groupModelToApi }
       dir <- DirectoryFactory.find(group.directory.id.asInstanceOf[UUID]).toSeq
       acc <- safeSeq(dir.lookupAccounts(
         group = Some(group),
@@ -399,7 +399,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
   def listAppAccountGrants(appId: UUID, accountId: UUID)(implicit session: DBSession = autoSession): Seq[RightGrantRepository] = {
     findAppUserByAccountId(appId, accountId) match {
       case Some(account) => RightGrantFactory.listAccountRights(appId, account.id.asInstanceOf[UUID])
-      case None => throw new ResourceNotFoundException(
+      case None => throw ResourceNotFoundException(
         resource = "account",
         message = "could not locate application account",
         developerMessage = "Could not location application account while looking up application grants. Ensure that the specified account ID corresponds to an account that is assigned to the specified application."
@@ -442,7 +442,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
               g.copy(grantValue = Some(value.as[String]))
             case PatchOp("remove","/grantValue",None) =>
               g.copy(grantValue = None)
-            case _ => throw new BadRequestException(
+            case _ => throw BadRequestException(
               resource = "",
               message = "bad PATCH payload for updating account grant",
               developerMessage = "The PATCH payload for updating the accoutn grant had invalid fields."
@@ -450,7 +450,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
           }
         })
         newGrant.save()
-      case None => throw new ResourceNotFoundException(
+      case None => throw ResourceNotFoundException(
         resource = "",
         message = "grant does not exist",
         developerMessage = "A grant with the given name does not exist for the given account in the given app."
@@ -467,7 +467,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
               g.copy(grantValue = Some(value.as[String]))
             case PatchOp("remove","/grantValue",None) =>
               g.copy(grantValue = None)
-            case _ => throw new BadRequestException(
+            case _ => throw BadRequestException(
               resource = "",
               message = "bad PATCH payload for updating account grant",
               developerMessage = "The PATCH payload for updating the accoutn grant had invalid fields."
@@ -475,7 +475,7 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
           }
         })
         newGrant.save()
-      case None => throw new ResourceNotFoundException(
+      case None => throw ResourceNotFoundException(
         resource = "",
         message = "grant does not exist",
         developerMessage = "A grant with the given name does not exist for the given account in the given app."

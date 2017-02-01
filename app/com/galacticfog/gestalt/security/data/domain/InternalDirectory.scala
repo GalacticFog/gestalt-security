@@ -34,13 +34,13 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
   override def updateAccount(account: GestaltAccount, update: GestaltAccountUpdate): Try[GestaltAccount] = {
     // Currently not called.  TODO - need to address how to update disabled attribute since neither account or update contain it.
     UserAccountRepository.find(account.id) match {
-      case Some(uar) => AccountFactory.saveAccount(uar).map { APIConversions.accountModelToApi(_) }
-      case None => throw new ResourceNotFoundException(resource = account.id.toString, message = "Error finding account for update", developerMessage = "Error finding repository account for update")
+      case Some(uar) => AccountFactory.saveAccount(uar).map {APIConversions.accountModelToApi}
+      case None => throw ResourceNotFoundException(resource = account.id.toString, message = "Error finding account for update", developerMessage = "Error finding repository account for update")
     }
   }
 
   override def lookupGroups(groupName: String): Seq[GestaltGroup] = {
-    GroupFactory.queryShadowedDirectoryGroups(Some(id), Some(groupName)).map { APIConversions.groupModelToApi(_) }
+    GroupFactory.queryShadowedDirectoryGroups(Some(id), Some(groupName)).map { APIConversions.groupModelToApi }
   }
 
   override def getGroupById(groupId: UUID): Option[GestaltGroup] = {
@@ -50,7 +50,7 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
     }
   }
 
-  override def listGroupAccounts(groupId: UUID): Seq[GestaltAccount] = GroupFactory.listGroupAccounts(groupId).map { APIConversions.accountModelToApi(_) }
+  override def listGroupAccounts(groupId: UUID): Seq[GestaltAccount] = GroupFactory.listGroupAccounts(groupId).map { APIConversions.accountModelToApi }
 
   override def deleteGroup(groupId: UUID): Boolean = {
     GroupFactory.delete(groupId)
@@ -69,7 +69,7 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
       salt = "",
       secret = BCrypt.hashpw(cred.password, BCrypt.gensalt()),
       disabled = false
-    ).map { APIConversions.accountModelToApi(_) }
+    ).map { APIConversions.accountModelToApi }
   }
 
   override def createGroup(name: String, description: Option[String]): Try[GestaltGroup] = {
@@ -78,7 +78,7 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
       description = description,
       dirId = id,
       maybeParentOrg = None
-    ).map { APIConversions.groupModelToApi(_) }
+    ).map { APIConversions.groupModelToApi }
   }
 
   /** Directory-specific (i.e., deep) query of accounts, supporting wildcard matches on username, phone number or email address.
@@ -100,6 +100,6 @@ case class InternalDirectory(directory: GestaltDirectoryRepository) extends Dire
       nameQuery = username,
       phoneQuery = phone,
       emailQuery = email
-    ).map { APIConversions.accountModelToApi(_) }
+    ).map { APIConversions.accountModelToApi }
   }
 }

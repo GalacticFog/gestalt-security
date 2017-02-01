@@ -41,7 +41,7 @@ class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport
           m.copy(defaultAccountStore = None)
         case PatchOp("remove","/isDefaultGroupStore",None) =>
           m.copy(defaultGroupStore = None)
-        case _ => throw new BadRequestException(
+        case _ => throw BadRequestException(
           resource = "",
           message = "bad PATCH payload for updating account store",
           developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."

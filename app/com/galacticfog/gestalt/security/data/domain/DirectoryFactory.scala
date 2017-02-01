@@ -30,7 +30,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         val dirapi = APIConversions.dirModelToApi(daoDir)
         val ldapdir = LDAPDirectory(dirapi, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance)
         ldapdir
-      case _ => throw new BadRequestException(
+      case _ => throw BadRequestException(
         resource = s"/directories/${daoDir.id}",
         message = "invalid directory type",
         developerMessage = "The requested directory has an unsupported directory type. Please ensure that you are running the latest version and contact support."
@@ -68,7 +68,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
         directoryType = create.directoryType.label
       )
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "directory_name_org_id_key" => Failure(ConflictException(
             resource = s"/orgs/${orgId}/directories",

@@ -18,7 +18,7 @@ object RightGrantFactory extends SQLSyntaxSupport[RightGrantRepository] {
   override val autoSession = AutoSession
 
   def recoverRightGrantCreate: PartialFunction[Throwable, Try[RightGrantRepository]] = {
-    case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+    case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
       t.getServerErrorMessage.getConstraint match {
         case "right_grant_name_nonempty" => Failure(BadRequestException(
           resource = "",

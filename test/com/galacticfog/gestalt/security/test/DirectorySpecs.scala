@@ -51,7 +51,7 @@ class DirectorySpecs extends SpecWithSDK {
       await(GestaltGroup.deleteGroup(testGroup2.id)) must beTrue
       await(GestaltGroup.getById(testGroup2.id)) must beNone
       await(rootDir.getGroupByName("testGroup2")) must beNone
-      await(testUser2.listGroupMemberships()) must not contain(hasName("testGroup2"))
+      await(testUser2.listGroupMemberships()) must not contain hasName("testGroup2")
     }
 
     "process account deletion" in {

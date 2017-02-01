@@ -11,11 +11,10 @@ import com.galacticfog.gestalt.security.{FlywayMigration, InitRequest}
 import org.flywaydb.core.Flyway
 import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import play.api.libs.json.Json
-import play.api.libs.ws.WS
+import play.api.libs.ws.WSClient
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import modules.DatabaseConnection
-import scalikejdbc.DBConnection
 
 trait SpecWithSDK extends PlaySpecification {
 
@@ -57,7 +56,7 @@ trait SpecWithSDK extends PlaySpecification {
     clearDB()
   })
 
-  val client = WS.client(fakeApp)
+  val client = fakeApp.injector.instanceOf[WSClient]
 
   lazy val rootApiKey = await(client.url(s"http://localhost:${testServerPort}/init").post(
     Json.toJson(InitRequest(

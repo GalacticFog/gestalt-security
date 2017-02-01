@@ -63,82 +63,81 @@ class Init @Inject() ( dbConn: DatabaseConnection ) extends SQLSyntaxSupport[Ini
   }
 
   def doInit(ir: InitRequest): Try[Seq[APICredentialRepository]] = {
-    checkDBInit match {
-      case true => Failure(BadRequestException("", "service already initialized", "The service is initialized"))
-      case false =>
-        val db = dbConn.dbConnection
-        val currentVersion = FlywayMigration.currentVersion(db)
-        val pre4Migration = !currentVersion.exists(_ >= 4)
+    if (checkDBInit) Failure(BadRequestException("", "service already initialized", "The service is initialized"))
+    else {
+      val db = dbConn.dbConnection
+      val currentVersion = FlywayMigration.currentVersion(db)
+      val pre4Migration = !currentVersion.exists(_ >= 4)
 
-        val maybeExistingAdmin = for {
-          settings <- getInitSettings.toOption
-          accountId <- settings.rootAccount
-          account <- AccountFactory.find(accountId.asInstanceOf[UUID])
-        } yield account
+      val maybeExistingAdmin = for {
+        settings <- getInitSettings.toOption
+        accountId <- settings.rootAccount
+        account <- AccountFactory.find(accountId.asInstanceOf[UUID])
+      } yield account
 
-        // get/create "root" account
-        val initAccount = (ir.username,maybeExistingAdmin) match {
-          case (Some(username),None) if pre4Migration =>
-            // schema version 4 will create admin user
-            evolveFromBefore4(db, username, ir.password)
-          case (Some(username),None) if !pre4Migration =>
-            FlywayMigration.migrate(db, "", "")
-            findAccountInRoot(username) recoverWith {
-              case rnf: ResourceNotFoundException => Failure(BadRequestException(
-                resource = "/init",
-                message = "invalid username",
-                developerMessage = "Admin account username specified to init must be an extant account in the /root organization."
-              ))
-            }
-          case (None, Some(existingAdmin)) =>
-            FlywayMigration.migrate(db, "", "")
-            Success(existingAdmin)
-          case (Some(username),Some(existingAdmin)) if username == existingAdmin.username =>
-            ir.password match {
-              case None =>
-                // don't clear admin password, leave it be
-                Success(existingAdmin)
-              case Some(newPassword) =>
-                // reset admin password
-                Try{ existingAdmin.copy(
-                  secret = BCrypt.hashpw(newPassword, BCrypt.gensalt()),
-                  hashMethod = "bcrypt"
-                ).save() }
-            }
-          case (None,_) if pre4Migration => Failure(BadRequestException(
-            resource = "/init",
-            message = "initialization requires username",
-            developerMessage = "Initialization requires username and password."
-          ))
-          case (Some(username),Some(existingAdmin)) if username != existingAdmin.username => Failure(BadRequestException(
-            resource = "/init",
-            message = "username provided but admin user already exist",
-            developerMessage = "Initialization does not currently support modifying the admin user."
-          ))
-          case (None,None) => Failure(BadRequestException(
-            resource = "/init",
-            message = "username required to establish admin user",
-            developerMessage = "There is no registered admin user, so the username of the desired user is necessary to establish one."
-          ))
-        }
-
-        for {
-          account <- initAccount
-          init <- getInitSettings
-          newInit <- Try{
-            init.copy(
-              initialized = true,
-              rootAccount = Some(account.id)
-            ).save()
+      // get/create "root" account
+      val initAccount = (ir.username,maybeExistingAdmin) match {
+        case (Some(username),None) if pre4Migration =>
+          // schema version 4 will create admin user
+          evolveFromBefore4(db, username, ir.password)
+        case (Some(username),None) if !pre4Migration =>
+          FlywayMigration.migrate(db, "", "")
+          findAccountInRoot(username) recoverWith {
+            case _: ResourceNotFoundException => Failure(BadRequestException(
+              resource = "/init",
+              message = "invalid username",
+              developerMessage = "Admin account username specified to init must be an extant account in the /root organization."
+            ))
           }
-          rootOrg <- Try{ OrgFactory.findByFQON("root").get }
-          prevKeys = APICredentialFactory.findByAccountId(account.id.asInstanceOf[UUID])
-          apiKeys <- if (prevKeys.isEmpty) APICredentialFactory.createAPIKey(
-            accountId = account.id.asInstanceOf[UUID],
-            boundOrg = Some(rootOrg.id.asInstanceOf[UUID]),
-            parentApiKey = None
-          ).map(List(_)) else Success(prevKeys)
-        } yield apiKeys
+        case (None, Some(existingAdmin)) =>
+          FlywayMigration.migrate(db, "", "")
+          Success(existingAdmin)
+        case (Some(username),Some(existingAdmin)) if username == existingAdmin.username =>
+          ir.password match {
+            case None =>
+              // don't clear admin password, leave it be
+              Success(existingAdmin)
+            case Some(newPassword) =>
+              // reset admin password
+              Try{ existingAdmin.copy(
+                secret = BCrypt.hashpw(newPassword, BCrypt.gensalt()),
+                hashMethod = "bcrypt"
+              ).save() }
+          }
+        case (None,_) if pre4Migration => Failure(BadRequestException(
+          resource = "/init",
+          message = "initialization requires username",
+          developerMessage = "Initialization requires username and password."
+        ))
+        case (Some(username),Some(existingAdmin)) if username != existingAdmin.username => Failure(BadRequestException(
+          resource = "/init",
+          message = "username provided but admin user already exist",
+          developerMessage = "Initialization does not currently support modifying the admin user."
+        ))
+        case (None,None) => Failure(BadRequestException(
+          resource = "/init",
+          message = "username required to establish admin user",
+          developerMessage = "There is no registered admin user, so the username of the desired user is necessary to establish one."
+        ))
+      }
+
+      for {
+        account <- initAccount
+        init <- getInitSettings
+        _ <- Try{
+          init.copy(
+            initialized = true,
+            rootAccount = Some(account.id)
+          ).save()
+        }
+        rootOrg <- Try{ OrgFactory.findByFQON("root").get }
+        prevKeys = APICredentialFactory.findByAccountId(account.id.asInstanceOf[UUID])
+        apiKeys <- if (prevKeys.isEmpty) APICredentialFactory.createAPIKey(
+          accountId = account.id.asInstanceOf[UUID],
+          boundOrg = Some(rootOrg.id.asInstanceOf[UUID]),
+          parentApiKey = None
+        ).map(List(_)) else Success(prevKeys)
+      } yield apiKeys
     }
   }
 

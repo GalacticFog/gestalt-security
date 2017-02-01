@@ -49,7 +49,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   private[this] def requireAuthorization[T](requiredRight: String)(implicit request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]) = {
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
-    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw new ForbiddenAPIException(
+    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw ForbiddenAPIException(
       message = "Forbidden",
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
@@ -145,7 +145,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     requireAuthorization(AUTHENTICATE_ACCOUNTS)
     val creds = validateBody[GestaltBasicCredsToken]
     val app = AppFactory.findByAppId(appId)
-    if (app.isEmpty) throw new UnknownAPIException(
+    if (app.isEmpty) throw UnknownAPIException(
       code = 500,
       resource = request.path,
       message = "error looking up application",
@@ -185,7 +185,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           InternalServerError("could not find root org; check database version")
         case Failure(_) if !init.isInit =>
           BadRequest("server not initialized")
-        case Failure(ex) =>
+        case Failure(_) =>
           InternalServerError("not able to connect to database")
       }
     }
@@ -425,42 +425,40 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        AccountFactory.findInDirectoryByName(dirId, username) match {
-          case Some(account) => Ok(Json.toJson[GestaltAccount](account))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested account in the directory",
-            developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
-          )))
-        }
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested directory",
-        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-      )))
+    if ( DirectoryFactory.find(dirId).isDefined ) {
+      AccountFactory.findInDirectoryByName(dirId, username) match {
+        case Some(account) => Ok(Json.toJson[GestaltAccount](account))
+        case None => NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested account in the directory",
+          developerMessage = "Could not locate the requested account in the directory. Make sure to use the account username."
+        )))
+      }
     }
+    else NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested directory",
+      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+    )))
   }
 
   def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        GroupFactory.findInDirectoryByName(dirId, groupName) match {
-          case Some(group) => Ok(Json.toJson[GestaltGroup](group))
-          case None => NotFound(Json.toJson(ResourceNotFoundException(
-            resource = request.path,
-            message = "could not locate requested group in the directory",
-            developerMessage = "Could not locate the requested group in the directory. Make sure to use the group name."
-          )))
-        }
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested directory",
-        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-      )))
+    if ( DirectoryFactory.find(dirId).isDefined ) {
+      GroupFactory.findInDirectoryByName(dirId, groupName) match {
+        case Some(group) => Ok(Json.toJson[GestaltGroup](group))
+        case None => NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested group in the directory",
+          developerMessage = "Could not locate the requested group in the directory. Make sure to use the group name."
+        )))
+      }
     }
+    else NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested directory",
+      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+    )))
   }
 
   def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)) { implicit request =>
@@ -577,38 +575,32 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) => Ok(
-        Json.toJson(
-          AccountFactory.listByDirectoryId(dirId) map {
-            a => a: GestaltAccount
-          }
-        )
-      )
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested directory",
-        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-      )))
-    }
+    if ( DirectoryFactory.find(dirId).isDefined ) Ok( Json.toJson(
+      AccountFactory.listByDirectoryId(dirId) map {
+        a => a: GestaltAccount
+      }
+    ) )
+    else NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested directory",
+      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+    )))
   }
 
   def listDirGroups(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) => Ok(
-        Json.toJson(
-          GroupFactory.listByDirectoryId(dirId) map {
-            g => g: GestaltGroup
-          }
-        )
+    if ( DirectoryFactory.find(dirId).isDefined ) Ok(
+      Json.toJson(
+        GroupFactory.listByDirectoryId(dirId) map {
+          g => g: GestaltGroup
+        }
       )
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested directory",
-        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-      )))
-    }
+    )
+    else NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested directory",
+      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+    )))
   }
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
@@ -645,16 +637,14 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
-    AccountFactory.find(accountId) match {
-      case Some(account) => Ok(Json.toJson[Seq[GestaltGroup]](
-        GroupFactory.listAccountGroups(accountId = accountId).map { g => g: GestaltGroup }
-      ))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the account username."
-      )))
-    }
+    if ( AccountFactory.find(accountId).isDefined ) Ok(Json.toJson[Seq[GestaltGroup]](
+      GroupFactory.listAccountGroups(accountId = accountId).map { g => g: GestaltGroup }
+    ))
+    else  NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested account",
+      developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the account username."
+    )))
   }
 
   ////////////////////////////////////////////////////////
@@ -709,8 +699,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_DIRECTORY)
     val create = validateBody[GestaltDirectoryCreate]
-    if (create.directoryType == DIRECTORY_TYPE_LDAP && GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory) == false) {
-      throw new UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
+    if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
+      throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
         developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
     }
     val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
@@ -810,18 +800,18 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId))(parse.json) { implicit request =>
     val payload = validateBody[Seq[PatchOp]]
     requireAuthorization(UPDATE_GROUP)
-    GroupFactory.find(groupId) match {
-      case Some(group) =>
-        val newMembers = GroupFactory.updateGroupMembership(groupId, payload)
-        renderTry[Seq[ResourceLink]](Ok)(
-          newMembers map { _.map {a => (a: GestaltAccount).getLink()} }
-        )
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested group",
-        developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
-      )))
-    }
+    if ( GroupFactory.find(groupId).isDefined ) {
+      val newMembers = GroupFactory.updateGroupMembership(groupId, payload)
+      renderTry[Seq[ResourceLink]](Ok)(
+        newMembers map {
+          _.map { a => (a: GestaltAccount).getLink() }
+        }
+      )
+    } else NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "could not locate requested group",
+      developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
+    )))
   }
 
   def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
@@ -829,7 +819,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case JsSuccess(ps: Seq[PatchOp], _) => Right(ps)
       case _ => request.body.validate[GestaltAccountUpdate] match {
         case JsSuccess(au: GestaltAccountUpdate, _) => Left(au)
-        case _ => throw new BadRequestException(
+        case _ => throw BadRequestException(
           resource = request.path,
           message = "invalid payload",
           developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object GestaltAccountUpdate or an array of PatchOp objects"
@@ -946,25 +936,21 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def deleteDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)).async { implicit request =>
     requireAuthorization(DELETE_DIRECTORY)
-    DirectoryFactory.find(dirId) match {
-      case Some(dir) =>
-        Future {
-          DirectoryFactory.removeDirectory(dirId)
-        } map {
-          _ => Ok(Json.toJson(DeleteResult(true)))
-        }
-      case None =>
-        Future(NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "directory doe not exist",
-          developerMessage = "Could not delete the target directory because it does not exist or the provided credentials do not have rights to see it."
-        ))))
+    if ( DirectoryFactory.find(dirId).isDefined ) Future {
+      DirectoryFactory.removeDirectory(dirId)
+    } map {
+      _ => Ok(Json.toJson(DeleteResult(true)))
     }
+    else Future(NotFound(Json.toJson(ResourceNotFoundException(
+      resource = request.path,
+      message = "directory doe not exist",
+      developerMessage = "Could not delete the target directory because it does not exist or the provided credentials do not have rights to see it."
+    ))))
   }
 
   def deleteOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
     val orgRights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
-    if (!orgRights.exists(r => (DELETE_ORG == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw new ForbiddenAPIException(
+    if (!orgRights.exists(r => (DELETE_ORG == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw ForbiddenAPIException(
       message = "Forbidden",
       developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
     )
@@ -1022,7 +1008,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case None => Future{defaultResourceNotFound}
       case Some(group) => Future{
         DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
-          case None => throw new UnknownAPIException(
+          case None => throw UnknownAPIException(
             code = 500,
             resource = request.path,
             message = "could not locate directory associated with group",
@@ -1064,7 +1050,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case Some(account) if account.id != request.user.identity.id =>
         Future {
           DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
-            case None => throw new UnknownAPIException(
+            case None => throw UnknownAPIException(
               code = 500,
               resource = request.path,
               message = "could not locate directory associated with account",
@@ -1100,7 +1086,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case Some(account) if account.id != request.user.identity.id =>
         Future {
           DirectoryFactory.find(account.dirId.asInstanceOf[UUID]) match {
-            case None => throw new UnknownAPIException(
+            case None => throw UnknownAPIException(
               code = 500,
               resource = request.path,
               message = "could not locate directory associated with account",
@@ -1252,9 +1238,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case Success((orgId,serviceAppId,creds)) =>
         implicit val timeout = Timeout(5 seconds)
         val fRateCheck = rateCheckActor ? TokenGrantRateLimitCheck(serviceAppId.toString, creds.username)
-        fRateCheck map { _ match {
+        fRateCheck map {
           case RequestAccepted => renderTry[AccessTokenResponse](Ok)(for {
-            account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(OAuthError(INVALID_GRANT,"The provided authorization grant is invalid, expired or revoked."))
+            account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(OAuthError(INVALID_GRANT, "The provided authorization grant is invalid, expired or revoked."))
             newToken <- TokenFactory.createToken(
               orgId = Some(orgId),
               accountId = account.id.asInstanceOf[UUID],
@@ -1263,8 +1249,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
               parentApiKey = None
             )
           } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
-          case _ => oAuthErr(INVALID_GRANT,"Rate limit exceeded")
-        } }
+          case _ => oAuthErr(INVALID_GRANT, "Rate limit exceeded")
+        }
       case Failure(ex) => Future.successful(handleError(request, ex))
     }
   }
@@ -1274,7 +1260,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     GestaltHeaderAuthentication.authenticateHeader(request) match {
       case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
       case Some(auth) => auth.credential match {
-        case Right(token) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
+        case Right(_) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
         case Left(apiKey) =>
           orgIdGen(apiKey) match {
             case None => oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
@@ -1302,7 +1288,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
     request.body.get("grant_type") flatMap asSingleton match {
       case Some("client_credentials") => clientCredGrantFlow(getIssuedOrgFromAPIKey)
-      case Some(t) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "global token issue endpoint only support client_credentials grant")}
+      case Some(_) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "global token issue endpoint only support client_credentials grant")}
       case None => Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
     }
   }
@@ -1310,49 +1296,48 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   def orgTokenIssue(orgId: UUID) = Action.async(parse.urlFormEncoded) { implicit request =>
     def verifyKeyOwnerBelongsToOrg = (apiKey: APICredentialRepository) => for {
         app <- AppFactory.findServiceAppForOrg(orgId)
-        account <- AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID])
+        if AccountFactory.getAppAccount(app.id.asInstanceOf[UUID], apiKey.accountId.asInstanceOf[UUID]).isDefined
     } yield orgId
 
     request.body.get("grant_type") flatMap asSingleton match {
       case Some("client_credentials") => clientCredGrantFlow(verifyKeyOwnerBelongsToOrg)
       case Some("password") => passwordGrantFlow(Some(orgId))
-      case Some(t) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")}
+      case Some(_) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")}
       case None => Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
     }
   }
 
   private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
-    GestaltHeaderAuthentication.authenticateHeader(request) match {
-      case None => oAuthErr(INVALID_CLIENT,"token introspection requires client authentication")
-      case Some(auth) =>
-        val introspection = for {
-          tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
-          tokenAndAccount = for {
-            token <- TokenFactory.findValidToken(tokenStr)
-            orgId <- getOrgId(token)
-            serviceApp <- AppFactory.findServiceAppForOrg(orgId)
-            serviceAppId = serviceApp.id.asInstanceOf[UUID]
-            account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
-          } yield (token,account,serviceAppId,orgId)
-          intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
-            case (token,orgAccount,serviceAppId,orgId) => ValidTokenResponse(
-              username = orgAccount.username,
-              sub = orgAccount.href,
-              iss = "todo",
-              exp = token.expiresAt.getMillis/1000,
-              iat = token.issuedAt.getMillis/1000,
-              jti = token.id.asInstanceOf[UUID],
-              gestalt_token_href = token.href,
-              gestalt_org_id = orgId,
-              gestalt_account = orgAccount,
-              gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
-              gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
-            )
-          }
-        } yield intro
-        renderTry[TokenIntrospectionResponse](Ok)(introspection)
-    }
+    val authAttempt = GestaltHeaderAuthentication.authenticateHeader(request)
+    if (authAttempt.isDefined) {
+      val introspection = for {
+        tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+        tokenAndAccount = for {
+          token <- TokenFactory.findValidToken(tokenStr)
+          orgId <- getOrgId(token)
+          serviceApp <- AppFactory.findServiceAppForOrg(orgId)
+          serviceAppId = serviceApp.id.asInstanceOf[UUID]
+          account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
+        } yield (token,account,serviceAppId,orgId)
+        intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
+          case (token,orgAccount,serviceAppId,orgId) => ValidTokenResponse(
+            username = orgAccount.username,
+            sub = orgAccount.href,
+            iss = "todo",
+            exp = token.expiresAt.getMillis/1000,
+            iat = token.issuedAt.getMillis/1000,
+            jti = token.id.asInstanceOf[UUID],
+            gestalt_token_href = token.href,
+            gestalt_org_id = orgId,
+            gestalt_account = orgAccount,
+            gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
+            gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
+          )
+        }
+      } yield intro
+      renderTry[TokenIntrospectionResponse](Ok)(introspection)
+    } else oAuthErr(INVALID_CLIENT,"token introspection requires client authentication")
   }
 
   def orgTokenInspect(orgId: UUID) = Action(parse.urlFormEncoded) { implicit request =>
@@ -1398,7 +1383,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
         message = "API key creation requires API key authentication",
         developerMessage = "API key creation request must be authenticated using API keys and does not support bearer token authentication"
       )))
-      case (Some(key),None) => BadRequest(Json.toJson(BadRequestException(
+      case (Some(_),None) => BadRequest(Json.toJson(BadRequestException(
         resource = "",
         message = "delegated API key creation requires orgId",
         developerMessage = "API key creation on behalf of another account requires an orgId against which to bind the API key."

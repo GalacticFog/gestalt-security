@@ -77,7 +77,7 @@ trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
   def validateBody[T](implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): T = {
     request.body.validate[T] match {
       case s: JsSuccess[T] => s.get
-      case e: JsError => throw new BadRequestException(
+      case _: JsError => throw BadRequestException(
         resource = request.path,
         message = "invalid payload",
         developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object ${m.toString}"

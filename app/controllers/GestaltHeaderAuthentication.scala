@@ -57,7 +57,7 @@ trait GestaltHeaderAuthentication {
 
   object AuthenticatedAction extends AuthenticatedActionBuilder {
     def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
-    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({rh: RequestHeader => genFQON}))
+    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}))
   }
 
 }

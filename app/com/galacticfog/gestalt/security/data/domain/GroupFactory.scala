@@ -48,7 +48,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
         description = description
       )
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_group_dir_id_name_key" => Failure(ConflictException(
             resource = "",

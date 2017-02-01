@@ -28,7 +28,7 @@ class LDAPSpecs extends SpecWithSDK {
   try {
     GestaltLicense.setInstance(new GestaltLicenseMock())
   } catch {
-    case e: Throwable => 
+    case _: Throwable =>
 }
 
   "LDAP Directory" should {
