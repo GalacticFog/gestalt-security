@@ -4,7 +4,7 @@ import javax.inject.{Inject, Singleton}
 
 import org.joda.time.Duration
 import scala.util.Try
-import scala.util.Properties.{envOrNone, envOrElse}
+import scala.util.Properties.envOrNone
 
 @Singleton
 class SecurityConfig @Inject()() {
@@ -36,7 +36,7 @@ class SecurityConfig @Inject()() {
 
 object SecurityConfig {
 
-  def envOrThrow(name: String): String = envOrElse(name, throw new RuntimeException(s"missing env var ${name}"))
+  def envOrThrow(name: String): String = envOrNone(name) getOrElse(throw new RuntimeException(s"missing env var ${name}"))
 
   def getEnvOptInt(name: String): Option[Int] = scala.util.Properties.envOrNone(name) flatMap { s => Try{s.toInt}.toOption }
 
