@@ -17,15 +17,17 @@ import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 import modules.DatabaseConnection
 
-class InitSpecs @Inject() ( db: DatabaseConnection,
-                            init: Init,
-                            client: WSClient ) extends PlaySpecification {
+class InitSpecs extends PlaySpecification {
 
   lazy val fakeApp = FakeApplication()
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
 
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
+
+  lazy val init = fakeApp.injector.instanceOf[Init]
+  lazy val db = fakeApp.injector.instanceOf[DatabaseConnection]
+  lazy val client = fakeApp.injector.instanceOf[WSClient]
 
   def clearInit() = init.getInitSettings foreach {
     _.copy(initialized = false).save()
