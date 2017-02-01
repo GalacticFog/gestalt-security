@@ -22,7 +22,7 @@ class SDKAwareErrorHandler @Inject()(env: Environment,
 
   override def onServerError(request: RequestHeader, exception: Throwable): Future[Result] = {
     log.error("Global::onError", exception)
-    Future.successful(handleError(request,exception.getCause))
+    Future.successful(handleError(request,exception))
   }
 
   override def onClientError(request: RequestHeader, statusCode: Int, message: String): Future[Result] = {
