@@ -2,7 +2,6 @@ package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.EnvConfig
 import com.galacticfog.gestalt.security.adapter.LDAPDirectory
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
@@ -23,9 +22,9 @@ class LDAPSpecs extends SpecWithSDK {
   )))
   lazy val newOrgApp = await(newOrg.getServiceApp())
 
-  val ldapUrl = EnvConfig.getEnvOpt("TEST_LDAP_URL") getOrElse "ldap://localhost:389"
-  val ldapUser = EnvConfig.getEnvOpt("TEST_LDAP_USER") getOrElse "admin"
-  val ldapPass = EnvConfig.getEnvOpt("TEST_LDAP_PASS") getOrElse "password"
+  val ldapUrl = scala.util.Properties.envOrElse("TEST_LDAP_URL", "ldap://localhost:389")
+  val ldapUser = scala.util.Properties.envOrElse("TEST_LDAP_USER", "admin")
+  val ldapPass = scala.util.Properties.envOrElse("TEST_LDAP_PASS", "password")
   try {
     GestaltLicense.setInstance(new GestaltLicenseMock())
   } catch {

@@ -1,12 +1,13 @@
 package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
+import javax.inject.Inject
 
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository}
-import com.galacticfog.gestalt.security.{Init, InitRequest, EnvConfig, FlywayMigration}
+import com.galacticfog.gestalt.security.{FlywayMigration, Init, InitRequest}
 import org.flywaydb.core.Flyway
 import play.api.Logger
 import play.api.libs.json.Json
@@ -14,8 +15,9 @@ import play.api.libs.ws.WS
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
+import modules.DatabaseConnection
 
-class InitSpecs extends PlaySpecification {
+class InitSpecs @Inject() ( db: DatabaseConnection, init: Init ) extends PlaySpecification {
 
   lazy val fakeApp = FakeApplication()
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
@@ -23,12 +25,12 @@ class InitSpecs extends PlaySpecification {
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
 
-  def clearInit() = Init.getInitSettings foreach {
+  def clearInit() = init.getInitSettings foreach {
     _.copy(initialized = false).save()
   }
 
   def clearDB() = {
-    val connection = EnvConfig.dbConnection.get
+    val connection = db.dbConnection
     val baseDS = FlywayMigration.getDataSource(connection)
     val baseFlyway = new Flyway()
     baseFlyway.setDataSource(baseDS)
@@ -216,7 +218,7 @@ class InitSpecs extends PlaySpecification {
 
     "require username" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest())
@@ -225,7 +227,7 @@ class InitSpecs extends PlaySpecification {
 
     "require valid username" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(
@@ -236,7 +238,7 @@ class InitSpecs extends PlaySpecification {
 
     "succeed and return keys and not clear password" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(

@@ -3,6 +3,7 @@ package com.galacticfog.gestalt.security.test
 import org.junit.runner._
 import org.specs2.mutable._
 import org.specs2.runner._
+import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.ws.WS
 import play.api.mvc.Action
 import play.api.mvc.Results._
@@ -20,11 +21,11 @@ class RoutingOverrideSpec extends Specification with FutureAwaits with DefaultAw
   "Application Router" should {
 
     // fake route will return the method in the body, allowing us to verify the method that was used
-    val appWithRoutes = FakeApplication(withRoutes = {
-      case (method, "/") => Action { Ok(method) }
-    }, withGlobal = Some(new GlobalWithMethodOverriding {
-      override def overrideParameter: String = "_method"
-    }))
+    val appWithRoutes = new GuiceApplicationBuilder()
+      .routes({
+        case (method, "/") => Action { Ok(method) }
+      })
+      .build
 
     "allow overriding HTTP GET via _method=POST" in new WithServer(app = appWithRoutes, port = testServerPort) {
       val resp = await(WS.url(s"http://localhost:$testServerPort?_method=POST").get())

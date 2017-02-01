@@ -1,6 +1,6 @@
 package controllers
 
-import javax.inject.Inject
+import javax.inject._
 
 import com.galacticfog.gestalt.security.{Init, SecurityConfig}
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
@@ -12,14 +12,15 @@ import play.api.http._
 import play.api.mvc._
 import play.api.mvc.Results.BadRequest
 import com.galacticfog.gestalt.security.api.json.JsonImports._
+import HttpVerbs._
 
-class MethodOverrideRequestHandler @Inject() ( errorHandler: HttpErrorHandler,
-                                               configuration: HttpConfiguration,
-                                               filters: HttpFilters,
-                                               router: Router,
-                                               initController: InitController,
-                                               restController: RESTAPIController,
-                                               config: SecurityConfig )
+@Singleton
+class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
+                                        configuration: HttpConfiguration,
+                                        filters: HttpFilters,
+                                        router: Router,
+                                        config: SecurityConfig,
+                                        init: Init )
   extends DefaultHttpRequestHandler(router, errorHandler, configuration, filters) {
 
   val log = Logger(this.getClass)
@@ -43,18 +44,26 @@ class MethodOverrideRequestHandler @Inject() ( errorHandler: HttpErrorHandler,
     "sync"
   )
 
+  val passthroughActions = Set(
+    (GET,  "/init"),
+    (POST, "/init"),
+    (GET,  "/health"),
+    (GET,  "/info")
+  )
+
   val overrideParameter: String = config.methodOverrideParameter
 
   private[this] def topLevelEndpoint(path: String): (String,String) = {
-    path.split("/",3) match {
-      case Array("", top)       => (top,"")
-      case Array("", top, tail) => (top,"/" + tail)
+    path.stripPrefix("/").split("/",3) match {
+      case Array(top)       => (top,"")
+      case Array(top, tail) => (top,"/" + tail)
       case _ => ("","")
     }
   }
 
   override def routeRequest(origRequest: RequestHeader): Option[Handler] = {
 
+    // allow override of http method
     val request = origRequest.getQueryString(overrideParameter).fold(origRequest) {
       overrideMethod =>
         Logger.debug("overriding method " + origRequest.method + " with " + overrideMethod)
@@ -64,12 +73,11 @@ class MethodOverrideRequestHandler @Inject() ( errorHandler: HttpErrorHandler,
 
     log.debug(request.toString)
 
+    // intercept routing in case database is not init
+    // also, convert /:fqon/* to /orgs/orgid/*
     (request.method, request.path) match {
-      case ("GET", "/init") => Some(initController.checkInit)
-      case ("POST", "/init") => Some(initController.initialize())
-      case ("GET", "/health") => Some(restController.getHealth)
-      case ("GET", "/info") => Some(restController.info)
-      case (_,_) if !Init.isInit => Some(Action { BadRequest(Json.toJson(BadRequestException(
+      case r if passthroughActions contains r => super.routeRequest(request)
+      case (_,_) if !init.isInit => Some(Action { BadRequest(Json.toJson(BadRequestException(
         request.path,
         message = "service it not initialized",
         developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
@@ -84,7 +92,7 @@ class MethodOverrideRequestHandler @Inject() ( errorHandler: HttpErrorHandler,
             Logger.debug(s"top level path not mappable as fqon: ${top}")
             GestaltHeaderAuthentication.authenticateHeader(request) match {
               case Some(_) => None // default 404
-              case None => Some(Action { GestaltHeaderAuthentication.onUnauthorized(request) })
+              case None    => Some(Action { GestaltHeaderAuthentication.onUnauthorized(request) })
             }
         }
       }

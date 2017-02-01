@@ -8,6 +8,7 @@ import com.galacticfog.gestalt.security.api.errors.OAuthError
 import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
 import com.galacticfog.gestalt.security.data.model.TokenRepository
 import org.joda.time.DateTime
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
 import scala.concurrent.Future
 

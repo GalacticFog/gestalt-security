@@ -8,17 +8,17 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
 
-class InitController @Inject()() extends Controller with ControllerHelpers {
+class InitController @Inject() ( init: Init ) extends Controller with ControllerHelpers {
 
   def checkInit = Action {
     Ok(Json.obj(
-      "initialized" -> Init.isInit
+      "initialized" -> init.isInit
     ))
   }
 
   def initialize() = Action(parse.json) { implicit request =>
     val ir = validateBody[InitRequest]
-    val keys = Init.doInit(ir)
+    val keys = init.doInit(ir)
     renderTry[Seq[GestaltAPIKey]](Ok)( keys map {_.map {k => k: GestaltAPIKey} } )
   }
 

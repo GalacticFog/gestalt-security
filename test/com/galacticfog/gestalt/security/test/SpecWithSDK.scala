@@ -7,13 +7,15 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.data.domain._
-import com.galacticfog.gestalt.security.{EnvConfig, FlywayMigration, InitRequest}
+import com.galacticfog.gestalt.security.{FlywayMigration, InitRequest}
 import org.flywaydb.core.Flyway
 import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import play.api.libs.json.Json
 import play.api.libs.ws.WS
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
+import modules.DatabaseConnection
+import scalikejdbc.DBConnection
 
 trait SpecWithSDK extends PlaySpecification {
 
@@ -32,14 +34,6 @@ trait SpecWithSDK extends PlaySpecification {
     }
   }
 
-  def clearDB() = {
-    val connection = EnvConfig.dbConnection.get
-    val baseDS = FlywayMigration.getDataSource(connection)
-    val baseFlyway = new Flyway()
-    baseFlyway.setDataSource(baseDS)
-    baseFlyway.clean()
-  }
-
   // default credentials on flyway are
   val rootUsername = "root-user"
   val rootPassword = "root password123"
@@ -47,6 +41,14 @@ trait SpecWithSDK extends PlaySpecification {
 
   lazy val fakeApp = FakeApplication()
   lazy val server = TestServer(port = testServerPort, application = fakeApp)
+
+  def clearDB() = {
+    val connection = fakeApp.injector.instanceOf[DatabaseConnection]
+    val baseDS = FlywayMigration.getDataSource(connection.dbConnection)
+    val baseFlyway = new Flyway()
+    baseFlyway.setDataSource(baseDS)
+    baseFlyway.clean()
+  }
 
   sequential
 

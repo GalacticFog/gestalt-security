@@ -1,12 +1,14 @@
 package com.galacticfog.gestalt.security
 
 import java.util.UUID
+import javax.inject.Inject
 
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.config.ScalikePostgresDBConnection
-import com.galacticfog.gestalt.security.data.domain.{APICredentialFactory, OrgFactory, AccountFactory, AppFactory}
+import com.galacticfog.gestalt.security.data.domain.{APICredentialFactory, AccountFactory, AppFactory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
+import modules.DatabaseConnection
 import org.mindrot.jbcrypt.BCrypt
 import play.api.Logger
 import play.api.libs.json.Json
@@ -23,7 +25,7 @@ case object InitRequest {
   implicit val initRequestFormat = Json.format[InitRequest]
 }
 
-object Init extends SQLSyntaxSupport[InitSettingsRepository] {
+class Init @Inject() ( dbConn: DatabaseConnection ) extends SQLSyntaxSupport[InitSettingsRepository] {
 
   def isInit: Boolean = checkDBInit
 
@@ -64,7 +66,7 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
     checkDBInit match {
       case true => Failure(BadRequestException("", "service already initialized", "The service is initialized"))
       case false =>
-        val db = EnvConfig.dbConnection.get
+        val db = dbConn.dbConnection
         val currentVersion = FlywayMigration.currentVersion(db)
         val pre4Migration = !currentVersion.exists(_ >= 4)
 
@@ -139,6 +141,5 @@ object Init extends SQLSyntaxSupport[InitSettingsRepository] {
         } yield apiKeys
     }
   }
-
 
 }

@@ -1,14 +1,18 @@
 package com.galacticfog.gestalt.security.actors
 
-import akka.actor.{Actor, ActorLogging, Props}
-import org.joda.time.DateTime
+import javax.inject._
+
+import akka.actor.{Actor, ActorLogging}
+import com.galacticfog.gestalt.security.SecurityConfig
+
 import scala.concurrent.duration._
 
-case class RateLimitingActor(periodLengthMinutes: Int, attemptsPerPeriod: Int) extends Actor with ActorLogging {
+@Singleton
+case class RateLimitingActor @Inject() (config: SecurityConfig) extends Actor with ActorLogging {
   import RateLimitingActor._
 
   import context.dispatcher
-  val reset = context.system.scheduler.schedule(periodLengthMinutes minutes, periodLengthMinutes minutes, self, ClearHistory)
+  val reset = context.system.scheduler.schedule(config.rateLimiting.periodInMinutes minutes, config.rateLimiting.periodInMinutes minutes, self, ClearHistory)
 
   val history = scala.collection.mutable.Map[(String,String), Int]()
 
@@ -19,7 +23,7 @@ case class RateLimitingActor(periodLengthMinutes: Int, attemptsPerPeriod: Int) e
       val num = history.getOrElse((appId,username),0) + 1
       history.put( (appId,username), num )
       log.debug(s"(${appId},${username}) set to $num")
-      if (num <= attemptsPerPeriod)
+      if (num <= config.rateLimiting.attemptsPerPeriod)
         sender ! RequestAccepted
       else
         sender ! RequestDenied
@@ -33,7 +37,7 @@ case class RateLimitingActor(periodLengthMinutes: Int, attemptsPerPeriod: Int) e
 
 case object RateLimitingActor {
 
-  val ACTOR_NAME = "rateLimitingActor"
+  final val ACTOR_NAME = "rateLimitingActor"
 
   /**
     * Check rate limiting
@@ -45,7 +49,4 @@ case object RateLimitingActor {
   case object RequestDenied
 
   case object ClearHistory
-
-  def props(periodLengthMinutes: Int, attemptsPerPeriod: Int): Props =
-    Props(RateLimitingActor(periodLengthMinutes = periodLengthMinutes, attemptsPerPeriod = attemptsPerPeriod))
 }

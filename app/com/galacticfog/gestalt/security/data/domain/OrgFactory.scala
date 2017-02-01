@@ -7,30 +7,13 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnknownAPIException}
 import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
-import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import org.postgresql.util.PSQLException
-import play.api.Logger
-import play.api.libs.json.{JsResultException, JsValue, Json}
-import play.api.mvc.Security
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
 import scala.util.{Failure, Success, Try}
 
 object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
-
-  val VALID_NAME = """^[a-z0-9]+(-[a-z0-9]+)*[a-z0-9]*$""".r
-
-  def validateOrgName(name: String): Try[String] = {
-    VALID_NAME.findFirstIn(name) match {
-      case None => Failure(BadRequestException(
-        resource = "",
-        message = "org name is invalid",
-        developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
-      ))
-      case Some(validName) => Success(validName)
-    }
-  }
 
   object Rights {
     val SUPERUSER = "**"
@@ -70,18 +53,31 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     )
   }
 
+  val VALID_NAME = """^[a-z0-9]+(-[a-z0-9]+)*[a-z0-9]*$""".r
+
+  def validateOrgName(name: String): Try[String] = {
+    VALID_NAME.findFirstIn(name) match {
+      case None => Failure(BadRequestException(
+        resource = "",
+        message = "org name is invalid",
+        developerMessage = "Org names are required to be lower case letters, digits, and non-consecutive/trailing/preceding hyphens."
+      ))
+      case Some(validName) => Success(validName)
+    }
+  }
+
   override val autoSession = AutoSession
 
   def delete(org: GestaltOrgRepository)(implicit session: DBSession = autoSession) = {
     GestaltOrgRepository.destroy(org)
   }
 
-  def orgSync(orgId: UUID)(implicit session: DBSession = autoSession): GestaltOrgSync = {
+  def orgSync(init: Init, orgId: UUID)(implicit session: DBSession = autoSession): GestaltOrgSync = {
     import com.galacticfog.gestalt.security.data.APIConversions.dirModelToApi
     import com.galacticfog.gestalt.security.data.APIConversions.orgModelToApi
     import com.galacticfog.gestalt.security.data.APIConversions.groupModelToApi
     import com.galacticfog.gestalt.security.data.APIConversions.accountModelToApi
-    val orgTree = OrgFactory.getOrgTree(orgId) flatMap {
+    val orgTree = getOrgTree(orgId) flatMap {
       org => AppFactory.findServiceAppForOrg(org.id.asInstanceOf[UUID]) map { (org,_) }
     }
     val dirCache = DirectoryFactory.findAll map {
@@ -103,7 +99,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
         )
       }
     }
-    val adminId = Init.getInitSettings.get.rootAccount
+    val adminId = init.getInitSettings.get.rootAccount
     val orgGroups = (orgTree flatMap {
       case (org,sApp) => GroupFactory.queryShadowedAppGroups(sApp.id.asInstanceOf[UUID], None)
     } distinct) map { ugr => ugr: GestaltGroup }
@@ -153,7 +149,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
       _ <- GroupFactory.addAccountToGroup(accountId = creator.id.asInstanceOf[UUID], groupId = adminGroupId)
       adminMapping <- AppFactory.mapGroupToApp(appId = newAppId, groupId = adminGroupId, defaultAccountStore = false)
       // give admin rights to new admin group
-      _ <- Try { OrgFactory.Rights.NEW_ORG_OWNER_RIGHTS map {
+      _ <- Try { Rights.NEW_ORG_OWNER_RIGHTS map {
         g => RightGrantFactory.addRightToGroup(
           appId = newAppId,
           groupId = adminGroupId,
@@ -281,7 +277,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   def createOrg(parentOrgId: UUID, name: String, description: Option[String])(implicit session: DBSession = autoSession): Try[GestaltOrgRepository] = {
     val newOrg = for {
       validName <- validateOrgName(name)
-      parentOrg <- OrgFactory.find(parentOrgId) match {
+      parentOrg <- find(parentOrgId) match {
         case None => Failure(ResourceNotFoundException(
           resource = "",
           message = "could not locate parent org",

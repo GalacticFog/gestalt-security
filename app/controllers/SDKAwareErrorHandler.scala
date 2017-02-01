@@ -9,14 +9,15 @@ import play.api.libs.json.Json
 import play.api.mvc._
 import play.api.mvc.Results._
 import play.api.routing.Router
+import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 import scala.concurrent._
 
 @Singleton
-class HttpErrorHandler @Inject() ( env: Environment,
-                                   config: Configuration,
-                                   sourceMapper: OptionalSourceMapper,
-                                   router: Provider[Router] )
+class SDKAwareErrorHandler @Inject()(env: Environment,
+                                     config: Configuration,
+                                     sourceMapper: OptionalSourceMapper,
+                                     router: Provider[Router] )
   extends DefaultHttpErrorHandler(env, config, sourceMapper, router) with ControllerHelpers {
 
   override def onServerError(request: RequestHeader, exception: Throwable): Future[Result] = {

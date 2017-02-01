@@ -1,7 +1,7 @@
 package controllers
 
 import java.util.UUID
-import javax.inject.Inject
+import javax.inject.{Inject, Named}
 
 import akka.util.Timeout
 import com.galacticfog.gestalt.security.actors.RateLimitingActor
@@ -18,12 +18,12 @@ import com.galacticfog.gestalt.keymgr.GestaltFeature
 import play.api.libs.json._
 import play.api._
 import play.api.mvc._
-import play.libs.Akka
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.galacticfog.gestalt.security.data.APIConversions._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import OrgFactory.Rights._
+import akka.actor.ActorRef
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
@@ -33,12 +33,12 @@ import com.galacticfog.gestalt.patch.PatchOp
 import scala.concurrent.duration._
 
 class RESTAPIController @Inject()( config: SecurityConfig,
-                                   accountStoreMappingService: AccountStoreMappingService )
+                                   accountStoreMappingService: AccountStoreMappingService,
+                                   init: Init,
+                                   @Named(RateLimitingActor.ACTOR_NAME) rateCheckActor: ActorRef )
   extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
   val defaultTokenExpiration: Long =  config.tokenLifetime.getStandardSeconds
-
-  def rateCheckActor = Akka.system().actorSelection(s"/user/${RateLimitingActor.ACTOR_NAME}")
 
   ////////////////////////////////////////////////////////////////
   // Utility methods
@@ -183,7 +183,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           Ok("healthy")
         case Success(orgId) if orgId.isEmpty =>
           InternalServerError("could not find root org; check database version")
-        case Failure(_) if !Init.isInit =>
+        case Failure(_) if !init.isInit =>
           BadRequest("server not initialized")
         case Failure(ex) =>
           InternalServerError("not able to connect to database")
@@ -475,12 +475,12 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
-    Ok(Json.toJson(OrgFactory.orgSync(request.user.orgId)))
+    Ok(Json.toJson(OrgFactory.orgSync(init, request.user.orgId)))
   }
 
   def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     OrgFactory.find(orgId) match {
-      case Some(org) => Ok(Json.toJson(OrgFactory.orgSync(org.id.asInstanceOf[UUID])))
+      case Some(org) => Ok(Json.toJson(OrgFactory.orgSync(init, org.id.asInstanceOf[UUID])))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested org",
