@@ -169,4 +169,4 @@ POST          /auth                                                     controll
 POST          /oauth/inspect                                            controllers.RESTAPIController.globalTokenInspect
 POST          /oauth/issue                                              controllers.RESTAPIController.globalTokenIssue
 
-OPTIONS       /*path                                                    controllers.RESTAPIController.options
+OPTIONS       /*path                                                    controllers.RESTAPIController.options(path)
