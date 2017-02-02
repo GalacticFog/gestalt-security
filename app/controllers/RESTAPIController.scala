@@ -1398,4 +1398,5 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
+  def options() = Action {Ok("")}
 }
