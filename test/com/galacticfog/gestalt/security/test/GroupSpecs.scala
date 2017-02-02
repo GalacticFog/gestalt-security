@@ -115,7 +115,7 @@ class GroupSpecs extends SpecWithSDK {
       await(GestaltOrg.listGroupGrants(newOrg.id, newOrgGrp.id)) must containTheSameElementsAs(Seq(
         GestaltRightGrant(null, "grantA", None, newOrgApp.id),
         GestaltRightGrant(null, "grantB", Some("grantBvalue"), newOrgApp.id)
-      ), (a: GestaltRightGrant,b: GestaltRightGrant) => (a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId))
+      ), (a: GestaltRightGrant,b: GestaltRightGrant) => a.grantName == b.grantName && a.grantValue == b.grantValue && a.appId == b.appId)
     }
 
     lazy val newAcct1 = await(GestaltOrg.createAccount(newOrg.id, GestaltAccountCreateWithRights(
@@ -146,7 +146,7 @@ class GroupSpecs extends SpecWithSDK {
     }
 
     "throw ConflictException on duplicate group name" in {
-      val newOrgGrp = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name")))
+      val _ = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name")))
       await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("dupe-group-name"))) must
         throwA[ConflictException](".*group name already exists in directory.*")
     }

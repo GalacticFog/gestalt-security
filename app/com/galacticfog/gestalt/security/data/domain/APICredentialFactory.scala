@@ -34,28 +34,27 @@ object APICredentialFactory extends SQLSyntaxSupport[APICredentialRepository] {
         parentApikey = parentApiKey
       )}
       case Some(orgId) =>
-        (for {
-          serviceApp <- AppFactory.findServiceAppForOrg(orgId)
-          if AccountFactory.getAppAccount(
+        val isMember = AppFactory.findServiceAppForOrg(orgId).exists(
+          serviceApp => AccountFactory.getAppAccount(
             appId = serviceApp.id.asInstanceOf[UUID],
             accountId = accountId
           ).isDefined
-        } yield orgId) match {
-          case None => Failure(BadRequestException(
-            "", "account does not belong to specified org",
-            "API key for the account cannot be bound to the specified org because the account does not belong to the org."))
-          case Some(orgId) => Try{APICredentialRepository.create(
-            apiKey = UUID.randomUUID(),
-            apiSecret = SecureIdGenerator.genId64(40),
-            accountId = accountId,
-            issuedOrgId = Some(orgId),
-            disabled = false,
-            parentApikey = parentApiKey
-          )}
-        }
+        )
+        if (isMember) Try{APICredentialRepository.create(
+          apiKey = UUID.randomUUID(),
+          apiSecret = SecureIdGenerator.genId64(40),
+          accountId = accountId,
+          issuedOrgId = Some(orgId),
+          disabled = false,
+          parentApikey = parentApiKey
+        )}
+        else Failure(BadRequestException(
+          "", "account does not belong to specified org",
+          "API key for the account cannot be bound to the specified org because the account does not belong to the org."
+        ))
     }
     newKey recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23503" =>
         t.getServerErrorMessage.getConstraint match {
           case "api_credential_org_id_fkey" => Failure(BadRequestException(
             resource = "",

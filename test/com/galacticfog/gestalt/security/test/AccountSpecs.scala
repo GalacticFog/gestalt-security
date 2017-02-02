@@ -30,7 +30,7 @@ class AccountSpecs extends SpecWithSDK with JsonMatchers {
 
 
   def beADisabledAccount: Matcher[UserAccountRepository] = { uar: UserAccountRepository =>
-    (uar.disabled == true, uar.username+" is disabled", uar.username+" is not disabled")
+    (uar.disabled, uar.username+" is disabled", uar.username+" is not disabled")
   }
 
 

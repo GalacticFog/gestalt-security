@@ -8,6 +8,7 @@ import com.galacticfog.gestalt.security.api.errors.OAuthError
 import com.galacticfog.gestalt.security.api.{GestaltOrg, _}
 import com.galacticfog.gestalt.security.data.model.TokenRepository
 import org.joda.time.DateTime
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
 import scala.concurrent.Future
 
@@ -112,7 +113,7 @@ class OAuthSpecs extends SpecWithSDK {
       validResp.jti must_== token.get.accessToken.id
       validResp.active must beTrue
       validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+        (r: GestaltRightGrant) => r.grantName == rights.head.grantName && r.grantValue == rights.head.grantValue
       )
       validResp.gestalt_rights must contain(
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
@@ -128,7 +129,7 @@ class OAuthSpecs extends SpecWithSDK {
       validResp.jti must_== token.get.accessToken.id
       validResp.active must beTrue
       validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+        (r: GestaltRightGrant) => r.grantName == rights.head.grantName && r.grantValue == rights.head.grantValue
       )
       validResp.gestalt_rights must contain(
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
@@ -144,7 +145,7 @@ class OAuthSpecs extends SpecWithSDK {
       validResp.jti must_== token.get.accessToken.id
       validResp.active must beTrue
       validResp.gestalt_rights must contain(
-        (r: GestaltRightGrant) => r.grantName == rights(0).grantName && r.grantValue == rights(0).grantValue
+        (r: GestaltRightGrant) => r.grantName == rights.head.grantName && r.grantValue == rights.head.grantValue
       )
       validResp.gestalt_rights must contain(
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue

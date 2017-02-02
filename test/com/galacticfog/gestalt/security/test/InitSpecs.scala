@@ -1,19 +1,21 @@
 package com.galacticfog.gestalt.security.test
 
 import java.util.UUID
+import javax.inject.Inject
 
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{InitSettingsRepository, UserAccountRepository}
-import com.galacticfog.gestalt.security.{Init, InitRequest, EnvConfig, FlywayMigration}
+import com.galacticfog.gestalt.security.{FlywayMigration, Init, InitRequest}
 import org.flywaydb.core.Flyway
 import play.api.Logger
 import play.api.libs.json.Json
-import play.api.libs.ws.WS
+import play.api.libs.ws.WSClient
 import play.api.test._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
+import modules.DatabaseConnection
 
 class InitSpecs extends PlaySpecification {
 
@@ -23,12 +25,16 @@ class InitSpecs extends PlaySpecification {
   lazy val initUsername = "init-user"
   lazy val initPassword = "init password123"
 
-  def clearInit() = Init.getInitSettings foreach {
+  lazy val init = fakeApp.injector.instanceOf[Init]
+  lazy val db = fakeApp.injector.instanceOf[DatabaseConnection]
+  lazy val client = fakeApp.injector.instanceOf[WSClient]
+
+  def clearInit() = init.getInitSettings foreach {
     _.copy(initialized = false).save()
   }
 
   def clearDB() = {
-    val connection = EnvConfig.dbConnection.get
+    val connection = db.dbConnection
     val baseDS = FlywayMigration.getDataSource(connection)
     val baseFlyway = new Flyway()
     baseFlyway.setDataSource(baseDS)
@@ -39,11 +45,9 @@ class InitSpecs extends PlaySpecification {
   sequential
 
   step({
-    clearDB
+    clearDB()
     server.start()
   })
-
-  val client = WS.client(fakeApp)
 
   // testing against /init only, so we don't need creds
   lazy implicit val sdk: GestaltSecurityClient = GestaltSecurityClient(
@@ -96,15 +100,15 @@ class InitSpecs extends PlaySpecification {
         ))
       ))
       init must haveSize(1)
-      init(0).apiSecret must beSome
-      val initAccount = AccountFactory.find(init(0).accountId)
+      init.head.apiSecret must beSome
+      val initAccount = AccountFactory.find(init.head.accountId)
       initAccount must beSome((u: UserAccountRepository) => u.username == initUsername)
       AccountFactory.checkPassword(initAccount.get, initPassword) must beTrue
       InitSettingsRepository.find(0) must beSome((init: InitSettingsRepository) =>
-        init.rootAccount exists (_ == initAccount.get.id)
+        init.rootAccount contains initAccount.get.id
       )
       val newSdk = sdk.withCreds(
-        GestaltBasicCredentials(init(0).apiKey, init(0).apiSecret.get)
+        GestaltBasicCredentials(init.head.apiKey, init.head.apiSecret.get)
       )
       await(GestaltAccount.getSelf()(newSdk)).username must_== initUsername
       val rootOrg = await(GestaltOrg.getCurrentOrg()(newSdk))
@@ -115,7 +119,6 @@ class InitSpecs extends PlaySpecification {
     "allow initialization with password disabled" in {
       clearDB()
       val initUsername = "init-user"
-      val initPassword = "init password123"
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(
@@ -124,17 +127,17 @@ class InitSpecs extends PlaySpecification {
         ))
       ))
       init must haveSize(1)
-      init(0).apiSecret must beSome
-      val initAccount = AccountFactory.find(init(0).accountId)
+      init.head.apiSecret must beSome
+      val initAccount = AccountFactory.find(init.head.accountId)
       initAccount must beSome((u: UserAccountRepository) =>
         u.username == initUsername && u.hashMethod == "disabled" && u.secret.isEmpty
       )
       AccountFactory.checkPassword(initAccount.get, "") must beFalse
       InitSettingsRepository.find(0) must beSome((init: InitSettingsRepository) =>
-        init.rootAccount exists (_ == initAccount.get.id)
+        init.rootAccount contains initAccount.get.id
       )
       val newSdk = sdk.withCreds(
-        GestaltBasicCredentials(init(0).apiKey, init(0).apiSecret.get)
+        GestaltBasicCredentials(init.head.apiKey, init.head.apiSecret.get)
       )
       await(GestaltAccount.getSelf()(newSdk)).username must_== initUsername
       val rootOrg = await(GestaltOrg.getCurrentOrg()(newSdk))
@@ -204,7 +207,7 @@ class InitSpecs extends PlaySpecification {
         payload = Json.toJson(InitRequest())
       ))
       init must haveSize(1)
-      val newApiKey = init(0)
+      val newApiKey = init.head
       newApiKey.apiSecret must beSome
       newApiKey.accountId must_== prevInitAccount.id
       (await(sdk.getJson("init")) \ "initialized").asOpt[Boolean] must beSome(true)
@@ -216,7 +219,7 @@ class InitSpecs extends PlaySpecification {
 
     "require username" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest())
@@ -225,7 +228,7 @@ class InitSpecs extends PlaySpecification {
 
     "require valid username" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(
@@ -236,7 +239,7 @@ class InitSpecs extends PlaySpecification {
 
     "succeed and return keys and not clear password" in {
       clearDB()
-      FlywayMigration.migrate(EnvConfig.dbConnection.get, "legacy-root", "letmein", Some("9"))
+      FlywayMigration.migrate(db.dbConnection, "legacy-root", "letmein", Some("9"))
       val init = await(sdk.post[Seq[GestaltAPIKey]](
         uri = "init",
         payload = Json.toJson(InitRequest(
@@ -244,7 +247,7 @@ class InitSpecs extends PlaySpecification {
         ))
       ))
       init must haveSize(1)
-      val newApiKey = init(0)
+      val newApiKey = init.head
       newApiKey.apiSecret must beSome
       val initAccount = AccountFactory.find(newApiKey.accountId)
       initAccount must beSome(

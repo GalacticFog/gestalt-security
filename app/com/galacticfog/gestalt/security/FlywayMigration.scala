@@ -56,7 +56,7 @@ object FlywayMigration {
         case None =>
           log.info("database is not initialized")
       }
-      log.info("pending levels: " + info.pending().size)
+      log.info("pending levels: " + info.pending().length)
       targetVersion foreach {baseFlyway.setTargetAsString}
       baseFlyway.migrate()
       baseFlyway.info().current()

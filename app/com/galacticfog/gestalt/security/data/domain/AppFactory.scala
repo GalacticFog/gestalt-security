@@ -97,13 +97,13 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
             UserGroupRepository.find(asm.accountStoreId) match {
               case Some(group) => Success(Right(group))
               case None =>
-                throw new UnknownAPIException(500, resource = s"/groups/${asm.accountStoreId}", message = "error accessing group corresponding to application's default account store", developerMessage = "")
+                throw UnknownAPIException(500, resource = s"/groups/${asm.accountStoreId}", message = "error accessing group corresponding to application's default account store", developerMessage = "")
             }
           case "DIRECTORY" =>
             GestaltDirectoryRepository.find(asm.accountStoreId) match {
               case Some(dir) => Success(Left(dir))
               case None =>
-                throw new UnknownAPIException(500, resource = s"/directories/${asm.accountStoreId}", message = "error accessing directory corresponding to application's default account store", developerMessage = "")
+                throw UnknownAPIException(500, resource = s"/directories/${asm.accountStoreId}", message = "error accessing directory corresponding to application's default account store", developerMessage = "")
             }
         }
       case None =>
@@ -171,7 +171,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       ))
     } yield asm
     mapping recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23503" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_store_mapping_app_id_store_type_account_store_id_key" =>
             Failure(ConflictException(
@@ -237,7 +237,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       ))
     } yield asm
     mapping recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23503") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23503" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_store_mapping_app_id_store_type_account_store_id_key" =>
             Failure(ConflictException(
@@ -320,7 +320,7 @@ object AppFactory extends SQLSyntaxSupport[UserAccountRepository] {
       // then add the group to the directory
       // then associate any rights specified in the request
       if (GestaltAppRepository.find(appId).isEmpty) {
-        throw new ResourceNotFoundException(
+        throw ResourceNotFoundException(
           resource = s"/apps/${appId}",
           message = "could not create group in non-existent application",
           developerMessage = "Could not create group in non-existent application. If this was created as a result of an attempt to create a group in an org, it suggests that the org is misconfigured."

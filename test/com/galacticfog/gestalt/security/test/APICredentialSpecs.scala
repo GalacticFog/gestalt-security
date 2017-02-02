@@ -36,7 +36,7 @@ class APICredentialSpecs extends SpecWithSDK {
       apiKey.disabled must beFalse
       val apiSDK = tokenSdk.withCreds(GestaltBasicCredentials(apiKey.apiKey, apiKey.apiSecret.get))
       APICredentialFactory.findByAPIKey(apiKey.apiKey) must beSome (
-        (apikey: APICredentialRepository) => apikey.issuedOrgId == Some(rootOrg.id)
+        (apikey: APICredentialRepository) => apikey.issuedOrgId.contains(rootOrg.id)
       )
       await(GestaltAccount.getSelf()(apiSDK)).id must_== rootAccount.id
       await(GestaltOrg.getCurrentOrg()(apiSDK)).id must_== rootOrg.id
@@ -126,7 +126,7 @@ class APICredentialSpecs extends SpecWithSDK {
       val apiSDK = tokenSdk.withCreds(GestaltBasicCredentials(apiKey.apiKey, apiKey.apiSecret.get))
       await(GestaltAccount.getSelf()(apiSDK)).id must_== rootAccount.id
       await(GestaltOrg.getCurrentOrg()(apiSDK)).id must_== subOrg.id
-      await(GestaltOrg.syncOrgTree(None)(apiSDK)) must ( (sync: GestaltOrgSync) => sync.orgs(0).id == subOrg.id )
+      await(GestaltOrg.syncOrgTree(None)(apiSDK)) must ( (sync: GestaltOrgSync) => sync.orgs.head.id == subOrg.id )
     }
 
     "fail for invalid bound org" in {

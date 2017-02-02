@@ -64,7 +64,7 @@ object TokenFactory extends SQLSyntaxSupport[TokenRepository] {
         parentApikey = parentApiKey
       )
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "token_account_id_fkey" => Failure(BadRequestException(
             resource = "",

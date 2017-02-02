@@ -48,7 +48,8 @@ class SyncSpec extends SpecWithSDK {
     }
 
     "match admin in init" in {
-      val admin = Init.getInitSettings.toOption.flatMap(_.rootAccount).map(_.asInstanceOf[UUID])
+      val init = fakeApp.injector.instanceOf[Init]
+      val admin = init.getInitSettings.toOption.flatMap(_.rootAccount).map(_.asInstanceOf[UUID])
       sync.admin.map(_.id) must_== admin
     }
 

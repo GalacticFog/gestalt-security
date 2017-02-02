@@ -5,8 +5,8 @@ import java.util.UUID
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException, BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.api.GestaltOrg
-import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, AccountFactory, GroupFactory, DirectoryFactory}
-import com.galacticfog.gestalt.security.data.model.{UserAccountRepository, UserGroupRepository}
+import com.galacticfog.gestalt.security.data.domain.{RightGrantFactory, DirectoryFactory}
+import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
 class OrgSpecs extends SpecWithSDK {
 

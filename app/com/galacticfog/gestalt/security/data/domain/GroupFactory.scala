@@ -2,17 +2,15 @@ package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.io.util.PatchOp
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltGroup
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.model._
-import com.galacticfog.gestalt.security.plugins.GroupFactoryDelegate
 import org.postgresql.util.PSQLException
-import play.api.libs.json.JsResult
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Try}
 
 
 object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
@@ -50,7 +48,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
         description = description
       )
     } recoverWith {
-      case t: PSQLException if (t.getSQLState == "23505" || t.getSQLState == "23514") =>
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
         t.getServerErrorMessage.getConstraint match {
           case "account_group_dir_id_name_key" => Failure(ConflictException(
             resource = "",
@@ -127,7 +125,7 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   def updateGroupMembership(groupId: UUID, payload: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[Seq[UserAccountRepository]] = {
     DB localTx { implicit session =>
       val ops = payload map { p => for {
-        accountId <- Try{p.value.as[UUID]}
+        accountId <- Try{p.value.get.as[UUID]}
         addRemove <- p.op.toLowerCase match {
           case "add" => addAccountToGroup(groupId, accountId) map {_.accountId.asInstanceOf[UUID]}
           case "remove" => Try {

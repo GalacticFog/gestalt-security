@@ -1,7 +1,9 @@
 package com.galacticfog.gestalt.security.data.domain
 
 import java.util.UUID
-import com.galacticfog.gestalt.io.util.PatchOp
+import javax.inject.{Inject, Singleton}
+
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.model._
 import scalikejdbc._
@@ -18,7 +20,8 @@ object AccountStoreMappingService extends SQLSyntaxSupport[AccountStoreMappingRe
   override val autoSession = AutoSession
 }
 
-class DefaultAccountStoreMappingServiceImpl extends SQLSyntaxSupport[AccountStoreMappingRepository] with AccountStoreMappingService {
+@Singleton
+class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport[AccountStoreMappingRepository] with AccountStoreMappingService {
   override val autoSession = AutoSession
 
   def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository] = AccountStoreMappingRepository.find(mapId)
@@ -26,19 +29,19 @@ class DefaultAccountStoreMappingServiceImpl extends SQLSyntaxSupport[AccountStor
   override def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
     val newMap = patch.foldLeft(map)((m, p) => {
       p match {
-        case PatchOp(op,"/name",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+        case PatchOp(op,"/name",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
           m.copy(name = Some(value.as[String]))
-        case PatchOp("remove","/name",value) =>
+        case PatchOp("remove","/name",None) =>
           m.copy(name = None)
-        case PatchOp(op,"/description",value) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+        case PatchOp(op,"/description",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
           m.copy(description = Some(value.as[String]))
-        case PatchOp("remove","/description",value) =>
+        case PatchOp("remove","/description",None) =>
           m.copy(description = None)
-        case PatchOp("remove","/isDefaultAccountStore",value) =>
+        case PatchOp("remove","/isDefaultAccountStore",None) =>
           m.copy(defaultAccountStore = None)
-        case PatchOp("remove","/isDefaultGroupStore",value) =>
+        case PatchOp("remove","/isDefaultGroupStore",None) =>
           m.copy(defaultGroupStore = None)
-        case _ => throw new BadRequestException(
+        case _ => throw BadRequestException(
           resource = "",
           message = "bad PATCH payload for updating account store",
           developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."
