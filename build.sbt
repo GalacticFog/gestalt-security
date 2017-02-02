@@ -56,6 +56,7 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
   jdbc,
   ws,
+  filters,
   specs2 % Test,
   "org.scalikejdbc" %% "scalikejdbc" % "2.2.9",
   "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.9" % Test,

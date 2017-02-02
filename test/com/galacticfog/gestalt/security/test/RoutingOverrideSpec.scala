@@ -7,6 +7,7 @@ import org.junit.runner._
 import org.specs2.mock.Mockito
 import org.specs2.mutable._
 import org.specs2.runner._
+import play.api.Application
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.ws.WSClient
 import play.api.mvc.Results._
@@ -53,7 +54,7 @@ class RoutingOverrideSpec extends Specification with FutureAwaits with DefaultAw
       })
       .build
 
-    val client = appWithRoutes.injector.instanceOf[WSClient]
+    def client(implicit app: Application) = app.injector.instanceOf[WSClient]
 
     "allow overriding HTTP GET via _test_override=POST" in new WithServer(app = appWithRoutes) {
       val resp = await(client.url(s"http://localhost:$testServerPort/health?_test_override=POST").get())
