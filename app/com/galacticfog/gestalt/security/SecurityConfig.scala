@@ -1,40 +1,15 @@
 package com.galacticfog.gestalt.security
 
-import javax.inject.{Inject, Singleton}
-
 import org.joda.time.Duration
 import scala.util.Try
 import scala.util.Properties.envOrNone
 
-@Singleton
-class SecurityConfig @Inject()() {
+case class SecurityConfig( tokenLifetime: Duration,
+                           methodOverrideParameter: String,
+                           database: SecurityConfig.DatabaseConfig,
+                           rateLimiting: SecurityConfig.AuthAttemptConfig )
 
-  import SecurityConfig._
-
-  val tokenLifetime = (for {
-    envString <- envOrNone("OAUTH_TOKEN_LIFETIME")
-    lifetime <- Try { Duration.parse(envString) }.toOption
-  } yield lifetime) getOrElse DEFAULT_TOKEN_LIFETIME
-
-  val methodOverrideParameter = envOrNone("METHOD_OVERRIDE_PARAM") getOrElse DEFAULT_METHOD_OVERRIDE_PARAM
-
-  val database = DatabaseConfig(
-    host = envOrThrow("DATABASE_HOSTNAME"),
-    username = envOrThrow("DATABASE_USERNAME"),
-    password = envOrThrow("DATABASE_PASSWORD"),
-    dbname = envOrThrow("DATABASE_NAME"),
-    port = getEnvOptInt("DATABASE_PORT").getOrElse(5432),
-    timeout = getEnvOptInt("DATABASE_TIMEOUT_MS").getOrElse(5000)
-  )
-
-  val rateLimiting = AuthAttemptConfig(
-    periodInMinutes = getEnvOptInt("OAUTH_RATE_LIMITING_PERIOD") getOrElse AuthAttemptConfig.DEFAULT_RATE_LIMITING_PERIOD_IN_MINUTES,
-    attemptsPerPeriod = getEnvOptInt("OAUTH_RATE_LIMITING_AMOUNT") getOrElse AuthAttemptConfig.DEFAULT_MAX_ATTEMPTS_PER_MINUTE
-  )
-
-}
-
-object SecurityConfig {
+case object SecurityConfig {
 
   def envOrThrow(name: String): String = envOrNone(name) getOrElse(throw new RuntimeException(s"missing env var ${name}"))
 
@@ -62,3 +37,5 @@ object SecurityConfig {
   }
 
 }
+
+
