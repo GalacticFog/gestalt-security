@@ -1,5 +1,6 @@
 package com.galacticfog.gestalt.security.data.config
 
+import play.api.Logger
 import scalikejdbc._
 
 class ScalikePostgresDBConnection(override val host: String,
@@ -20,7 +21,7 @@ class ScalikePostgresDBConnection(override val host: String,
   )
 
   ConnectionPool.singleton(url, username, password, settings)
-  println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
+  Logger.info("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
 }
 
 object ScalikePostgresDBConnection {

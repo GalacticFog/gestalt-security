@@ -1,17 +1,19 @@
 package controllers
 
-import java.util.{UUID, Base64}
-import com.galacticfog.gestalt.security.api.{GestaltBearerCredentials, GestaltBasicCredentials, GestaltBasicCredsToken, GestaltAPICredentials}
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, UnauthorizedAPIException}
+import java.util.UUID
+
+import com.galacticfog.gestalt.security.api.{GestaltAPICredentials, GestaltBasicCredentials, GestaltBearerCredentials}
+import com.galacticfog.gestalt.security.api.errors.UnauthorizedAPIException
 import com.galacticfog.gestalt.security.data.domain._
 import com.galacticfog.gestalt.security.data.model.{APICredentialRepository, TokenRepository, UserAccountRepository}
-import org.joda.time.DateTime
 import play.api.Logger
-import play.api.libs.json.{Json, JsValue}
+import play.api.libs.json.Json
 import play.api.mvc._
 import play.api.mvc.Security._
+
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.json.JsonImports.exceptionFormat
+import play.api.http.HeaderNames
 
 import scala.language.reflectiveCalls
 
@@ -33,7 +35,7 @@ trait GestaltHeaderAuthentication {
             serviceAppId match {
               case Some(srvAppId) =>
                 // authenticated in the requested app, proceed with the user block but using the appropriate login org
-                Logger.info(s"authenticated /accounts/${request.user.identity.id} against ${orgId}")
+                Logger.info(s"req-${request.id}: authenticated ${request.user.identity.username} (${request.user.identity.id}) against /orgs/${orgId}")
                 block(new AuthenticatedRequest[B,AccountWithOrgContext](
                   request.user.copy(
                     orgId = orgId,
@@ -42,12 +44,12 @@ trait GestaltHeaderAuthentication {
                 ))
               case None =>
                 // did not authenticate with the requested app, we could 403 or 404, we will 403
-                Logger.info(s"authenticated /accounts/${request.user.identity.id} did not belong to /orgs/${orgId}")
+                Logger.info(s"req-${request.id}: authenticated ${request.user.identity.username} (${request.user.identity.id}) did not belong to specified /orgs/${orgId}")
                 throw UnauthorizedAPIException("", message = "insufficient permissions", developerMessage = "Insufficient permissions in the authenticated account to perform the requested action.")
             }
           case None =>
             // controller didn't specify an orgId, so we don't enforce that the account belongs to an orgId. just return auth information from the token.
-            Logger.info(s"authenticated /accounts/${request.user.identity.id} against ${request.user.orgId}")
+            Logger.info(s"req-${request.id}: globally authenticated ${request.user.identity.username} (${request.user.identity.id}), associated with /orgs/${request.user.orgId}")
             block(request)
         }
       }
@@ -67,11 +69,14 @@ object GestaltHeaderAuthentication {
   case class AccountWithOrgContext(identity: UserAccountRepository, orgId: UUID, serviceAppId: UUID, credential: Either[APICredentialRepository,TokenRepository])
 
   def extractAuthToken(request: RequestHeader): Option[GestaltAPICredentials] = {
-    request.headers.get("Authorization") flatMap GestaltAPICredentials.getCredentials
+    request.headers.get(HeaderNames.AUTHORIZATION) flatMap GestaltAPICredentials.getCredentials
   }
 
   def onUnauthorized(request: RequestHeader): Result = {
-    Logger.info("rejected request from " + extractAuthToken(request).map{_.headerValue})
+    Logger.info(s"req-${request.id}: rejected request from " + extractAuthToken(request).map{_ match {
+      case bearer: GestaltBearerCredentials => bearer.toString
+      case basic: GestaltBasicCredentials => basic.copy(password = "****").toString
+    }})
     Results.Unauthorized(
       Json.toJson(UnauthorizedAPIException(
         resource = request.path,

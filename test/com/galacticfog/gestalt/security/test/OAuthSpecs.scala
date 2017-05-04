@@ -119,6 +119,12 @@ class OAuthSpecs extends SpecWithSDK {
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
       validResp.gestalt_org_id must_== org.id
+
+      val extraData = Map(
+        "keyA" -> "valA",
+        "keyB" -> "valB"
+      )
+      await(GestaltToken.validateToken(org.id, token.get.accessToken, extraData)).asInstanceOf[ValidTokenResponse].extra_data must beSome(extraData)
     }
 
     "validate valid access tokens (FQON) against generating org" in {
@@ -135,6 +141,12 @@ class OAuthSpecs extends SpecWithSDK {
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
       validResp.gestalt_org_id must_== org.id
+
+      val extraData = Map(
+        "keyA" -> "valA",
+        "keyB" -> "valB"
+      )
+      await(GestaltToken.validateToken(org.fqon, token.get.accessToken, extraData)).asInstanceOf[ValidTokenResponse].extra_data must beSome(extraData)
     }
 
     "validate valid access tokens (global) against generating org" in {
@@ -151,6 +163,12 @@ class OAuthSpecs extends SpecWithSDK {
         (r: GestaltRightGrant) => r.grantName == rights(1).grantName && r.grantValue == rights(1).grantValue
       )
       validResp.gestalt_org_id must_== org.id
+
+      val extraData = Map(
+        "keyA" -> "valA",
+        "keyB" -> "valB"
+      )
+      await(GestaltToken.validateToken(token.get.accessToken, extraData)).asInstanceOf[ValidTokenResponse].extra_data must beSome(extraData)
     }
 
     "require authentication for introspection" in {

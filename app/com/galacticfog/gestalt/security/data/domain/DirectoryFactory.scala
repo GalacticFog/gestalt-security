@@ -57,7 +57,6 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
   }
 
   def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[DirectoryPlugin] = {
-	println(s"config = ${create.config}")
     Try {
       GestaltDirectoryRepository.create(
         id = UUID.randomUUID(),
@@ -81,7 +80,6 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[GestaltAccount] = {
-    println("DirectoryFactory.createAccountInDir()....")
     DirectoryFactory.find(dirId) match {
       case None => Failure(ResourceNotFoundException(
         resource = s"/directories/${dirId}",
