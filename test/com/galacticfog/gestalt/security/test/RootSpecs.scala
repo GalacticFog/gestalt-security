@@ -120,7 +120,7 @@ class RootSpecs extends SpecWithSDK {
     }
 
     "authenticate equivalently to framework" in {
-      appAuth must_== await(GestaltOrg.authorizeFrameworkUser(rootBearerCreds)).get
+      appAuth.copy(extraData = Some(Map.empty)) must_== await(GestaltOrg.authorizeFrameworkUser(rootBearerCreds)).get
     }
 
     "get the root user by username" in {

@@ -129,7 +129,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
-    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, orgId = request.user.orgId)
+    val extraData = request.body.asJson.flatMap(_.asOpt[Map[String,String]])
+    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, orgId = request.user.orgId, extraData = extraData)
     Ok(Json.toJson(ar))
   }
 
@@ -137,7 +138,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
-    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId)
+    val extraData = request.body.asJson.flatMap(_.asOpt[Map[String,String]])
+    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId, extraData = extraData)
     Ok(Json.toJson(ar))
   }
 
@@ -165,7 +167,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           account,
           groups map { g => (g: GestaltGroup).getLink },
           rights map { r => r: GestaltRightGrant },
-          orgId = app.get.orgId.asInstanceOf[UUID]
+          orgId = app.get.orgId.asInstanceOf[UUID],
+          extraData = None
         )))
     }
   }
@@ -1321,19 +1324,22 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           account <- AccountFactory.getAppAccount(serviceAppId, token.accountId.asInstanceOf[UUID])
         } yield (token,account,serviceAppId,orgId)
         intro = tokenAndAccount.fold[TokenIntrospectionResponse](INVALID_TOKEN){
-          case (token,orgAccount,serviceAppId,orgId) => ValidTokenResponse(
-            username = orgAccount.username,
-            sub = orgAccount.href,
-            iss = "todo",
-            exp = token.expiresAt.getMillis/1000,
-            iat = token.issuedAt.getMillis/1000,
-            jti = token.id.asInstanceOf[UUID],
-            gestalt_token_href = token.href,
-            gestalt_org_id = orgId,
-            gestalt_account = orgAccount,
-            gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
-            gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant }
-          )
+          case (token,orgAccount,serviceAppId,orgId) =>
+            val extraData = (request.body - "token" - "token_type_hint").collect({case (k,vs) if vs.nonEmpty => (k -> vs.head)})
+            ValidTokenResponse(
+              username = orgAccount.username,
+              sub = orgAccount.href,
+              iss = "todo",
+              exp = token.expiresAt.getMillis/1000,
+              iat = token.issuedAt.getMillis/1000,
+              jti = token.id.asInstanceOf[UUID],
+              gestalt_token_href = token.href,
+              gestalt_org_id = orgId,
+              gestalt_account = orgAccount,
+              gestalt_groups = GroupFactory.listAccountGroups(accountId = orgAccount.id.asInstanceOf[UUID]) map { g => (g: GestaltGroup).getLink },
+              gestalt_rights = RightGrantFactory.listAccountRights(serviceAppId, orgAccount.id.asInstanceOf[UUID]) map { r => r: GestaltRightGrant },
+              extra_data = Some(extraData)
+            )
         }
       } yield intro
       renderTry[TokenIntrospectionResponse](Ok)(introspection)
