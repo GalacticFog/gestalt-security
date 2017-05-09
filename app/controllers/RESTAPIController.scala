@@ -177,19 +177,24 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Get/List methods
   ////////////////////////////////////////////////////////
 
-  def getHealth = Action.async {
+  def getHealth = Action.async { request =>
     Future {
       Try {
         resolveRoot
       } match {
-        case Success(maybeRoot) if maybeRoot.isDefined =>
+        case Success(Some(_)) =>
           Ok("healthy")
-        case Success(orgId) if orgId.isEmpty =>
+        case Success(None) =>
           InternalServerError("could not find root org; check database version")
-        case Failure(_) if !init.isInit.toOption.contains(true) =>
-          BadRequest("server not initialized")
         case Failure(_) =>
-          InternalServerError("not able to connect to database")
+          init.isInit match {
+            case Success(true) =>
+              InternalServerError("service is initialized but could not determine root org")
+            case Success(false) =>
+              BadRequest("service not initialized")
+            case Failure(t) =>
+              handleError(request, t)
+          }
       }
     }
   }
