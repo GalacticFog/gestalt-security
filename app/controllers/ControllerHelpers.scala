@@ -41,9 +41,9 @@ trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
         log.error(s"caught psql error with state ${sql.getSQLState}", sql)
         InternalServerError(Json.toJson(UnknownAPIException(
           code = 500,
-          resource = "",
-          message = s"PSQL error ${sql.getSQLState}, ${sql.getErrorCode}",
-          developerMessage = sql.getServerErrorMessage.getMessage
+          resource = request.path,
+          message = "database exception",
+          developerMessage = "Caught PSQLException; see gestalt-security logs for more details."
         )))
       case oauthErr: OAuthError => BadRequest(Json.toJson(oauthErr).as[JsObject] ++ Json.obj("resource" -> resource))
       case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))

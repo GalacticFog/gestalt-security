@@ -18,6 +18,8 @@ import play.api.routing._
 import play.api.test.Helpers._
 import play.api.test._
 
+import scala.util.Success
+
 /**
  * Add your spec here.
  * You can mock out a whole application including requests, plugins etc.
@@ -29,7 +31,7 @@ class CORSSpec extends Specification with FutureAwaits with DefaultAwaitTimeout 
   "Application" should {
 
     val mockInit = mock[Init]
-    mockInit.isInit returns true
+    mockInit.isInit returns Success(true)
     val testConfig = SecurityConfig(
       tokenLifetime = Duration.standardMinutes(0),
       methodOverrideParameter = "_test_override",

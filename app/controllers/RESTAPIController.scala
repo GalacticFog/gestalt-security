@@ -186,7 +186,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           Ok("healthy")
         case Success(orgId) if orgId.isEmpty =>
           InternalServerError("could not find root org; check database version")
-        case Failure(_) if !init.isInit =>
+        case Failure(_) if !init.isInit.toOption.contains(true) =>
           BadRequest("server not initialized")
         case Failure(_) =>
           InternalServerError("not able to connect to database")
