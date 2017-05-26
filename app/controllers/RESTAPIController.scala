@@ -29,6 +29,7 @@ import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 import akka.pattern.ask
 import com.galacticfog.gestalt.patch.PatchOp
+import play.api.mvc.Security.AuthenticatedRequest
 
 import scala.concurrent.duration._
 
@@ -125,7 +126,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Auth methods
   ////////////////////////////////////////////////////////
 
-  def orgAuth(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  private[this] def authenticateWithClientCredentials(request: AuthenticatedRequest[AnyContent,GestaltHeaderAuthentication.AccountWithOrgContext]): Result = {
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -134,14 +135,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     Ok(Json.toJson(ar))
   }
 
-  def globalAuth() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
-    val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(accountId = accountId)
-    val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
-    val extraData = request.body.asJson.flatMap(_.asOpt[Map[String,String]])
-    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId, extraData = extraData)
-    Ok(Json.toJson(ar))
-  }
+  def orgAuth(orgId: UUID) = AuthenticatedAction(Some(orgId))(authenticateWithClientCredentials(_))
+
+  def globalAuth() = AuthenticatedAction(resolveFromCredentials _)(authenticateWithClientCredentials(_))
 
   def appAuth(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(AUTHENTICATE_ACCOUNTS)

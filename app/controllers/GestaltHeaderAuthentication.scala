@@ -107,7 +107,8 @@ object GestaltHeaderAuthentication {
       identity = account,
       orgId = orgId,
       serviceAppId = serviceAppId,
-      credential = apiCred)
+      credential = apiCred
+    )
   }
 
 }
