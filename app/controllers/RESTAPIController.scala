@@ -1311,12 +1311,22 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
+  private[this] def logExtraData(requestId: Long, body: Map[String, Seq[String]]): Unit = {
+    val gsExtraData = Some(body.collect({
+      case (h, v :: vtail) if h.startsWith("gestalt-security") => (h,v)
+    }).toSeq).filter(_.nonEmpty).map(_.mkString(",")).getOrElse("<empty>")
+    if (gsExtraData.nonEmpty) log.debug(s"req-${requestId}: extra data: ${gsExtraData}")
+  }
+
   private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
     val authAttempt = GestaltHeaderAuthentication.authenticateHeader(request)
     if (authAttempt.isDefined) {
       val introspection = for {
-        tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+        tokenStr <- {
+          logExtraData(request.id, request.body)
+          o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+        }
         tokenAndAccount = for {
           token <- TokenFactory.findValidToken(tokenStr)
           orgId <- getOrgId(token)
