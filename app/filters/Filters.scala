@@ -12,20 +12,31 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class LoggingFilter @Inject() (implicit val mat: Materializer, ec: ExecutionContext) extends Filter {
 
+  val X_REQUEST_ID = "X-Request-Id"
+  val X_RESPONSE_TIME = "X-Response-Time"
+
+  val accessLog = Logger("access")
+
   def apply(nextFilter: RequestHeader => Future[Result])
            (requestHeader: RequestHeader): Future[Result] = {
 
     val startTime = System.currentTimeMillis
-    Logger.info(s"req-${requestHeader.id}: ${requestHeader.method} ${requestHeader.uri}")
+    val requestId = requestHeader.headers.get(X_REQUEST_ID)
+    val linepre = s"req-${requestHeader.id}: ${requestHeader.method} ${requestHeader.uri}" +
+      requestId.map(" (" + X_REQUEST_ID + ": " + _ + ")").getOrElse("")
+    accessLog.info(linepre)
 
     nextFilter(requestHeader).map { result =>
 
       val endTime = System.currentTimeMillis
       val requestTime = endTime - startTime
 
-      Logger.info(s"req-${requestHeader.id}: ${requestHeader.method} ${requestHeader.uri} returned ${result.header.status} in ${requestTime}ms ")
+      accessLog.info(s"${linepre} returned ${result.header.status} in ${requestTime}ms ")
 
-      result.withHeaders("Request-Time" -> requestTime.toString)
+      val responseHeaders = Seq(
+        X_RESPONSE_TIME -> requestTime.toString
+      ) ++ requestId.map(X_REQUEST_ID -> _)
+      result.withHeaders(responseHeaders:_*)
     }
   }
 }

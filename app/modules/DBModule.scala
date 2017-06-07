@@ -28,7 +28,7 @@ class DatabaseConnection @Inject()( config: SecurityConfig ) {
 
 @Singleton
 class DatabaseMigration @Inject() ( db: DatabaseConnection, init: Init ) {
-  if (init.isInit) {
+  if (init.isInit.toOption.contains(true)) {
     FlywayMigration.migrate(db.dbConnection, "", "")
   }
 }

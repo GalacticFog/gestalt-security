@@ -29,6 +29,7 @@ import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 import akka.pattern.ask
 import com.galacticfog.gestalt.patch.PatchOp
+import play.api.mvc.Security.AuthenticatedRequest
 
 import scala.concurrent.duration._
 
@@ -125,7 +126,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Auth methods
   ////////////////////////////////////////////////////////
 
-  def orgAuth(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  private[this] def authenticateWithClientCredentials(request: AuthenticatedRequest[AnyContent,GestaltHeaderAuthentication.AccountWithOrgContext]): Result = {
     val accountId = request.user.identity.id.asInstanceOf[UUID]
     val groups = GroupFactory.listAccountGroups(accountId = accountId)
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
@@ -134,14 +135,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     Ok(Json.toJson(ar))
   }
 
-  def globalAuth() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
-    val accountId = request.user.identity.id.asInstanceOf[UUID]
-    val groups = GroupFactory.listAccountGroups(accountId = accountId)
-    val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = accountId)
-    val extraData = request.body.asJson.flatMap(_.asOpt[Map[String,String]])
-    val ar = GestaltAuthResponse(account = request.user.identity, groups = groups map { g => (g: GestaltGroup).getLink }, rights = rights map { r => r: GestaltRightGrant }, request.user.orgId, extraData = extraData)
-    Ok(Json.toJson(ar))
-  }
+  def orgAuth(orgId: UUID) = AuthenticatedAction(Some(orgId))(authenticateWithClientCredentials(_))
+
+  def globalAuth() = AuthenticatedAction(resolveFromCredentials _)(authenticateWithClientCredentials(_))
 
   def appAuth(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(AUTHENTICATE_ACCOUNTS)
@@ -177,19 +173,24 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Get/List methods
   ////////////////////////////////////////////////////////
 
-  def getHealth = Action.async {
+  def getHealth = Action.async { request =>
     Future {
       Try {
         resolveRoot
       } match {
-        case Success(maybeRoot) if maybeRoot.isDefined =>
+        case Success(Some(_)) =>
           Ok("healthy")
-        case Success(orgId) if orgId.isEmpty =>
+        case Success(None) =>
           InternalServerError("could not find root org; check database version")
-        case Failure(_) if !init.isInit =>
-          BadRequest("server not initialized")
         case Failure(_) =>
-          InternalServerError("not able to connect to database")
+          init.isInit match {
+            case Success(true) =>
+              InternalServerError("service is initialized but could not determine root org")
+            case Success(false) =>
+              BadRequest("service not initialized")
+            case Failure(t) =>
+              handleError(request, t)
+          }
       }
     }
   }
@@ -1310,12 +1311,22 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
+  private[this] def logExtraData(requestId: Long, body: Map[String, Seq[String]]): Unit = {
+    val gsExtraData = Some(body.collect({
+      case (h, v :: vtail) if h.startsWith("gestalt-security") => (h,v)
+    }).toSeq).filter(_.nonEmpty).map(_.mkString(",")).getOrElse("<empty>")
+    if (gsExtraData.nonEmpty) log.debug(s"req-${requestId}: extra data: ${gsExtraData}")
+  }
+
   private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
     val authAttempt = GestaltHeaderAuthentication.authenticateHeader(request)
     if (authAttempt.isDefined) {
       val introspection = for {
-        tokenStr <- o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+        tokenStr <- {
+          logExtraData(request.id, request.body)
+          o2t(request.body.get("token") flatMap asSingleton)(OAuthError(INVALID_REQUEST,"Invalid content in one of required fields: `token`"))
+        }
         tokenAndAccount = for {
           token <- TokenFactory.findValidToken(tokenStr)
           orgId <- getOrgId(token)

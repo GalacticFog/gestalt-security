@@ -10,6 +10,7 @@ import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.utils.SecureIdGenerator
 import modules.DatabaseConnection
 import org.mindrot.jbcrypt.BCrypt
+import org.postgresql.util.PSQLException
 import play.api.Logger
 import play.api.libs.json.Json
 import scalikejdbc._
@@ -27,14 +28,17 @@ case object InitRequest {
 
 class Init @Inject() ( dbConn: DatabaseConnection ) extends SQLSyntaxSupport[InitSettingsRepository] {
 
-  def isInit: Boolean = checkDBInit
+  def isInit: Try[Boolean] = checkDBInit
 
-  private[this] def checkDBInit = {
-    getInitSettings map {_.initialized} recover {
+  private[this] def checkDBInit: Try[Boolean] = {
+    getInitSettings map {_.initialized} recoverWith {
+      case t: PSQLException if t.getSQLState == "42P01" =>
+        Logger.info(s"received 42P01 on getInitSettings, assuming uninitialized")
+        Success(false)
       case t: Throwable =>
-        Logger.warn(s"error determining initialization: ${t.toString.replace("\n","")}")
-        false
-    } get
+        Logger.error(s"error determining initialization status: ${t.getMessage}", t)
+        Failure(t)
+    }
   }
 
   def getInitSettings = Try {
@@ -63,7 +67,7 @@ class Init @Inject() ( dbConn: DatabaseConnection ) extends SQLSyntaxSupport[Ini
   }
 
   def doInit(ir: InitRequest): Try[Seq[APICredentialRepository]] = {
-    if (checkDBInit) Failure(BadRequestException("", "service already initialized", "The service is initialized"))
+    if (checkDBInit.toOption.contains(true)) Failure(BadRequestException("", "service already initialized", "The service is initialized"))
     else {
       val db = dbConn.dbConnection
       val currentVersion = FlywayMigration.currentVersion(db)

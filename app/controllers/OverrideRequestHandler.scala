@@ -77,7 +77,7 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
     (request.method, request.path) match {
       case (OPTIONS, _) => super.routeRequest(request)
       case r if passthroughActions contains r => super.routeRequest(request)
-      case (_,_) if !init.isInit => Some(Action { Results.BadRequest(Json.toJson(BadRequestException(
+      case (_,_) if !init.isInit.toOption.contains(true) => Some(Action { Results.BadRequest(Json.toJson(BadRequestException(
         request.path,
         message = "service it not initialized",
         developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."

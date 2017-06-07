@@ -17,6 +17,8 @@ import play.api.mvc._
 import play.api.routing._
 import play.api.routing.sird._
 
+import scala.util.Success
+
 /**
  * Add your spec here.
  * You can mock out a whole application including requests, plugins etc.
@@ -28,7 +30,7 @@ class RoutingOverrideSpec extends Specification with FutureAwaits with DefaultAw
   "Application Router" should {
 
     val mockInit = mock[Init]
-    mockInit.isInit returns true
+    mockInit.isInit returns Success(true)
     val testConfig = SecurityConfig(
       tokenLifetime = Duration.ZERO,
       methodOverrideParameter = "_test_override",
