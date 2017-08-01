@@ -111,6 +111,19 @@ class AccountSpecs extends SpecWithSDK with JsonMatchers {
       await(keySdk.postJson(s"accounts/${UUID.randomUUID()}/disable")) must throwA[ResourceNotFoundException]
     }
 
+    "be updated in total using old GestaltAccountUpdate SDK" in {
+      val updatedAccount = await(GestaltAccount.updateAccount(
+        accountId = rootAccount.id,
+        update = GestaltAccountUpdate(
+          email = Some("updated-email@email.com"),
+          phoneNumber = Some("+1.505.1234567")
+        )
+      ))
+      updatedAccount.email must beSome("updated-email@email.com")
+      updatedAccount.phoneNumber must beSome("+15051234567")
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
+    }
+
     "be updated with an email address" in {
       val updatedAccount = await(rootAccount.update(
         'email -> Json.toJson(rootEmail)
