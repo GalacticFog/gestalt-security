@@ -247,7 +247,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         message = "A valid directory was not found for the account",
         developerMessage = "A valid directory was not found for the account.")
     }
-    throw BadRequestException(resource = "", message = "", developerMessage = "")
   }
 
 
