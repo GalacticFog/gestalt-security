@@ -124,6 +124,19 @@ class AccountSpecs extends SpecWithSDK with JsonMatchers {
       await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
     }
 
+    "clear phone number and email address for empty values using old GestaltAccountUpdate SDK" in {
+      val updatedAccount = await(GestaltAccount.updateAccount(
+        accountId = rootAccount.id,
+        update = GestaltAccountUpdate(
+          email = Some(""),
+          phoneNumber = Some("")
+        )
+      ))
+      updatedAccount.email must beNone
+      updatedAccount.phoneNumber must beNone
+      await(GestaltAccount.getById(updatedAccount.id)) must beSome(updatedAccount)
+    }
+
     "be updated with an email address" in {
       val updatedAccount = await(rootAccount.update(
         'email -> Json.toJson(rootEmail)
