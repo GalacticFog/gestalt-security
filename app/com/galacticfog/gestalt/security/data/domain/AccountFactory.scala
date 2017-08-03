@@ -31,19 +31,6 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
     phoneNumber.replaceAll("[- ().]","")
   }
 
-  def validatePhoneNumber(phoneNumber: String): Try[String] = {
-    Try {
-      E164_PHONE_NUMBER.findFirstIn(canonicalE164(phoneNumber)) match {
-        case Some(validNumber) => validNumber
-        case None => throw BadRequestException(
-          resource = "",
-          message = "badly formatted phoneNumber",
-          developerMessage = s"""Badly formatted phone number. Must match E.164 formatting."""
-        )
-      }
-    }
-  }
-
   override val autoSession = AutoSession
 
   def disableAccount(accountId: UUID, disabled: Boolean = true)(implicit session: DBSession = autoSession): Unit = {
@@ -227,8 +214,16 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       username = update.username getOrElse account.username,
       firstName = update.firstName getOrElse account.firstName,
       lastName = update.lastName getOrElse account.lastName,
-      email = update.email orElse account.email,
-      phoneNumber = newPhoneNumber orElse account.phoneNumber,
+      email = update.email match {
+        case Some(empty) if empty.trim.isEmpty => None          // clear it
+        case Some(newVal)                      => Some(newVal)  // replace it
+        case None                              => account.email // keep it
+      },
+      phoneNumber = newPhoneNumber match {
+        case Some(empty) if empty.trim.isEmpty => None         // clear it
+        case Some(newVal)                      => Some(newVal) // replace it
+        case None                              => account.phoneNumber
+      },
       hashMethod = if (newpass.isDefined) "bcrypt" else account.hashMethod,
       secret = newpass getOrElse account.secret
     )
