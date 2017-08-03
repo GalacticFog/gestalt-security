@@ -100,20 +100,3 @@ manual-deploy-non-master-to-test:
   except: 
     - master
   when: manual
-
-auto-deploy-master-to-int:
-  <<: *deploy_to_env
-  environment: int
-  variables:
-    DEPLOYID: sy-dev-int-tasks/security
-  only: 
-    - master
-
-manual-deploy-non-master-to-int:
-  <<: *deploy_to_env
-  environment: int
-  variables:
-    DEPLOYID: sy-dev-int-tasks/security
-  except: 
-    - master
-  when: manual
