@@ -16,8 +16,6 @@ import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.keymgr.GestaltLicense
 import com.galacticfog.gestalt.keymgr.GestaltFeature
 import play.api.libs.json._
-import play.api._
-import play.api.mvc._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.galacticfog.gestalt.security.data.APIConversions._
@@ -32,19 +30,19 @@ import com.galacticfog.gestalt.patch.PatchOp
 import play.api.mvc.Security.AuthenticatedRequest
 import AuditEvents._
 import AuditEvents.{ga2userInfo, uar2userInfo}
+import play.api.Logger
 
 import scala.concurrent.duration._
+import play.api.mvc._
 
 class RESTAPIController @Inject()( config: SecurityConfig,
                                    accountStoreMappingService: AccountStoreMappingService,
                                    init: Init,
-                                   auditer: Auditer,
+                                   override val auditer: Auditer,
                                    @Named(RateLimitingActor.ACTOR_NAME) rateCheckActor: ActorRef )
-  extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
+  extends Controller with GestaltHeaderAuthentication with ControllerHelpers with WithAuditer {
 
   val defaultTokenExpiration: Long =  config.tokenLifetime.getStandardSeconds
-
-  implicit val _auditer = auditer
 
   ////////////////////////////////////////////////////////////////
   // Utility methods
@@ -270,6 +268,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   def getOrgAccountByUsername(orgId: UUID, username: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     val account = AppFactory.getUsernameInOrgDefaultAccountStore(orgId, username)
+    val ok  = Ok
     renderTry[GestaltAccount](Ok)(account)
   }
 

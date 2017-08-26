@@ -4,18 +4,18 @@ import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import org.postgresql.util.PSQLException
 import play.api.Logger
+import play.api.http.{ContentTypes, HeaderNames, HttpProtocol, Status}
 import play.api.libs.json._
 import play.api.mvc._
 
 import scala.util.{Failure, Success, Try}
 
-trait ControllerHelpers {
-  this : Controller =>
+trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with Status with HeaderNames with ContentTypes with RequestExtractors with Rendering {
 
   val log = Logger(this.getClass)
 
   def defaultBadPatch(implicit request: RequestHeader) = {
-    BadRequest(Json.toJson(BadRequestException(
+    play.api.mvc.Results.BadRequest(Json.toJson(BadRequestException(
       resource = request.path,
       message = "PATCH payload contained unsupported fields",
       developerMessage = "The PATCH payload did not match the semantics of the resource"
@@ -23,7 +23,7 @@ trait ControllerHelpers {
   }
 
   def defaultResourceNotFound(implicit request: RequestHeader) = {
-    NotFound(Json.toJson(ResourceNotFoundException(
+    play.api.mvc.Results.NotFound(Json.toJson(ResourceNotFoundException(
       resource = request.path,
       message = "resource not found",
       developerMessage = "Resource not found."
@@ -39,22 +39,22 @@ trait ControllerHelpers {
     e match {
       case sql: PSQLException =>
         log.error(s"caught psql error with state ${sql.getSQLState}", sql)
-        InternalServerError(Json.toJson(UnknownAPIException(
+        play.api.mvc.Results.InternalServerError(Json.toJson(UnknownAPIException(
           code = 500,
           resource = request.path,
           message = "database exception",
           developerMessage = "Caught PSQLException; see gestalt-security logs for more details."
         )))
-      case oauthErr: OAuthError => BadRequest(Json.toJson(oauthErr).as[JsObject] ++ Json.obj("resource" -> resource))
-      case notFound: ResourceNotFoundException => NotFound(Json.toJson(notFound.copy(resource = resource)))
-      case badRequest: BadRequestException => BadRequest(Json.toJson(badRequest.copy(resource = resource)))
-      case noauthc: UnauthorizedAPIException => Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
-      case noauthz: ForbiddenAPIException => Forbidden(Json.toJson(noauthz))
-      case conflict: ConflictException => Conflict(Json.toJson(conflict.copy(resource = resource)))
-      case unknown: UnknownAPIException => BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
+      case oauthErr: OAuthError => play.api.mvc.Results.BadRequest(Json.toJson(oauthErr).as[JsObject] ++ Json.obj("resource" -> resource))
+      case notFound: ResourceNotFoundException => play.api.mvc.Results.NotFound(Json.toJson(notFound.copy(resource = resource)))
+      case badRequest: BadRequestException => play.api.mvc.Results.BadRequest(Json.toJson(badRequest.copy(resource = resource)))
+      case noauthc: UnauthorizedAPIException => play.api.mvc.Results.Unauthorized(Json.toJson(noauthc.copy(resource = resource)))
+      case noauthz: ForbiddenAPIException => play.api.mvc.Results.Forbidden(Json.toJson(noauthz))
+      case conflict: ConflictException => play.api.mvc.Results.Conflict(Json.toJson(conflict.copy(resource = resource)))
+      case unknown: UnknownAPIException => play.api.mvc.Results.BadRequest(Json.toJson(unknown.copy(resource = resource))) // not sure why this would happen, but if we have that level of info, might as well use it
       case nope: Throwable =>
         log.error("caught unexpected error", nope)
-        InternalServerError(Json.toJson(UnknownAPIException(
+        play.api.mvc.Results.InternalServerError(Json.toJson(UnknownAPIException(
           code = 500, resource = request.path, message = "internal server error", developerMessage = "Internal server error. Please check the log for more details."
         )))
     }

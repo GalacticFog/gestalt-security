@@ -90,7 +90,7 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
             super.routeRequest(request.copy(path = s"/orgs/${org.id}${tail}"))
           case None =>
             Logger.debug(s"top level path not mappable as fqon: ${top}")
-            GestaltHeaderAuthentication.authenticateHeader(request) match {
+            GestaltHeaderAuthentication.authenticateHeader(None, request) match {
               case Some(_) => None // default 404
               case None    => Some(Action { GestaltHeaderAuthentication.onUnauthorized(request) })
             }

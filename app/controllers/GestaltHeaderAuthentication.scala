@@ -19,6 +19,7 @@ import play.api.http.HeaderNames
 import scala.language.reflectiveCalls
 
 trait GestaltHeaderAuthentication {
+  this : WithAuditer =>
 
   import GestaltHeaderAuthentication._
 
@@ -59,11 +60,18 @@ trait GestaltHeaderAuthentication {
     }
   }
 
-  object AuthenticatedAction extends AuthenticatedActionBuilder {
-    def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON), None)
-    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), None)
-    def apply(genFQON: RequestHeader => Option[UUID], failedEventFactory: FailedEventFactory) = new AuthenticatedActionBuilder(Some(genFQON), Some(failedEventFactory))
-    def apply(genFQON: => Option[UUID], failedEventFactory: FailedEventFactory) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), Some(failedEventFactory))
+  object AuthenticatedAction {
+    def apply(genFQON: RequestHeader => Option[UUID]) =
+      new AuthenticatedActionBuilder(Some(genFQON), None)
+
+    def apply(genFQON: => Option[UUID]) =
+      new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), None)
+
+    def apply(genFQON: RequestHeader => Option[UUID], failedEventFactory: FailedEventFactory) =
+      new AuthenticatedActionBuilder(Some(genFQON), Some(failedEventFactory))
+
+    def apply(genFQON: => Option[UUID], failedEventFactory: FailedEventFactory) =
+      new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), Some(failedEventFactory))
   }
 
 }

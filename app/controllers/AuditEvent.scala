@@ -11,6 +11,10 @@ trait Auditer {
   def apply(event: AuditEvent)(implicit request: RequestHeader): Unit
 }
 
+trait WithAuditer {
+  def auditer: Auditer
+}
+
 trait FailedEventFactory {
   def apply(orgId: Option[UUID]): AuditEvent
 }
