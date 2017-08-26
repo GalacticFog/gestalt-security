@@ -9,7 +9,7 @@ import play.api.mvc._
 
 import scala.util.{Failure, Success, Try}
 
-trait ControllerHelpers extends Controller with GestaltHeaderAuthentication {
+trait ControllerHelpers {
   this : Controller =>
 
   val log = Logger(this.getClass)

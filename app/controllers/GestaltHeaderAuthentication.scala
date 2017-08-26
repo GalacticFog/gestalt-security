@@ -13,6 +13,7 @@ import play.api.mvc.Security._
 
 import scala.concurrent.Future
 import com.galacticfog.gestalt.security.api.json.JsonImports.exceptionFormat
+import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import play.api.http.HeaderNames
 
 import scala.language.reflectiveCalls
@@ -21,7 +22,8 @@ trait GestaltHeaderAuthentication {
 
   import GestaltHeaderAuthentication._
 
-  class AuthenticatedActionBuilder(maybeGenFQON: Option[RequestHeader => Option[UUID]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+  class AuthenticatedActionBuilder( maybeGenFQON: Option[RequestHeader => Option[UUID]] = None,
+                                    maybeFailedEventFactory: Option[FailedEventFactory] = None ) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
       def checkingBlock: (AuthenticatedRequest[B, AccountWithOrgContext]) => Future[Result] = { request =>
         maybeGenFQON flatMap {_.apply(request)} match {
@@ -53,13 +55,15 @@ trait GestaltHeaderAuthentication {
             block(request)
         }
       }
-      AuthenticatedBuilder(authenticateHeader, onUnauthorized = onUnauthorized).invokeBlock(request, checkingBlock)
+      AuthenticatedBuilder(authenticateHeader(Some(auditer),_), onUnauthorized = onUnauthorized).invokeBlock(request, checkingBlock)
     }
   }
 
   object AuthenticatedAction extends AuthenticatedActionBuilder {
-    def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
-    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}))
+    def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON), None)
+    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), None)
+    def apply(genFQON: RequestHeader => Option[UUID], failedEventFactory: FailedEventFactory) = new AuthenticatedActionBuilder(Some(genFQON), Some(failedEventFactory))
+    def apply(genFQON: => Option[UUID], failedEventFactory: FailedEventFactory) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), Some(failedEventFactory))
   }
 
 }
@@ -88,8 +92,19 @@ object GestaltHeaderAuthentication {
       withHeaders(("WWW-Authenticate","Bearer"))
   }
 
+  def presentedIdentity(request: RequestHeader): Option[String] = {
+    val authToken = extractAuthToken(request)
+    for {
+      tokenHeader <- authToken
+      apiCred <- tokenHeader match {
+        case GestaltBasicCredentials(apiKey,apiSecret) => Some(apiKey)
+        case _ => None
+      }
+    } yield apiCred
+  }
+
   // find the account by credentials and verify that they are still part of the associated app
-  def authenticateHeader(request: RequestHeader): Option[AccountWithOrgContext] = {
+  def authenticateHeader(auditer: Option[Auditer], request: RequestHeader): Option[AccountWithOrgContext] = {
     val authToken = extractAuthToken(request)
     for {
       tokenHeader <- authToken

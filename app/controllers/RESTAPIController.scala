@@ -30,16 +30,21 @@ import scala.util.{Failure, Success, Try}
 import akka.pattern.ask
 import com.galacticfog.gestalt.patch.PatchOp
 import play.api.mvc.Security.AuthenticatedRequest
+import AuditEvents._
+import AuditEvents.{ga2userInfo, uar2userInfo}
 
 import scala.concurrent.duration._
 
 class RESTAPIController @Inject()( config: SecurityConfig,
                                    accountStoreMappingService: AccountStoreMappingService,
                                    init: Init,
+                                   auditer: Auditer,
                                    @Named(RateLimitingActor.ACTOR_NAME) rateCheckActor: ActorRef )
   extends Controller with GestaltHeaderAuthentication with ControllerHelpers {
 
   val defaultTokenExpiration: Long =  config.tokenLifetime.getStandardSeconds
+
+  implicit val _auditer = auditer
 
   ////////////////////////////////////////////////////////////////
   // Utility methods
@@ -476,18 +481,22 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
-  def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
+  def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _, SyncAttempt) { implicit request =>
+    auditer(SyncAttempt.success(request.user.identity, request.user.orgId))
     Ok(Json.toJson(OrgFactory.orgSync(init, request.user.orgId)))
   }
 
-  def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId), SyncAttempt) { implicit request =>
+    auditer(SyncAttempt.success(request.user.identity, orgId))
     OrgFactory.find(orgId) match {
-      case Some(org) => Ok(Json.toJson(OrgFactory.orgSync(init, org.id.asInstanceOf[UUID])))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested org",
-        developerMessage = "Could not locate the requested org. Make sure to use the org ID."
-      )))
+      case Some(org) =>
+        Ok(Json.toJson(OrgFactory.orgSync(init, org.id.asInstanceOf[UUID])))
+      case None =>
+        NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested org",
+          developerMessage = "Could not locate the requested org. Make sure to use the org ID."
+        )))
     }
   }
 
@@ -1243,17 +1252,28 @@ class RESTAPIController @Inject()( config: SecurityConfig,
         implicit val timeout = Timeout(5 seconds)
         val fRateCheck = rateCheckActor ? TokenGrantRateLimitCheck(serviceAppId.toString, creds.username)
         fRateCheck map {
-          case RequestAccepted => renderTry[AccessTokenResponse](Ok)(for {
-            account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(OAuthError(INVALID_GRANT, "The provided authorization grant is invalid, expired or revoked."))
-            newToken <- TokenFactory.createToken(
-              orgId = Some(orgId),
-              accountId = account.id.asInstanceOf[UUID],
-              validForSeconds = defaultTokenExpiration,
-              tokenType = ACCESS_TOKEN,
-              parentApiKey = None
-            )
-          } yield AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
-          case _ => oAuthErr(INVALID_GRANT, "Rate limit exceeded")
+          case RequestAccepted => renderTry[AccessTokenResponse](Ok){
+            val v = for {
+              account <- o2t(AccountFactory.authenticate(serviceAppId, creds))(OAuthError(INVALID_GRANT, "The provided authorization grant is invalid, expired or revoked."))
+              newToken <- TokenFactory.createToken(
+                orgId = Some(orgId),
+                accountId = account.id.asInstanceOf[UUID],
+                validForSeconds = defaultTokenExpiration,
+                tokenType = ACCESS_TOKEN,
+                parentApiKey = None
+              )
+            } yield (account, AccessTokenResponse(accessToken = newToken, refreshToken = None, tokenType = BEARER, expiresIn = defaultTokenExpiration, gestalt_access_token_href = ""))
+            v match {
+              case Success((acc,tr)) =>
+                auditer(TokenIssueAttempt.success(acc, creds.username))
+              case Failure(ex) =>
+                auditer(TokenIssueAttempt.failed(creds.username))
+            }
+            v.map(_._2)
+          }
+          case _ =>
+            auditer(TokenIssueAttempt.failed("rate limit exceeded"))
+            oAuthErr(INVALID_GRANT, "Rate limit exceeded")
         }
       case Failure(ex) => Future.successful(handleError(request, ex))
     }
@@ -1261,14 +1281,21 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   private def clientCredGrantFlow(orgIdGen: APICredentialRepository => Option[UUID])
                                  (implicit request: Request[Map[String,Seq[String]]]): Future[Result] = Future {
-    GestaltHeaderAuthentication.authenticateHeader(request) match {
-      case None => oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
+    GestaltHeaderAuthentication.authenticateHeader(None, request) match {
+      case None =>
+        auditer(TokenIssueAttempt.failed(GestaltHeaderAuthentication.presentedIdentity(request).getOrElse("invalid token")))
+        oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
       case Some(auth) => auth.credential match {
-        case Right(_) => oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
+        case Right(_) =>
+          auditer(TokenIssueAttempt.failed(auth.identity, "valid token"))
+          oAuthErr(INVALID_CLIENT, "client_credential grant requires client is authenticated using API credentials and does not support token authentication")
         case Left(apiKey) =>
           orgIdGen(apiKey) match {
-            case None => oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
+            case None =>
+              auditer(TokenIssueAttempt.failed(auth.identity, apiKey.apiKey.toString))
+              oAuthErr(INVALID_GRANT, "the authenticated client does not belong to the specified organization or the organization does not exist")
             case Some(orgId) =>
+              auditer(TokenIssueAttempt.success(auth.identity, apiKey.apiKey.toString))
               val authResp = TokenFactory.createToken(
                   orgId = Some(orgId),
                   accountId = apiKey.accountId.asInstanceOf[UUID],
@@ -1291,9 +1318,14 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     def getIssuedOrgFromAPIKey = (apiKey: APICredentialRepository) => apiKey.issuedOrgId map (_.asInstanceOf[UUID])
 
     request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => clientCredGrantFlow(getIssuedOrgFromAPIKey)
-      case Some(_) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "global token issue endpoint only support client_credentials grant")}
-      case None => Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
+      case Some("client_credentials") =>
+        clientCredGrantFlow(getIssuedOrgFromAPIKey)
+      case Some(_) =>
+        auditer(TokenIssueAttempt.failed("invalid grant_type"))
+        Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "global token issue endpoint only support client_credentials grant")}
+      case None =>
+        auditer(TokenIssueAttempt.failed("missing grant_type"))
+        Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
     }
   }
 
@@ -1304,10 +1336,16 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     } yield orgId
 
     request.body.get("grant_type") flatMap asSingleton match {
-      case Some("client_credentials") => clientCredGrantFlow(verifyKeyOwnerBelongsToOrg)
-      case Some("password") => passwordGrantFlow(Some(orgId))
-      case Some(_) => Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")}
-      case None => Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
+      case Some("client_credentials") =>
+        clientCredGrantFlow(verifyKeyOwnerBelongsToOrg)
+      case Some("password") =>
+        passwordGrantFlow(Some(orgId))
+      case Some(_) =>
+        auditer(TokenIssueAttempt.failed("invalid grant type"))
+        Future{oAuthErr(UNSUPPORTED_GRANT_TYPE, "org token issue endpoints only support client_credentials and password grants")}
+      case None =>
+        auditer(TokenIssueAttempt.failed("missing grant_type"))
+        Future{oAuthErr(INVALID_REQUEST, "request must contain a single grant_type field")}
     }
   }
 
@@ -1320,7 +1358,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
-    val authAttempt = GestaltHeaderAuthentication.authenticateHeader(request)
+    val authAttempt = GestaltHeaderAuthentication.authenticateHeader(None, request)
     if (authAttempt.isDefined) {
       val introspection = for {
         tokenStr <- {
