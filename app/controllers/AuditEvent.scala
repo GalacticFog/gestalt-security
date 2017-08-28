@@ -2,7 +2,7 @@ package controllers
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.GestaltAccount
+import com.galacticfog.gestalt.security.api.{GestaltAccount, GestaltBasicCredentials, GestaltBearerCredentials}
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import play.api.libs.json.{JsNull, JsObject, JsValue, Json}
 import play.api.mvc.RequestHeader
@@ -24,9 +24,10 @@ case class AuditedUserInfo(id: UUID, username: String, email: String)
 trait AuditEvent {
   def userInfo: Option[AuditedUserInfo]
   def props: Map[String,String]
+  def eventType: String = this.getClass.getSimpleName
 
   def toJson: JsObject = Json.obj(
-    "event-type" -> this.getClass.getSimpleName
+    "event-type" -> eventType
   ) ++ userInfo.map(
     ui => Json.obj(
       "user" -> Json.obj(
@@ -36,7 +37,6 @@ trait AuditEvent {
       )
     )
   ).getOrElse[JsObject](Json.obj()) ++ Json.toJson(props).as[JsObject]
-
 }
 
 object AuditEvents {
@@ -84,6 +84,20 @@ object AuditEvents {
     def success(ui: AuditedUserInfo, orgId: UUID): AuditEvent = SyncAttempt(Some(ui), Some(orgId), true)
   }
 
+  case class Failed401(event: AuditEvent, rh: RequestHeader) extends AuditEvent {
+    override def userInfo: Option[AuditedUserInfo] = None
+
+    override def eventType: String = event.eventType
+
+    override def props: Map[String, String] = Map(
+      "failed" -> "401-unauthorized",
+      "presented-identifier" -> (GestaltHeaderAuthentication.extractAuthToken(rh) match {
+        case Some(GestaltBearerCredentials(token)) => token
+        case Some(GestaltBasicCredentials(username, _)) => username
+        case None => "none"
+      })
+    ) ++ event.props
+  }
 
 }
 

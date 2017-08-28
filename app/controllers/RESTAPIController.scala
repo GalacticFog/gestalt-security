@@ -1280,7 +1280,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   private def clientCredGrantFlow(orgIdGen: APICredentialRepository => Option[UUID])
                                  (implicit request: Request[Map[String,Seq[String]]]): Future[Result] = Future {
-    GestaltHeaderAuthentication.authenticateHeader(None, request) match {
+    GestaltHeaderAuthentication.authenticateHeader(request) match {
       case None =>
         auditer(TokenIssueAttempt.failed(GestaltHeaderAuthentication.presentedIdentity(request).getOrElse("invalid token")))
         oAuthErr(INVALID_CLIENT, "client_credential grant requires client authentication")
@@ -1357,7 +1357,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   private def genericTokenIntro(getOrgId: TokenRepository => Option[UUID])
                                (implicit request: Request[Map[String,Seq[String]]]): Result = {
-    val authAttempt = GestaltHeaderAuthentication.authenticateHeader(None, request)
+    val authAttempt = GestaltHeaderAuthentication.authenticateHeader(request)
     if (authAttempt.isDefined) {
       val introspection = for {
         tokenStr <- {
