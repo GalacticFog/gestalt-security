@@ -9,7 +9,7 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.galacticfog.gestalt.security.api.errors.UnknownAPIException
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.APIConversions._
-import controllers.AuditEvents.{InitAttempt, InitCheck}
+import controllers.AuditEvents.{FailedBadRequest, InitAttempt, InitCheck}
 
 import scala.util.{Failure, Success}
 
@@ -31,7 +31,7 @@ class InitController @Inject() ( init: Init, auditer: Auditer ) extends Controll
     val keys = init.doInit(ir)
     keys match {
       case Success(keys) => auditer(InitAttempt(true, "admin keys: " + keys.map(_.apiKey).mkString(",")))
-      case Failure(ex) => auditer(InitAttempt(false, ex.getMessage))
+      case Failure(ex) => auditer(FailedBadRequest(InitAttempt(false, ex.getMessage)))
     }
     renderTry[Seq[GestaltAPIKey]](Ok)( keys map {_.map {k => k: GestaltAPIKey} } )
   }

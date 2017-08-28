@@ -2,6 +2,7 @@ package controllers
 
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
+import controllers.AuditEvents.FailedBadRequest
 import org.postgresql.util.PSQLException
 import play.api.Logger
 import play.api.http.{ContentTypes, HeaderNames, HttpProtocol, Status}
@@ -82,6 +83,19 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
         message = "invalid payload",
         developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object ${m.toString}"
       )
+    }
+  }
+
+  def withBody[T](auditer: Auditer, fef: FailedEventFactory)(block: T => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): Result = {
+    request.body.validate[T] match {
+      case JsSuccess(b, _) => block(b)
+      case _: JsError =>
+        auditer(FailedBadRequest(fef.failed, Some("payload could not be parsed")))
+        handleError(request, BadRequestException(
+          resource = request.path,
+          message = "invalid payload",
+          developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object ${m.toString}"
+        ))
     }
   }
 

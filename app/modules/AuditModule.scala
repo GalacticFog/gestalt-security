@@ -23,7 +23,9 @@ class AuditModule extends AbstractModule with ScalaModule {
       override def apply(event: AuditEvent)(implicit request: RequestHeader): Unit = {
         val out = Json.obj(
           "timestamp" -> new DateTime(new Date()).withZone(DateTimeZone.UTC).toString(),
-          "from" -> request.remoteAddress
+          "from" -> request.remoteAddress,
+          "method" -> request.method,
+          "uri" -> request.uri
         ) ++ JsObject(Seq(
            request.headers.get(HeaderNames.X_FORWARDED_FOR).map("x-forwarded-for" -> JsString(_)),
            request.headers.get(HeaderNames.FORWARDED).map("forwarded" -> JsString(_))

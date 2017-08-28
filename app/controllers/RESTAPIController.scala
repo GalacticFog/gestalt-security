@@ -212,14 +212,18 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     ))
   }
 
-  def getCurrentOrg = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
+  def getCurrentOrg = AuthenticatedAction(resolveFromCredentials _, GetCurrentOrgAttempt()) { implicit request =>
     OrgFactory.findByOrgId(request.user.orgId) match {
-      case Some(org) => Ok(Json.toJson[GestaltOrg](org))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate current org",
-        developerMessage = "Could not locate a default organization for the authenticate API user."
-      )))
+      case Some(org) =>
+        auditer(GetCurrentOrgAttempt(Some(request.user.identity),true))
+        Ok(Json.toJson[GestaltOrg](org))
+      case None =>
+        auditer(FailedNotFound(GetCurrentOrgAttempt(Some(request.user.identity), false)))
+        NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate current org",
+          developerMessage = "Could not locate a default organization for the authenticate API user."
+        )))
     }
   }
 
@@ -480,12 +484,12 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
-  def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _, SyncAttempt) { implicit request =>
+  def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _, SyncAttempt()) { implicit request =>
     auditer(SyncAttempt.success(request.user.identity, request.user.orgId))
     Ok(Json.toJson(OrgFactory.orgSync(init, request.user.orgId)))
   }
 
-  def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId), SyncAttempt) { implicit request =>
+  def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId), SyncAttempt(Some(orgId))) { implicit request =>
     auditer(SyncAttempt.success(request.user.identity, orgId))
     OrgFactory.find(orgId) match {
       case Some(org) =>
@@ -499,19 +503,23 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
-  def listAllOrgs() = AuthenticatedAction(resolveFromCredentials _) { implicit request =>
+  def listAllOrgs() = AuthenticatedAction(resolveFromCredentials _, ListOrgsAttempt()) { implicit request =>
+    auditer(ListOrgsAttempt.success(request.user.identity, request.user.orgId))
     Ok(Json.toJson(OrgFactory.getOrgTree(request.user.orgId).map { o => o: GestaltOrg }))
   }
 
-  def listOrgTree(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def listOrgTree(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgsAttempt(Some(orgId))) { implicit request =>
     OrgFactory.find(orgId) match {
       case Some(org) =>
+        auditer(ListOrgsAttempt.success(request.user.identity, orgId))
         Ok(Json.toJson(OrgFactory.getOrgTree(org.id.asInstanceOf[UUID]).filter(_.id != orgId).map { o => o: GestaltOrg }))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested org",
-        developerMessage = "Could not locate the requested org. Make sure to use the org ID."
-      )))
+      case None =>
+        auditer(FailedNotFound(ListOrgsAttempt.failed(request.user.identity, orgId)))
+        NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested org",
+          developerMessage = "Could not locate the requested org. Make sure to use the org ID."
+        )))
     }
   }
 
@@ -520,11 +528,12 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       case Some(app) => Ok(Json.toJson[Seq[GestaltAccount]](
         AccountFactory.listEnabledAppUsers(app.id.asInstanceOf[UUID]) map { a => a: GestaltAccount }
       ))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested app",
-        developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
-      )))
+      case None =>
+        NotFound(Json.toJson(ResourceNotFoundException(
+          resource = request.path,
+          message = "could not locate requested app",
+          developerMessage = "Could not locate the requested application. Make sure to use the application ID and not the application name."
+        )))
     }
   }
 
@@ -570,7 +579,8 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
-  def listOrgDirectories(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def listOrgDirectories(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgDirectoriesAttempt(orgId)) { implicit request =>
+    auditer(ListOrgDirectoriesAttempt(orgId, Some(request.user.identity), successful = true))
     Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
   }
 
@@ -708,15 +718,21 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     renderTry[GestaltApp](Created)(newApp)
   }
 
-  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
+  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateDirectoryAttempt(orgId, "org"))(parse.json) { implicit request =>
     requireAuthorization(CREATE_DIRECTORY)
-    val create = validateBody[GestaltDirectoryCreate]
-    if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
-      throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
-        developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+    val event = CreateDirectoryAttempt(orgId, "org", u = Some(request.user.identity), successful = false)
+    withBody[GestaltDirectoryCreate](auditer, event) { create =>
+      if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
+        throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
+          developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+      }
+      val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
+      newDir match {
+        case Success(dp) => auditer(event.copy( successful = true, plugin = Some(dp) ))
+        case Failure(ex) => auditer(mapExceptionToFailedEvent(ex, event))
+      }
+      renderTry[GestaltDirectory](Created)(newDir)
     }
-    val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
-    renderTry[GestaltDirectory](Created)(newDir)
   }
 
   def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>

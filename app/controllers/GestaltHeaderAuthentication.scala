@@ -46,7 +46,7 @@ trait GestaltHeaderAuthentication {
                 ))
               case None =>
                 // did not authenticate with the requested app, we could 403 or 404, we will 403
-                maybeFailedEventFactory foreach {fef => auditer(fef(Some(orgId)))(request)}
+                maybeFailedEventFactory foreach {fef => auditer(AuditEvents.FailedWrongOrg(fef.failed,request))(request)}
                 Logger.info(s"req-${request.id}: authenticated ${request.user.identity.username} (${request.user.identity.id}) did not belong to specified /orgs/${orgId}")
                 throw UnauthorizedAPIException("", message = "insufficient permissions", developerMessage = "Insufficient permissions in the authenticated account to perform the requested action.")
             }
@@ -59,7 +59,7 @@ trait GestaltHeaderAuthentication {
       val audit401 = maybeFailedEventFactory match {
         case Some(fef) =>
           (rh: RequestHeader) =>
-            auditer(AuditEvents.Failed401(fef(None), rh))(rh)
+            auditer(AuditEvents.Failed401(fef.failed, rh))(rh)
             rh
         case None => identity[RequestHeader](_)
       }
