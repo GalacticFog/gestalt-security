@@ -3,11 +3,13 @@ package controllers
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api.errors.ConflictException
-import com.galacticfog.gestalt.security.api.{GestaltAccount, GestaltBasicCredentials, GestaltBearerCredentials}
+import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
+import controllers.GestaltHeaderAuthentication.AccountWithOrgContext
 import play.api.libs.json._
 import play.api.mvc.RequestHeader
+import com.galacticfog.gestalt.security.api.json.JsonImports._
 
 trait Auditer {
   def apply(event: AuditEvent)(implicit request: RequestHeader): Unit
@@ -25,7 +27,7 @@ case class AuditedUserInfo(id: UUID, username: String, email: String)
 
 trait AuditEvent {
   def userInfo: Option[AuditedUserInfo]
-  def props: Map[String,JsValue]
+  def props: JsObject
   def eventType: String = this.getClass.getSimpleName
   def successful: Boolean
 
@@ -40,7 +42,7 @@ trait AuditEvent {
         "email" -> ui.email
       )
     )
-  ).getOrElse[JsObject](Json.obj()) ++ Json.toJson(props).as[JsObject]
+  ).getOrElse[JsObject](Json.obj()) ++ props
 }
 
 object AuditEvents {
@@ -49,8 +51,8 @@ object AuditEvents {
   implicit def ga2userInfo(a: GestaltAccount): AuditedUserInfo = AuditedUserInfo(a.id, a.username, a.email.getOrElse(""))
 
   case class TokenIssueAttempt(userInfo: Option[AuditedUserInfo], successful: Boolean, presentedIdentifier: String) extends AuditEvent {
-    def props = Map[String,JsValue](
-      "presented-identifier" -> JsString(presentedIdentifier)
+    def props = Json.obj(
+      "presented-identifier" -> presentedIdentifier
     )
   }
   case object TokenIssueAttempt {
@@ -62,22 +64,22 @@ object AuditEvents {
   case class InitCheck(wasAlreadyInit: Boolean) extends AuditEvent {
     val successful = true
     override def userInfo: Option[AuditedUserInfo] = None
-    override def props: Map[String, JsValue] = Map(
-      "was-already-init" -> JsBoolean(wasAlreadyInit)
+    override def props = Json.obj(
+      "was-already-init" -> wasAlreadyInit
     )
   }
 
   case class InitAttempt(successful: Boolean, message: String) extends AuditEvent {
     override def userInfo: Option[AuditedUserInfo] = None
-    override def props: Map[String, JsValue] = Map(
-      "message" -> JsString(message)
+    override def props = Json.obj(
+      "message" -> message
     )
   }
 
   case class SyncAttempt(u: Option[AuditedUserInfo], syncRoot: Option[UUID], successful: Boolean) extends AuditEvent with FailedEventFactory {
     override def userInfo: Option[AuditedUserInfo] = u
-    override def props: Map[String, JsValue] = Map(
-      "sync-root-org" -> syncRoot.map(id => JsString(id.toString)).getOrElse[JsValue](JsNull)
+    override def props = Json.obj(
+      "sync-root-org" -> syncRoot
     )
     override def failed: AuditEvent = SyncAttempt(None, syncRoot, false)
   }
@@ -89,8 +91,8 @@ object AuditEvents {
 
   case class ListOrgsAttempt(u: Option[AuditedUserInfo], listRoot: Option[UUID], successful: Boolean) extends AuditEvent with FailedEventFactory {
     override def userInfo: Option[AuditedUserInfo] = u
-    override def props: Map[String, JsValue] = Map(
-      "list-root-org" -> listRoot.map(id => JsString(id.toString)).getOrElse[JsValue](JsNull)
+    override def props = Json.obj(
+      "list-root-org" -> listRoot
     )
     override def failed: AuditEvent = ListOrgsAttempt(u, listRoot, false)
   }
@@ -103,40 +105,106 @@ object AuditEvents {
 
   case class ListOrgDirectoriesAttempt(listRoot: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with FailedEventFactory {
     override def userInfo: Option[AuditedUserInfo] = u
-    override def props: Map[String, JsValue] = Map(
-      "list-root-org" -> JsString(listRoot.toString)
+    override def props = Json.obj(
+      "list-root-org" -> listRoot
     )
     override def failed: AuditEvent = this.copy(successful = false)
   }
 
-  case class CreateDirectoryAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, plugin: Option[DirectoryPlugin] = None) extends AuditEvent with FailedEventFactory {
+  case class ListOrgAppsAttempt(listRoot: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with FailedEventFactory {
     override def userInfo: Option[AuditedUserInfo] = u
-    override def props: Map[String, JsValue] = Map(
+    override def props = Json.obj(
+      "list-root-org" -> listRoot
+    )
+    override def failed: AuditEvent = this.copy(successful = false)
+  }
+
+  abstract class GenericCreate[T <: GestaltResource](parentId: UUID, parentType: String, auditUserInfo: Option[AuditedUserInfo], resource: Option[T])(implicit writes: Writes[T]) extends AuditEvent with FailedEventFactory {
+    override def userInfo: Option[AuditedUserInfo] = auditUserInfo
+    override def props = Json.obj(
       "parent" -> Json.obj(
         "id" -> parentId.toString,
         "type" -> parentType
       )
-    ) ++ plugin.map(p => Map[String,JsValue](
-      "plugin" -> Json.obj(
+    ) ++ resource.map(r => Json.obj(
+      "resource" -> Json.toJson(r)
+    )).getOrElse[JsObject](Json.obj())
+  }
+
+  case class CreateDirectoryAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, plugin: Option[DirectoryPlugin] = None) extends AuditEvent with FailedEventFactory {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props = Json.obj(
+      "parent" -> Json.obj(
+        "id" -> parentId,
+        "type" -> parentType
+      )
+    ) ++ plugin.map(p => Json.obj(
+      "newDirectory" -> Json.obj(
         "id" -> p.id,
         "name" -> p.name,
+        "description" -> p.description,
         "type" -> p.getClass.getName
       )
-    )).getOrElse(Map.empty)
+    )).getOrElse(Json.obj())
+    override def failed: AuditEvent = this.copy(successful = false)
+  }
+
+  case class CreateAccountAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newAccount: Option[GestaltAccount] = None)
+    extends GenericCreate[GestaltAccount](parentId, parentType, u, newAccount) {
+    override def failed: AuditEvent = this.copy(successful = false)
+  }
+
+  case class CreateGroupAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newGroup: Option[GestaltGroup] = None)
+    extends GenericCreate[GestaltGroup](parentId, parentType, u, newGroup) {
+    override def failed: AuditEvent = this.copy(successful = false)
+  }
+
+  case class CreateOrgAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, newOrg: Option[GestaltOrg] = None, successful: Boolean = false) extends AuditEvent with FailedEventFactory {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props = Json.obj(
+      "parent" -> Json.obj(
+        "id" -> parentId.toString,
+        "type" -> "org"
+      )
+    ) ++ newOrg.map(o => Json.obj(
+      "newOrg" -> Json.obj(
+        "id" -> o.id,
+        "name" -> o.name,
+        "description" -> o.description,
+        "fqon" -> o.fqon
+      )
+    )).getOrElse(Json.obj())
+    override def failed: AuditEvent = this.copy(successful = false)
+  }
+
+  case class CreateAppAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, newApp: Option[GestaltApp] = None, successful: Boolean = false) extends AuditEvent with FailedEventFactory {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props = Json.obj(
+      "parent" -> Json.obj(
+        "id" -> parentId.toString,
+        "type" -> "org"
+      )
+    ) ++ newApp.map(o => Json.obj(
+      "newApp" -> Json.obj(
+        "id" -> o.id,
+        "name" -> o.name,
+        "description" -> o.description
+      )
+    )).getOrElse(Json.obj())
     override def failed: AuditEvent = this.copy(successful = false)
   }
 
   case class GetCurrentOrgAttempt(userInfo: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with FailedEventFactory {
-    override def props: Map[String, JsValue] = Map(
-      "successful" -> JsBoolean(successful)
+    override def props = Json.obj(
+      "successful" -> successful
     )
     override def failed: AuditEvent = this.copy(successful = false)
   }
 
   case class LookupOrgAttempt(fqon: String, userInfo: Option[AuditedUserInfo], rh: RequestHeader) extends AuditEvent {
     val successful: Boolean = true
-    override def props: Map[String, JsValue] = Map(
-      "fqon" -> JsString(fqon)
+    override def props = Json.obj(
+      "fqon" -> fqon
     )
   }
 
@@ -144,13 +212,23 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = None
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString("401-unauthorized"),
+    override def props = Json.obj(
+      "failure-reason" -> "401-unauthorized",
       "presented-identifier" -> (GestaltHeaderAuthentication.extractAuthToken(rh) match {
-        case Some(GestaltBearerCredentials(_)) => JsString("token")
-        case Some(GestaltBasicCredentials(username, _)) => JsString(username)
-        case None => JsNull
+        case Some(GestaltBearerCredentials(_)) => "token"
+        case Some(GestaltBasicCredentials(username, _)) => username
+        case None => ""
       })
+    ) ++ event.props
+  }
+
+  case class Failed403[A](event: AuditEvent, missingRight: String, request: play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext]) extends AuditEvent {
+    val successful: Boolean = false
+    override def userInfo: Option[AuditedUserInfo] = Some(request.user.identity)
+    override def eventType: String = event.eventType
+    override def props = Json.obj(
+      "failure-reason" -> "403-forbidden",
+      "missing-right" -> missingRight
     ) ++ event.props
   }
 
@@ -158,8 +236,8 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = None
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString("403-authed-against-wrong-org")
+    override def props = Json.obj(
+      "failure-reason" -> "403-authed-against-wrong-org"
     ) ++ event.props
   }
 
@@ -167,9 +245,9 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = None
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString("409-conflict"),
-      "message" -> JsString(msg)
+    override def props = Json.obj(
+      "failure-reason" -> "409-conflict",
+      "message" -> msg
     ) ++ event.props
   }
 
@@ -177,8 +255,8 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = event.userInfo
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString("404-resource-not-found")
+    override def props = Json.obj(
+      "failure-reason" -> "404-resource-not-found"
     ) ++ event.props
   }
 
@@ -186,9 +264,9 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = event.userInfo
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString("400-bad-request"),
-      "description" -> JsString(msg.getOrElse("none"))
+    override def props = Json.obj(
+      "failure-reason" -> "400-bad-request",
+      "description" -> msg.getOrElse[String]("none")
     ) ++ event.props
   }
 
@@ -196,9 +274,9 @@ object AuditEvents {
     val successful: Boolean = false
     override def userInfo: Option[AuditedUserInfo] = event.userInfo
     override def eventType: String = event.eventType
-    override def props: Map[String, JsValue] = Map(
-      "failure-reason" -> JsString(ex.getClass().getName),
-      "description" -> JsString(ex.getMessage)
+    override def props = Json.obj(
+      "failure-reason" -> ex.getClass().getName,
+      "description" -> ex.getMessage
     ) ++ event.props
   }
 

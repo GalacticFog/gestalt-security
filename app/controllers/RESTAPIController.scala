@@ -490,11 +490,13 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId), SyncAttempt(Some(orgId))) { implicit request =>
-    auditer(SyncAttempt.success(request.user.identity, orgId))
+    val event = SyncAttempt.success(request.user.identity, orgId)
     OrgFactory.find(orgId) match {
       case Some(org) =>
+        auditer(event)
         Ok(Json.toJson(OrgFactory.orgSync(init, org.id.asInstanceOf[UUID])))
       case None =>
+        auditer(FailedNotFound(event))
         NotFound(Json.toJson(ResourceNotFoundException(
           resource = request.path,
           message = "could not locate requested org",
@@ -584,11 +586,13 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
   }
 
-  def listOrgApps(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def listOrgApps(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgAppsAttempt(orgId)) { implicit request =>
+    auditer(ListOrgDirectoriesAttempt(orgId, Some(request.user.identity), successful = true))
     Ok(Json.toJson[Seq[GestaltApp]](AppFactory.listByOrgId(orgId) map { a => a: GestaltApp }))
   }
 
-  def getServiceApp(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
+  def getServiceApp(orgId: java.util.UUID) = AuthenticatedAction(Some(orgId), ListOrgAppsAttempt(orgId)) { implicit request =>
+    auditer(ListOrgDirectoriesAttempt(orgId, Some(request.user.identity), successful = true))
     AppFactory.findServiceAppForOrg(orgId) match {
       case Some(app) => Ok(Json.toJson[GestaltApp](app))
       case None => defaultResourceNotFound
@@ -673,29 +677,42 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Create methods
   ////////////////////////////////////////////////////////
 
-  def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ORG)
-    val newOrg = OrgFactory.createSubOrgWithAdmin(
-      parentOrgId = parentOrgId,
-      creator = request.user.identity,
-      create = validateBody[GestaltOrgCreate]
-    )
-    renderTry[GestaltOrg](Created)(newOrg)
-  }
+  def createOrg(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId), CreateOrgAttempt(parentOrgId))(parse.json)(
+    withAuthorization(CREATE_ORG, CreateOrgAttempt(parentOrgId)) { implicit request =>
+      val event = CreateOrgAttempt(parentOrgId, u = Some(request.user.identity))
+      withBody[GestaltOrgCreate](event) { create =>
+        val newOrg = OrgFactory.createSubOrgWithAdmin(
+          parentOrgId = parentOrgId,
+          creator = request.user.identity,
+          create = create
+        )
+        auditTry(newOrg, event){case (e,o) => e.copy(successful = true, newOrg = Some(o))}
+        renderTry[GestaltOrg](Created)(newOrg)
+      }
+    }
+  )
 
-  def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT)
-    val create = validateBody[GestaltAccountCreateWithRights]
-    val newAccount = AppFactory.createAccountInApp(appId = request.user.serviceAppId, create)
-    renderTry[GestaltAccount](Created)(newAccount)
-  }
+  def createOrgAccount(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId), CreateAccountAttempt(parentOrgId, "org"))(parse.json)(
+    withAuthorization(CREATE_ACCOUNT, CreateAccountAttempt(parentOrgId, "org")) { implicit request =>
+      val event = CreateAccountAttempt(parentOrgId, "org", Some(request.user.identity))
+      withBody[GestaltAccountCreateWithRights](event) { create =>
+        val newAccount = AppFactory.createAccountInApp(appId = request.user.serviceAppId, create)
+        auditTry(newAccount,event){case (e,t) => e.copy(successful = true, newAccount = Some(t))}
+        renderTry[GestaltAccount](Created)(newAccount)
+      }
+    }
+  )
 
-  def createOrgGroup(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_GROUP)
-    val create = validateBody[GestaltGroupCreateWithRights]
-    val newGroup = AppFactory.createGroupInApp(appId = request.user.serviceAppId, create)
-    renderTry[GestaltGroup](Created)(newGroup)
-  }
+  def createOrgGroup(parentOrgId: UUID) = AuthenticatedAction(Some(parentOrgId), CreateGroupAttempt(parentOrgId, "org"))(parse.json)(
+    withAuthorization(CREATE_GROUP, CreateGroupAttempt(parentOrgId, "org")) { implicit request =>
+      val event = CreateGroupAttempt(parentOrgId, "org", Some(request.user.identity))
+      withBody[GestaltGroupCreateWithRights](event) { create =>
+        val newGroup = AppFactory.createGroupInApp(appId = request.user.serviceAppId, create)
+        auditTry(newGroup,event){case (e,t) =>   e.copy(successful = true, newGroup = Some(t))}
+        renderTry[GestaltGroup](Created)(newGroup)
+      }
+    }
+  )
 
   def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT_STORE)
@@ -711,29 +728,31 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     renderTry[GestaltAccountStoreMapping](Created)(newMapping)
   }
 
-  def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_APP)
-    val create = validateBody[GestaltAppCreate]
-    val newApp = AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
-    renderTry[GestaltApp](Created)(newApp)
-  }
-
-  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateDirectoryAttempt(orgId, "org"))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_DIRECTORY)
-    val event = CreateDirectoryAttempt(orgId, "org", u = Some(request.user.identity), successful = false)
-    withBody[GestaltDirectoryCreate](auditer, event) { create =>
-      if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
-        throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
-          developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+  def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateAppAttempt(orgId))(parse.json)(
+    withAuthorization(CREATE_APP, CreateAppAttempt(orgId)) { implicit request =>
+      val event = CreateAppAttempt(orgId, Some(request.user.identity))
+      withBody[GestaltAppCreate](event) { create =>
+        val newApp = AppFactory.create(orgId = orgId, name = create.name, isServiceOrg = false)
+        auditTry(newApp,event){case (e,t) => e.copy(successful = true, newApp = Some(t))}
+        renderTry[GestaltApp](Created)(newApp)
       }
-      val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
-      newDir match {
-        case Success(dp) => auditer(event.copy( successful = true, plugin = Some(dp) ))
-        case Failure(ex) => auditer(mapExceptionToFailedEvent(ex, event))
-      }
-      renderTry[GestaltDirectory](Created)(newDir)
     }
-  }
+  )
+
+  def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateDirectoryAttempt(orgId, "org"))(parse.json)(
+    withAuthorization(CREATE_DIRECTORY,CreateDirectoryAttempt(orgId, "org")) { implicit request =>
+      val event = CreateDirectoryAttempt(orgId, "org", u = Some(request.user.identity))
+      withBody[GestaltDirectoryCreate](event) { create =>
+        if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
+          throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
+            developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+        }
+        val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
+        auditTry(newDir, event){case (e,o) => e.copy(successful = true, plugin = Some(o))}
+        renderTry[GestaltDirectory](Created)(newDir)
+      }
+    }
+  )
 
   def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ACCOUNT)

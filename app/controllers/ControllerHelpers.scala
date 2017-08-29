@@ -1,8 +1,12 @@
 package controllers
 
+import java.util.UUID
+
 import com.galacticfog.gestalt.security.api.errors._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
-import controllers.AuditEvents.FailedBadRequest
+import com.galacticfog.gestalt.security.data.domain.OrgFactory.Rights
+import com.galacticfog.gestalt.security.data.domain.RightGrantFactory
+import controllers.AuditEvents.{Failed403, FailedBadRequest}
 import org.postgresql.util.PSQLException
 import play.api.Logger
 import play.api.http.{ContentTypes, HeaderNames, HttpProtocol, Status}
@@ -12,6 +16,7 @@ import play.api.mvc._
 import scala.util.{Failure, Success, Try}
 
 trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with Status with HeaderNames with ContentTypes with RequestExtractors with Rendering {
+  this: WithAuditer =>
 
   val log = Logger(this.getClass)
 
@@ -86,7 +91,7 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
     }
   }
 
-  def withBody[T](auditer: Auditer, fef: FailedEventFactory)(block: T => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): Result = {
+  def withBody[T](fef: FailedEventFactory)(block: T => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): Result = {
     request.body.validate[T] match {
       case JsSuccess(b, _) => block(b)
       case _: JsError =>
@@ -98,5 +103,29 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
         ))
     }
   }
+
+  def withAuthorization[T](requiredRight: String, event: FailedEventFactory)
+                          (block: (Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]) => Result)
+                          (request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]): Result = {
+    val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID]).toSet
+    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == Rights.SUPERUSER) && r.grantValue.isEmpty)) {
+      auditer(Failed403(event.failed,requiredRight,request))(request)
+      handleError(request, ForbiddenAPIException(
+        message = "Forbidden",
+        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+      ))
+    } else {
+      block(request)
+    }
+  }
+
+  def auditTry[T,E <: AuditEvent](theTry: Try[T], e: E)( success: (E,T) => E )(implicit request: RequestHeader): Unit = {
+    theTry match {
+      case Success(t)  => auditer(success(e,t))(request)
+      case Failure(ex) => auditer(AuditEvents.mapExceptionToFailedEvent(ex, e))(request)
+    }
+  }
+
+
 
 }
