@@ -157,19 +157,24 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  abstract class GenericCreateAttempt[T <: GestaltResource, E <: AuditEvent](parentId: UUID, parentType: String, auditUserInfo: Option[AuditedUserInfo], resource: Option[T])(implicit writes: Writes[T]) extends AuditEvent with AuditEventFactory[E] {
+  abstract class GenericCreateAttempt[T <: GestaltResource, E <: AuditEvent]( parentId: UUID,
+                                                                              parentType: String,
+                                                                              auditUserInfo: Option[AuditedUserInfo],
+                                                                              resource: Option[T] )
+                                                                            ( implicit writes: Writes[T])
+    extends AuditEvent with AuditEventFactory[E] {
     override def props = Json.obj(
       "parent" -> Json.obj(
         "id" -> parentId.toString,
         "type" -> parentType
       )
     ) ++ resource.map(r => Json.obj(
-      "resource" -> Json.toJson(r)
+      "created-resource" -> Json.toJson(r)
     )).getOrElse[JsObject](Json.obj())
   }
 
-  case class CreateDirectoryAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, directory: Option[GestaltDirectory] = None)
-    extends GenericCreateAttempt[GestaltDirectory,CreateDirectoryAttempt](parentId, parentType, u, directory) {
+  case class CreateDirectoryAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newDirectory: Option[GestaltDirectory] = None)
+    extends GenericCreateAttempt[GestaltDirectory,CreateDirectoryAttempt](parentId, parentType, u, newDirectory) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
@@ -189,15 +194,22 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  case class CreateOrgAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, newOrg: Option[GestaltOrg] = None, successful: Boolean = false)
+  case class CreateOrgAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newOrg: Option[GestaltOrg] = None)
     extends GenericCreateAttempt[GestaltOrg,CreateOrgAttempt](parentId, "org", u, newOrg) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  case class CreateAppAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, newApp: Option[GestaltApp] = None, successful: Boolean = false)
+  case class CreateAppAttempt(parentId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newApp: Option[GestaltApp] = None)
     extends GenericCreateAttempt[GestaltApp,CreateAppAttempt](parentId, "org", u, newApp) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class CreateAccountStoreAttempt(parentId: UUID, parentType: String, u: Option[AuditedUserInfo] = None, newAccountStore: Option[GestaltAccountStoreMapping] = None, successful: Boolean = false)
+    extends GenericCreateAttempt[GestaltAccountStoreMapping,CreateAccountStoreAttempt](parentId, parentType, u, newAccountStore) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))

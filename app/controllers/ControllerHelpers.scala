@@ -13,6 +13,7 @@ import play.api.http.{ContentTypes, HeaderNames, HttpProtocol, Status}
 import play.api.libs.json._
 import play.api.mvc._
 import AuditEvents._
+import com.galacticfog.gestalt.security.api.GestaltResource
 
 import scala.util.{Failure, Success, Try}
 

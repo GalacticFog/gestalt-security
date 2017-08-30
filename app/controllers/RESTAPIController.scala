@@ -704,7 +704,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           creator = request.user.identity,
           create = create
         )
-        auditTry(newOrg, event){case (e,o) => e.copy(successful = true, newOrg = Some(o))}
+        auditTry(newOrg, event){case (e,t) => e.copy(successful = true, newOrg = Some(t))}
         renderTry[GestaltOrg](Created)(newOrg)
       }
     }
@@ -724,25 +724,31 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     withAuthorization(CREATE_GROUP, CreateGroupAttempt(parentOrgId, "org")) { event =>implicit request =>
       withBody[GestaltGroupCreateWithRights](event) { create =>
         val newGroup = AppFactory.createGroupInApp(appId = request.user.serviceAppId, create)
-        auditTry(newGroup,event){case (e,t) =>   e.copy(successful = true, newGroup = Some(t))}
+        auditTry(newGroup,event){case (e,t) => e.copy(successful = true, newGroup = Some(t))}
         renderTry[GestaltGroup](Created)(newGroup)
       }
     }
   )
 
-  def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT_STORE)
-    val create = validateBody[GestaltAccountStoreMappingCreate]
-    val newMapping = AppFactory.createOrgAccountStoreMapping(orgId, create)
-    renderTry[GestaltAccountStoreMapping](Created)(newMapping)
-  }
+  def createOrgAccountStore(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateAccountStoreAttempt(orgId, "org"))(parse.json)(
+    withAuthorization(CREATE_ACCOUNT_STORE, CreateAccountStoreAttempt(orgId, "org")) { event => implicit request =>
+      withBody[GestaltAccountStoreMappingCreate](event) { create =>
+        val newMapping = AppFactory.createOrgAccountStoreMapping(orgId, create)
+        auditTry(newMapping, event){case (e,t) => e.copy(successful = true, newAccountStore = Some(t))}
+        renderTry[GestaltAccountStoreMapping](Created)(newMapping)
+      }
+    }
+  )
 
-  def createAppAccountStoreMapping(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT_STORE)
-    val create = validateBody[GestaltAccountStoreMappingCreate]
-    val newMapping = AppFactory.createAppAccountStoreMapping(appId = appId, create)
-    renderTry[GestaltAccountStoreMapping](Created)(newMapping)
-  }
+  def createAppAccountStore(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId), CreateAccountStoreAttempt(appId, "app"))(parse.json)(
+    withAuthorization(CREATE_ACCOUNT_STORE, CreateAccountStoreAttempt(appId, "app")) { event => implicit request =>
+      withBody[GestaltAccountStoreMappingCreate](event) { create =>
+        val newMapping = AppFactory.createAppAccountStoreMapping(appId = appId, create)
+        auditTry(newMapping, event){case (e,t) => e.copy(successful = true, newAccountStore = Some(t))}
+        renderTry[GestaltAccountStoreMapping](Created)(newMapping)
+      }
+    }
+  )
 
   def createOrgApp(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateAppAttempt(orgId))(parse.json)(
     withAuthorization(CREATE_APP, CreateAppAttempt(orgId)) { event => implicit request =>
@@ -762,39 +768,53 @@ class RESTAPIController @Inject()( config: SecurityConfig,
             developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
         }
         val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
-        auditTry(newDir, event){case (e,o) => e.copy(successful = true, directory = Some(o))}
+        auditTry(newDir, event){case (e,o) => e.copy(successful = true, newDirectory = Some(o))}
         renderTry[GestaltDirectory](Created)(newDir)
       }
     }
   )
 
-  def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT)
-    val create = validateBody[GestaltAccountCreateWithRights]
-    val newAccount = AppFactory.createAccountInApp(appId = appId, create)
-    renderTry[GestaltAccount](Created)(newAccount)
-  }
+  def createAppAccount(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId), CreateAccountAttempt(appId, "app"))(parse.json) (
+    withAuthorization(CREATE_ACCOUNT, CreateAccountAttempt(appId, "app")) { event => implicit request =>
+      withBody[GestaltAccountCreateWithRights](event) { create =>
+        val newAccount = AppFactory.createAccountInApp(appId = appId, create)
+        auditTry(newAccount, event){case (e,o) => e.copy(successful = true, newAccount = Some(o))}
+        renderTry[GestaltAccount](Created)(newAccount)
+      }
+    }
+  )
 
-  def createAppGroup(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_GROUP)
-    val create = validateBody[GestaltGroupCreateWithRights]
-    val newGroup = AppFactory.createGroupInApp(appId = appId, create)
-    renderTry[GestaltGroup](Created)(newGroup)
-  }
+  def createAppGroup(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId), CreateGroupAttempt(appId, "app"))(parse.json) (
+    withAuthorization(CREATE_GROUP, CreateGroupAttempt(appId, "app")) { event =>
+      implicit request =>
+        withBody[GestaltGroupCreateWithRights](event) { create =>
+          val newGroup = AppFactory.createGroupInApp(appId = appId, create)
+          auditTry(newGroup,event){case (e,o) => e.copy(successful = true, newGroup = Some(o))}
+          renderTry[GestaltGroup](Created)(newGroup)
+        }
+    }
+  )
 
-  def createDirAccount(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_ACCOUNT)
-    val create = validateBody[GestaltAccountCreate]
-    val newAccount = DirectoryFactory.createAccountInDir(dirId = dirId, create)
-    renderTry[GestaltAccount](Created)(newAccount)
-  }
+  def createDirAccount(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId), CreateAccountAttempt(dirId, "directory"))(parse.json)(
+    withAuthorization(CREATE_ACCOUNT, CreateAccountAttempt(dirId, "directory")) { event => implicit request =>
+      withBody[GestaltAccountCreate](event) { create =>
+        val newAccount = DirectoryFactory.createAccountInDir(dirId = dirId, create)
+        auditTry(newAccount,event){case (e,o) => e.copy(successful = true, newAccount = Some(o))}
+        renderTry[GestaltAccount](Created)(newAccount)
+      }
+    }
+  )
 
-  def createDirGroup(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId))(parse.json) { implicit request =>
-    requireAuthorization(CREATE_GROUP)
-    val create = validateBody[GestaltGroupCreate]
-    val newGroup = DirectoryFactory.createGroupInDir(dirId = dirId, create)
-    renderTry[GestaltGroup](Created)(newGroup)
-  }
+  def createDirGroup(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId), CreateGroupAttempt(dirId, "directory"))(parse.json)(
+    withAuthorization(CREATE_GROUP, CreateGroupAttempt(dirId, "directory")) { event =>
+      implicit request =>
+        withBody[GestaltGroupCreate](event) { create =>
+          val newGroup = DirectoryFactory.createGroupInDir(dirId = dirId, create)
+          auditTry(newGroup,event){case (e,o) => e.copy(successful = true, newGroup = Some(o))}
+          renderTry[GestaltGroup](Created)(newGroup)
+        }
+    }
+  )
 
   def createOrgAccountRight(orgId: UUID, accountId: UUID) = AuthenticatedAction(Some(orgId))(parse.json) { implicit request =>
     requireAuthorization(CREATE_ORG_GRANT)
