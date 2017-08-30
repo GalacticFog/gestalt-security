@@ -12,6 +12,7 @@ import play.api.Logger
 import play.api.http.{ContentTypes, HeaderNames, HttpProtocol, Status}
 import play.api.libs.json._
 import play.api.mvc._
+import AuditEvents._
 
 import scala.util.{Failure, Success, Try}
 
@@ -91,7 +92,7 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
     }
   }
 
-  def withBody[T](fef: FailedEventFactory)(block: T => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): Result = {
+  def withBody[T](fef: AuditEventFactory[_])(block: T => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], rds: Reads[T]): Result = {
     request.body.validate[T] match {
       case JsSuccess(b, _) => block(b)
       case _: JsError =>
@@ -104,18 +105,19 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
     }
   }
 
-  def withAuthorization[T](requiredRight: String, event: FailedEventFactory)
-                          (block: (Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]) => Result)
-                          (request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext]): Result = {
+  def withAuthorization[T,E <: AuditEvent]( requiredRight: String, ef: AuditEventFactory[E] )
+                                          ( block: E => Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] => Result )
+                                          ( request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] ): Result = {
     val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID]).toSet
     if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == Rights.SUPERUSER) && r.grantValue.isEmpty)) {
-      auditer(Failed403(event.failed,requiredRight,request))(request)
+      auditer(Failed403(ef.authed(request.user.identity),requiredRight,request))(request)
       handleError(request, ForbiddenAPIException(
         message = "Forbidden",
         developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
       ))
     } else {
-      block(request)
+      val e = ef.authed(request.user.identity)
+      block(e)(request)
     }
   }
 
@@ -125,7 +127,5 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
       case Failure(ex) => auditer(AuditEvents.mapExceptionToFailedEvent(ex, e))(request)
     }
   }
-
-
 
 }

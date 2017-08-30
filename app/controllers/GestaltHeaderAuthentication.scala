@@ -23,7 +23,7 @@ trait GestaltHeaderAuthentication {
   import GestaltHeaderAuthentication._
 
   class AuthenticatedActionBuilder( maybeGenFQON: Option[RequestHeader => Option[UUID]] = None,
-                                    maybeFailedEventFactory: Option[FailedEventFactory] = None ) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+                                    maybeFailedEventFactory: Option[AuditEventFactory[_]] = None ) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
       def checkingBlock: (AuthenticatedRequest[B, AccountWithOrgContext]) => Future[Result] = { request =>
         maybeGenFQON flatMap {_.apply(request)} match {
@@ -74,10 +74,10 @@ trait GestaltHeaderAuthentication {
     def apply(genFQON: => Option[UUID]) =
       new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), None)
 
-    def apply(genFQON: RequestHeader => Option[UUID], failedEventFactory: FailedEventFactory) =
+    def apply[E <: AuditEvent](genFQON: RequestHeader => Option[UUID], failedEventFactory: AuditEventFactory[E]) =
       new AuthenticatedActionBuilder(Some(genFQON), Some(failedEventFactory))
 
-    def apply(genFQON: => Option[UUID], failedEventFactory: FailedEventFactory) =
+    def apply[E <: AuditEvent](genFQON: => Option[UUID], failedEventFactory: AuditEventFactory[E]) =
       new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), Some(failedEventFactory))
   }
 
