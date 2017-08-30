@@ -996,133 +996,136 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Delete methods
   ////////////////////////////////////////////////////////
 
-  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)).async { implicit request =>
-    requireAuthorization(DELETE_ACCOUNT_STORE)
-    accountStoreMappingService.find(mapId) match {
-      case Some(asm) =>
-        Future {
-          AccountStoreMappingRepository.destroy(asm)
-        } map {
-          _ => Ok(Json.toJson(DeleteResult(true)))
-        }
-      case None => Future {
-        NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "account store mapping does not exist",
-          developerMessage = "Could not delete the target account store mapping because it does not exist or the provided credentials do not have rights to see it."
-        )))
+  def deleteAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId), DeleteAccountStoreAttempt(mapId))(parse.default) (
+    withAuthorization(DELETE_ACCOUNT_STORE, DeleteAccountStoreAttempt(mapId)) { event => implicit request =>
+      val attempt = accountStoreMappingService.find(mapId) match {
+        case Some(asm) => Try { AccountStoreMappingRepository.destroy(asm) } map { _ => asm }
+        case None =>
+          Failure(ResourceNotFoundException(
+            resource = request.path,
+            message = "account store mapping does not exist",
+            developerMessage = "Could not delete the target account store mapping because it does not exist or the provided credentials do not have rights to see it."
+          ))
       }
+      auditTry(attempt, event){case (e,t) => e.copy(successful = true, accountStore = Some(t))}
+      renderTry[DeleteResult](Ok)(attempt map (_ => DeleteResult(true)))
     }
-  }
+  )
 
-  def deleteDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)).async { implicit request =>
-    requireAuthorization(DELETE_DIRECTORY)
-    if ( DirectoryFactory.find(dirId).isDefined ) Future {
-      DirectoryFactory.removeDirectory(dirId)
-    } map {
-      _ => Ok(Json.toJson(DeleteResult(true)))
+  def deleteDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId), DeleteDirectoryAttempt(dirId))(parse.default) (
+    withAuthorization(DELETE_DIRECTORY,DeleteDirectoryAttempt(dirId)) { event => implicit request =>
+      val attempt = DirectoryFactory.find(dirId) match {
+        case Some(dir) =>
+          Try { DirectoryFactory.removeDirectory(dirId) } map { _ => dir }
+        case None =>
+          Failure(ResourceNotFoundException(
+            resource = request.path,
+            message = "directory does not exist",
+            developerMessage = "Could not delete the target directory because it does not exist or the provided credentials do not have rights to see it."
+          ))
+      }
+      auditTry(attempt, event){case (e,t) => e.copy(successful = true, directory = Some(t))}
+      renderTry[DeleteResult](Ok)(attempt map (_ => DeleteResult(true)))
     }
-    else Future(NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "directory doe not exist",
-      developerMessage = "Could not delete the target directory because it does not exist or the provided credentials do not have rights to see it."
-    ))))
-  }
+  )
 
-  def deleteOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId)).async { implicit request =>
-    val orgRights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID])
-    if (!orgRights.exists(r => (DELETE_ORG == r.grantName || r.grantName == SUPERUSER) && r.grantValue.isEmpty)) throw ForbiddenAPIException(
-      message = "Forbidden",
-      developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-    )
-    OrgFactory.findByOrgId(orgId) match {
-      case Some(org) if org.parent.isDefined =>
-        Future {
-          OrgFactory.delete(org)
-        } map { _ => Ok(Json.toJson(DeleteResult(true))) }
-      case Some(org) if org.parent.isEmpty =>
-        Future {
-          BadRequest(Json.toJson(BadRequestException(
+  def deleteOrgById(orgId: UUID) = AuthenticatedAction(Some(orgId), DeleteOrgAttempt(orgId))(parse.default) (
+    withAuthorization(DELETE_ORG, DeleteOrgAttempt(orgId)) { event => implicit request =>
+      val attempt = OrgFactory.findByOrgId(orgId) match {
+        case Some(org) if org.parent.isDefined =>
+          Try{OrgFactory.delete(org)} map {_ => org}
+        case Some(org) if org.parent.isEmpty =>
+          Failure(BadRequestException(
             resource = request.path,
             message = "cannot delete root org",
             developerMessage = "It is not permissible to delete the root organization. Check that you specified the intended org id."
-          )))
-        }
-      case None => Future {
-        NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "org does not exist",
-          developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it."
-        )))
+          ))
+        case None =>
+          Failure(ResourceNotFoundException(
+            resource = request.path,
+            message = "org does not exist",
+            developerMessage = "Could not delete the target org because it does not exist or the provided credentials do not have rights to see it."
+          ))
       }
+      auditTry(attempt, event){case (e,t) => e.copy(successful = true, org = Some(t))}
+      renderTry[DeleteResult](Ok)(attempt map (_ => DeleteResult(true)))
     }
-  }
+  )
 
-  def deleteAppById(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId)).async { implicit request =>
-    requireAuthorization(DELETE_APP)
-    AppFactory.findByAppId(appId) match {
-      case Some(app) if !app.isServiceApp =>
-        Future {
-          AppFactory.delete(app)
-        } map { _ => Ok(Json.toJson(DeleteResult(true))) }
-      case Some(app) if app.isServiceApp =>
-        Future {
-          BadRequest(Json.toJson(BadRequestException(
+  def deleteAppById(appId: UUID) = AuthenticatedAction(resolveAppOrg(appId), DeleteAppAttempt(appId))(parse.default) (
+    withAuthorization(DELETE_APP, DeleteAppAttempt(appId)) { event => implicit request =>
+      val attempt = AppFactory.findByAppId(appId) match {
+        case Some(app) if !app.isServiceApp =>
+          Try { AppFactory.delete(app) } map { _ => app }
+        case Some(app) if app.isServiceApp =>
+          Failure(BadRequestException(
             resource = request.path,
             message = "cannot delete service app",
             developerMessage = "It is not permissible to delete the current service app for an organization. Verify that this is the app that you want to delete and select a new service app for the organization and try again, or delete the organization."
-          )))
-        }
-      case None => Future {
-        NotFound(Json.toJson(ResourceNotFoundException(
-          resource = request.path,
-          message = "app does not exist",
-          developerMessage = "Could not delete the target app because it does not exist or the provided credentials do not have rights to see it."
-        )))
-      }
-    }
-  }
-
-  def deleteGroup(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId)).async { implicit request =>
-    requireAuthorization(DELETE_GROUP)
-    GroupFactory.find(groupId) match {
-      case None => Future{defaultResourceNotFound}
-      case Some(group) => Future{
-        DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
-          case None => throw UnknownAPIException(
-            code = 500,
+          ))
+        case None =>
+          Failure(ResourceNotFoundException(
             resource = request.path,
-            message = "could not locate directory associated with group",
-            developerMessage = "Could not locate the directory associated with the specified group. Please contact support."
-          )
-          case Some(dir) =>
-            val deleted = dir.deleteGroup(group.id.asInstanceOf[UUID])
-            Ok(Json.toJson(DeleteResult(deleted)))
-        }
+            message = "app does not exist",
+            developerMessage = "Could not delete the target app because it does not exist or the provided credentials do not have rights to see it."
+          ))
       }
+      auditTry(attempt, event){case (e,t) => e.copy(successful = true, app = Some(t))}
+      renderTry[DeleteResult](Ok)(attempt map (_ => DeleteResult(true)))
     }
-  }
+  )
 
-  def hardDeleteAccount(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
-    requireAuthorization(DELETE_ACCOUNT)
-    AccountFactory.find(accountId) match {
-      case None =>
-        Future{
-          Ok(Json.toJson(DeleteResult(false)))
-        }
-      case Some(account) if account.id != request.user.identity.id =>
-        Future {
-          account.destroy()
-          Ok(Json.toJson(DeleteResult(true)))
-        }
-      case Some(account) if account.id == request.user.identity.id => Future {
-        BadRequest(Json.toJson(BadRequestException(
+  def deleteGroup(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId), DeleteGroupAttempt(groupId))(parse.default) (
+    withAuthorization(DELETE_GROUP, DeleteGroupAttempt(groupId)) { event => implicit request =>
+      val attempt = GroupFactory.find(groupId) match {
+        case Some(group) =>
+          DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
+            case None => Failure(UnknownAPIException(
+              code = 500,
+              resource = request.path,
+              message = "could not locate directory associated with group",
+              developerMessage = "Could not locate the directory associated with the specified group. Please contact support."
+            ))
+            case Some(dir) =>
+              val deleted = dir.deleteGroup(group.id.asInstanceOf[UUID])
+              Success(group)
+          }
+        case None => Failure(ResourceNotFoundException(
           resource = request.path,
-          message = "cannot delete self",
-          developerMessage = "The authenticated account is the same as the account targeted by the delete operation. You cannot delete yourself. Get someone else to delete you."
-        )))
+          message = "group does not exist",
+          developerMessage = "Could not delete the target app because it does not exist or the provided credentials do not have rights to see it."
+        ))
       }
+      auditTry(attempt, event){case (e,t) => e.copy(successful = true, group = Some(t))}
+      renderTry[DeleteResult](Ok)(attempt map {_ => DeleteResult(true)})
     }
+  )
+
+  def hardDeleteAccount(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId), DeleteAccountAttempt(accountId))(parse.default) (
+    withAuthorization(DELETE_ACCOUNT, DeleteAccountAttempt(accountId)) { event => implicit request =>
+      val attempt = AccountFactory.find(accountId) match {
+        case None =>
+          Success(false, None)
+        case Some(account) if account.id != request.user.identity.id =>
+          Try {
+            account.destroy()
+          } map (_ => (true, Some(account)))
+        case Some(account) if account.id == request.user.identity.id =>
+          Failure(BadRequestException(
+            resource = request.path,
+            message = "cannot delete self",
+            developerMessage = "The authenticated account is the same as the account targeted by the delete operation. You cannot delete yourself. Get someone else to delete you."
+          ))
+      }
+      auditTry(attempt, event){case (e,(_,t)) => e.copy(successful = true, account = t.map(a => a: GestaltAccount))}
+      renderTry[DeleteResult](Ok)(attempt map {case (wasDeleted,_) => DeleteResult(wasDeleted)})
+    }
+  )
+
+  def deleteOrgAccountRight(orgId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
+    requireAuthorization(DELETE_ORG_GRANT)
+    val wasDeleted = AccountFactory.deleteAppAccountGrant(request.user.serviceAppId, accountId, grantName)
+    Ok(Json.toJson(DeleteResult(wasDeleted)))
   }
 
   def enableAccount(accountId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(accountId)).async { implicit request =>
@@ -1197,17 +1200,6 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   }
 
-  def deleteRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId)) { implicit request =>
-    requireAuthorization(DELETE_APP_GRANT)
-    Ok(Json.toJson(DeleteResult(RightGrantFactory.deleteRightGrant(rightId))))
-  }
-
-  def deleteOrgAccountRight(orgId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
-    requireAuthorization(DELETE_ORG_GRANT)
-    val wasDeleted = AccountFactory.deleteAppAccountGrant(request.user.serviceAppId, accountId, grantName)
-    Ok(Json.toJson(DeleteResult(wasDeleted)))
-  }
-
   def deleteOrgAccountRightByUsername(orgId: UUID, username: String, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
     requireAuthorization(DELETE_ORG_GRANT)
@@ -1231,6 +1223,11 @@ class RESTAPIController @Inject()( config: SecurityConfig,
       wasDeleted = AccountFactory.deleteAppAccountGrant(appId, account.id.asInstanceOf[UUID], grantName)
     } yield DeleteResult(wasDeleted)
     renderTry[DeleteResult](Ok)(result)
+  }
+
+  def deleteRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId)) { implicit request =>
+    requireAuthorization(DELETE_APP_GRANT)
+    Ok(Json.toJson(DeleteResult(RightGrantFactory.deleteRightGrant(rightId))))
   }
 
   def deleteOrgGroupRight(orgId: UUID, groupId: UUID, grantName: String) = AuthenticatedAction(Some(orgId)) { implicit request =>

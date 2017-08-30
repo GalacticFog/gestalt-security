@@ -157,11 +157,29 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
+  case class LookupOrgAttempt(fqon: String, userInfo: Option[AuditedUserInfo], rh: RequestHeader) extends AuditEvent {
+    val successful: Boolean = true
+    override def props = Json.obj(
+      "fqon" -> fqon
+    )
+  }
+
+  case class GetCurrentOrgAttempt(u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with AuditEventFactory[GetCurrentOrgAttempt] {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props = Json.obj()
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  //////////////////////////////////////////////////////////////////////
+  // Create, Delete, Update
+  //////////////////////////////////////////////////////////////////////
+
   abstract class GenericCreateAttempt[T <: GestaltResource, E <: AuditEvent]( parentId: UUID,
-                                                                              parentType: String,
-                                                                              auditUserInfo: Option[AuditedUserInfo],
-                                                                              resource: Option[T] )
-                                                                            ( implicit writes: Writes[T])
+                                                                            parentType: String,
+                                                                            auditUserInfo: Option[AuditedUserInfo],
+                                                                            resource: Option[T] )
+                                                                          ( implicit writes: Writes[T])
     extends AuditEvent with AuditEventFactory[E] {
     override def props = Json.obj(
       "parent" -> Json.obj(
@@ -169,7 +187,7 @@ object AuditEvents {
         "type" -> parentType
       )
     ) ++ resource.map(r => Json.obj(
-      "created-resource" -> Json.toJson(r)
+      s"created-resource" -> Json.toJson(r)
     )).getOrElse[JsObject](Json.obj())
   }
 
@@ -215,19 +233,67 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  case class GetCurrentOrgAttempt(u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with AuditEventFactory[GetCurrentOrgAttempt] {
+  abstract class GenericDeleteAttempt[T <: GestaltResource, E <: AuditEvent]( resourceId: UUID,
+                                                                              resourceType: String,
+                                                                              auditUserInfo: Option[AuditedUserInfo],
+                                                                              resource: Option[T] )
+                                                                            ( implicit writes: Writes[T])
+    extends AuditEvent with AuditEventFactory[E] {
+    override def props = Json.obj(
+      "target" -> Json.obj(
+        "id" -> resourceId.toString,
+        "type" -> resourceType
+      )
+    ) ++ resource.map(r => Json.obj(
+      s"deleted-resource" -> Json.toJson(r)
+    )).getOrElse[JsObject](Json.obj())
+  }
+
+  case class DeleteDirectoryAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, directory: Option[GestaltDirectory] = None)
+    extends GenericDeleteAttempt[GestaltDirectory,DeleteDirectoryAttempt](resourceId, "directory", u, directory) {
     override def userInfo: Option[AuditedUserInfo] = u
-    override def props = Json.obj()
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  case class LookupOrgAttempt(fqon: String, userInfo: Option[AuditedUserInfo], rh: RequestHeader) extends AuditEvent {
-    val successful: Boolean = true
-    override def props = Json.obj(
-      "fqon" -> fqon
-    )
+  case class DeleteAccountAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, account: Option[GestaltAccount] = None)
+    extends GenericDeleteAttempt[GestaltAccount,DeleteAccountAttempt](resourceId, "account", u, account) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
+
+  case class DeleteGroupAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, group: Option[GestaltGroup] = None)
+    extends GenericDeleteAttempt[GestaltGroup,DeleteGroupAttempt](resourceId, "group", u, group) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class DeleteOrgAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, org: Option[GestaltOrg] = None)
+    extends GenericDeleteAttempt[GestaltOrg,DeleteOrgAttempt](resourceId, "org", u, org) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class DeleteAppAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, app: Option[GestaltApp] = None)
+    extends GenericDeleteAttempt[GestaltApp,DeleteAppAttempt](resourceId, "app", u, app) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class DeleteAccountStoreAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, accountStore: Option[GestaltAccountStoreMapping] = None, successful: Boolean = false)
+    extends GenericDeleteAttempt[GestaltAccountStoreMapping,DeleteAccountStoreAttempt](resourceId, "accountStore", u, accountStore) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  //////////////////////////////////////////////////////////////////////
+  // Failure event wrappers
+  //////////////////////////////////////////////////////////////////////
 
   case class Failed401(event: AuditEvent, rh: RequestHeader) extends AuditEvent {
     val successful: Boolean = false

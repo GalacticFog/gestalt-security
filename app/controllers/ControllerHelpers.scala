@@ -72,7 +72,7 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
     def apply[A](bodyTry: Try[A])
                 (implicit request: RequestHeader,
                  tjs : play.api.libs.json.Writes[B],
-                 c: A => B) = bodyTry match {
+                 a2b: A => B) = bodyTry match {
       case Success(body) =>
         status(Json.toJson(body: B))
       case Failure(e) =>
