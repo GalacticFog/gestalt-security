@@ -2,7 +2,7 @@ package controllers
 
 import java.util.UUID
 
-import com.galacticfog.gestalt.security.api.errors.ConflictException
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException, UnauthorizedAPIException}
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.model.UserAccountRepository
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
@@ -60,6 +60,36 @@ object AuditEvents {
     def failed(u: AuditedUserInfo, pi: String)  = TokenIssueAttempt(Some(u),false,pi)
     def failed(pi: String)  = TokenIssueAttempt(None,false,pi)
     def success(u: AuditedUserInfo, pi: String) = TokenIssueAttempt(Some(u),true ,pi)
+  }
+
+  case class GenerateAPIKeyAttempt(accountId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, newApiKey: Option[UUID] = None) extends AuditEvent with AuditEventFactory[GenerateAPIKeyAttempt] {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props: JsObject = Json.obj(
+      "target-account-id" -> accountId
+    ) ++ newApiKey.map(k => Json.obj(
+      "new-api-key" -> k
+    )).getOrElse(Json.obj())
+
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo): GenerateAPIKeyAttempt = this.copy(u = Some(aui))
+  }
+
+  case class DeleteAPIKeyAttempt(apiKeyId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with AuditEventFactory[DeleteAPIKeyAttempt] {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props: JsObject = Json.obj(
+      "target-api-key-id" -> apiKeyId
+    )
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo): DeleteAPIKeyAttempt = this.copy(u = Some(aui))
+  }
+
+  case class DeleteTokenAttempt(tokenId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false) extends AuditEvent with AuditEventFactory[DeleteTokenAttempt] {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def props: JsObject = Json.obj(
+      "target-token-id" -> tokenId
+    )
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo): DeleteTokenAttempt = this.copy(u = Some(aui))
   }
 
   case class TokenIntrospectionAttempt( userInfo: Option[AuditedUserInfo],
@@ -291,6 +321,44 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
+  abstract class GenericUpdateAttempt[T, E <: AuditEvent]( resourceId: UUID,
+                                                                              resourceType: String,
+                                                                              auditUserInfo: Option[AuditedUserInfo],
+                                                                              resources: Option[(T,T)] )
+                                                                            ( implicit writes: Writes[T])
+    extends AuditEvent with AuditEventFactory[E] {
+    override def props = Json.obj(
+      "target" -> Json.obj(
+        "id" -> resourceId.toString,
+        "type" -> resourceType
+      )
+    ) ++ resources.map {case (before,after) => Json.obj(
+      "before" -> Json.toJson(before),
+      "after" -> Json.toJson(after)
+    )}.getOrElse[JsObject](Json.obj())
+  }
+
+  case class UpdateAccountStoreAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, asms: Option[(GestaltAccountStoreMapping,GestaltAccountStoreMapping)] = None)
+    extends GenericUpdateAttempt[GestaltAccountStoreMapping,UpdateAccountStoreAttempt](resourceId, "accountStore", u, asms) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class UpdateGroupMembershipAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, memberLists: Option[(Seq[ResourceLink],Seq[ResourceLink])] = None)
+    extends GenericUpdateAttempt[Seq[ResourceLink],UpdateGroupMembershipAttempt](resourceId, "group", u, memberLists) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
+  case class UpdateAccountAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, accounts: Option[(GestaltAccount,GestaltAccount)] = None)
+    extends GenericUpdateAttempt[GestaltAccount,UpdateAccountAttempt](resourceId, "account", u, accounts) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
   //////////////////////////////////////////////////////////////////////
   // Failure event wrappers
   //////////////////////////////////////////////////////////////////////
@@ -370,9 +438,12 @@ object AuditEvents {
   def mapExceptionToFailedEvent(ex: Throwable, event: AuditEvent)(implicit request: RequestHeader): AuditEvent = {
     ex match {
       case e: ConflictException => FailedConflict(event, request, ex.getMessage)
+      case e: BadRequestException => FailedBadRequest(event, msg = Option(ex.getMessage))
+      case e: UnauthorizedAPIException => Failed401(event, request)
+      case e: ResourceNotFoundException => FailedNotFound(event)
+      // case e: ForbiddenAPIException => Failed403(...)
       case _                    => FailedGeneric(event, ex)
     }
   }
 
 }
-

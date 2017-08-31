@@ -106,19 +106,46 @@ trait ControllerHelpers extends Results with BodyParsers with HttpProtocol with 
     }
   }
 
+  def withBody[T,U](fef: AuditEventFactory[_])(block: Either[T,U] => Result)(implicit request: Request[JsValue], m: reflect.Manifest[T], n: reflect.Manifest[U], rdsT: Reads[T], rdsU: Reads[U]): Result = {
+    request.body.validate[T] match {
+      case JsSuccess(t, _) => block(Left(t))
+      case _: JsError => request.body.validate[U] match {
+        case JsSuccess(u, _) => block(Right(u))
+        case _: JsError =>
+          auditer(FailedBadRequest(fef.failed, Some("payload could not be parsed")))
+          handleError(request, BadRequestException(
+            resource = request.path,
+            message = "invalid payload",
+            developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object ${m.toString} or ${n.toString}"
+          ))
+      }
+    }
+  }
+
   def withAuthorization[T,E <: AuditEvent]( requiredRight: String, ef: AuditEventFactory[E] )
                                           ( block: E => Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] => Result )
                                           ( request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] ): Result = {
-    val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID]).toSet
-    if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == Rights.SUPERUSER) && r.grantValue.isEmpty)) {
-      auditer(Failed403(ef.authed(request.user.identity),requiredRight,request))(request)
-      handleError(request, ForbiddenAPIException(
-        message = "Forbidden",
-        developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
-      ))
-    } else {
-      val e = ef.authed(request.user.identity)
-      block(e)(request)
+    withAuthorization(_ => Some(requiredRight),ef)(block)(request)
+  }
+
+  def withAuthorization[T,E <: AuditEvent]( requiredRight: Security.AuthenticatedRequest[_, GestaltHeaderAuthentication.AccountWithOrgContext] => Option[String], ef: AuditEventFactory[E] )
+                                          ( block: E => Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] => Result )
+                                          ( request: Security.AuthenticatedRequest[T, GestaltHeaderAuthentication.AccountWithOrgContext] ): Result = {
+    val authedEvent = ef.authed(request.user.identity)
+    requiredRight(request) match {
+      case Some(requiredRight) =>
+        val rights = RightGrantFactory.listAccountRights(appId = request.user.serviceAppId, accountId = request.user.identity.id.asInstanceOf[UUID]).toSet
+        if (!rights.exists(r => (requiredRight == r.grantName || r.grantName == Rights.SUPERUSER) && r.grantValue.isEmpty)) {
+          auditer(Failed403(authedEvent,requiredRight,request))(request)
+          handleError(request, ForbiddenAPIException(
+            message = "Forbidden",
+            developerMessage = "Forbidden. API credentials did not correspond to the parent organization or the account did not have sufficient permissions."
+          ))
+        } else {
+          block(authedEvent)(request)
+        }
+      case None =>
+        block(authedEvent)(request)
     }
   }
 

@@ -1,5 +1,6 @@
 package controllers
 
+import java.security.cert.X509Certificate
 import java.util.UUID
 import javax.inject.{Inject, Named}
 
@@ -848,86 +849,91 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   // Update methods
   ////////////////////////////////////////////////////////
 
-  def removeAccountEmail(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
-    // user can update their own account
-    if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.find(accountId) match {
-      case Some(account) =>
-        val newAccount = account.copy(email = None).save()
-        Ok(Json.toJson[GestaltAccount](newAccount))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-      )))
-    }
+  def removeAccountEmail(accountId: UUID) = Action.async(parse.default) { request =>
+    updateAccount(accountId).apply(new Request[JsValue]{
+      override def body: JsValue = Json.arr(Json.toJson(PatchOp.Remove("/email")))
+      override def id: Long = request.id
+      override def tags: Map[String, String] = request.tags
+      override def uri: String = request.uri
+      override def path: String = request.path
+      override def method: String = request.method
+      override def version: String = request.version
+      override def queryString: Map[String, Seq[String]] = request.queryString
+      override def headers: Headers = request.headers
+      override def remoteAddress: String = request.remoteAddress
+      override def secure: Boolean = request.secure
+      override def clientCertificateChain: Option[Seq[X509Certificate]] = request.clientCertificateChain
+    })
   }
 
-  def removeAccountPhoneNumber(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
-    // user can update their own account
-    if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.find(accountId) match {
-      case Some(account) =>
-        val newAccount = account.copy(phoneNumber = None).save()
-        Ok(Json.toJson[GestaltAccount](newAccount))
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-      )))
-    }
+  def removeAccountPhoneNumber(accountId: UUID) = Action.async(parse.default) { request =>
+    updateAccount(accountId).apply(new Request[JsValue]{
+      override def body: JsValue = Json.arr(Json.toJson(PatchOp.Remove("/phoneNumber")))
+      override def id: Long = request.id
+      override def tags: Map[String, String] = request.tags
+      override def uri: String = request.uri
+      override def path: String = request.path
+      override def method: String = request.method
+      override def version: String = request.version
+      override def queryString: Map[String, Seq[String]] = request.queryString
+      override def headers: Headers = request.headers
+      override def remoteAddress: String = request.remoteAddress
+      override def secure: Boolean = request.secure
+      override def clientCertificateChain: Option[Seq[X509Certificate]] = request.clientCertificateChain
+    })
   }
 
-  def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId))(parse.json) { implicit request =>
-    val payload = validateBody[Seq[PatchOp]]
-    requireAuthorization(UPDATE_GROUP)
-    if ( GroupFactory.find(groupId).isDefined ) {
-      val newMembers = GroupFactory.updateGroupMembership(groupId, payload)
-      renderTry[Seq[ResourceLink]](Ok)(
-        newMembers map {
-          _.map { a => (a: GestaltAccount).getLink() }
+  def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId), UpdateAccountAttempt(accountId))(parse.json) (
+    // user can update their own account
+    withAuthorization( {r => if (r.user.identity.id == accountId) None else Some(UPDATE_ACCOUNT)}, UpdateAccountAttempt(accountId) ) { event => implicit request =>
+      withBody[Seq[PatchOp], GestaltAccountUpdate](event) { payload =>
+        val attempt = AccountFactory.find(accountId) match {
+          case Some(before) =>
+            payload.fold(
+              patches => AccountFactory.updateAccount(before, patches),
+              update => AccountFactory.updateAccountSDK(before, update)
+            ) map { after => (before,after) }
+          case None =>
+            Failure(ResourceNotFoundException(
+              resource = request.path,
+              message = "could not locate requested account",
+              developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
+            ))
         }
-      )
-    } else NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "could not locate requested group",
-      developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
-    )))
-  }
-
-  def updateAccount(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
-    val payload: Either[GestaltAccountUpdate, Seq[PatchOp]] = request.body.validate[Seq[PatchOp]] match {
-      case JsSuccess(ps: Seq[PatchOp], _) => Right(ps)
-      case _ => request.body.validate[GestaltAccountUpdate] match {
-        case JsSuccess(au: GestaltAccountUpdate, _) => Left(au)
-        case _ => throw BadRequestException(
-          resource = request.path,
-          message = "invalid payload",
-          developerMessage = s"Payload could not be parsed; was expecting JSON representation of SDK object GestaltAccountUpdate or an array of PatchOp objects"
-        )
+        auditTry(attempt, event){case (e,(before,after)) => e.copy(
+          successful = true,
+          accounts = Some((before,after))
+        )}
+        renderTry[GestaltAccount](Ok)(attempt.map(_._2))
       }
     }
-    // user can update their own account
-    if (request.user.identity.id != accountId) requireAuthorization(UPDATE_ACCOUNT)
-    AccountFactory.find(accountId) match {
-      case Some(account) =>
-        val updatedAccount = payload.fold(
-          update => AccountFactory.updateAccountSDK(account, update),
-          patches => AccountFactory.updateAccount(account, patches)
-        )
-        renderTry[GestaltAccount](Ok)(updatedAccount)
-      case None => NotFound(Json.toJson(ResourceNotFoundException(
-        resource = request.path,
-        message = "could not locate requested account",
-        developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
-      )))
+  )
+
+  def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId), UpdateGroupMembershipAttempt(groupId))(parse.json) (
+    withAuthorization(UPDATE_GROUP, UpdateGroupMembershipAttempt(groupId)) { event => implicit request =>
+      withBody[Seq[PatchOp]](event) { payload =>
+        val attempt = GroupFactory.find(groupId) match {
+          case Some(_) =>
+            val oldMembers = GroupFactory.listGroupAccounts(groupId) map { a => (a: GestaltAccount).getLink() }
+            val newMembers = GroupFactory.updateGroupMembership(groupId, payload) map {
+              _.map { a => (a: GestaltAccount).getLink() }
+            }
+            newMembers map ( l => (oldMembers,l) )
+          case None => Failure(ResourceNotFoundException(
+            resource = request.path,
+            message = "could not locate requested group",
+            developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
+          ))
+        }
+        auditTry(attempt, event){ case (e,t) => e.copy( successful = true, memberLists = Some(t) )}
+        renderTry[Seq[ResourceLink]](Ok)(attempt.map(_._2))
+      }
     }
-  }
+  )
 
   def updateRightGrant(rightId: UUID) = AuthenticatedAction(resolveGrantOrg(rightId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_APP_GRANT)
-    RightGrantRepository.find(rightId) match {
-      case Some(grant) =>
+    RightGrantRepository.find(rightId).fold(defaultResourceNotFound) { grant =>
         validateBody[Seq[PatchOp]] match {
           case Seq(patch) if patch.path == "/grantValue" =>
             (patch.op.toLowerCase,patch.value) match {
@@ -941,20 +947,30 @@ class RESTAPIController @Inject()( config: SecurityConfig,
             }
           case _ => defaultBadPatch
         }
-      case None => defaultResourceNotFound
     }
   }
 
-  def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId))(parse.json) { implicit request =>
-    requireAuthorization(UPDATE_ACCOUNT_STORE)
-    val patch = validateBody[Seq[PatchOp]]
-    accountStoreMappingService.find(mapId) match {
-      case None => defaultResourceNotFound
-      case Some(map) =>
-        val updated: AccountStoreMappingRepository = accountStoreMappingService.updateMapping( map, patch )
-        Ok(Json.toJson[GestaltAccountStoreMapping](updated))
+  def updateAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId), UpdateAccountStoreAttempt(mapId))(parse.json)(
+    withAuthorization(UPDATE_ACCOUNT_STORE, UpdateAccountStoreAttempt(mapId)) { event => implicit request =>
+      withBody[Seq[PatchOp]](event) { patch =>
+        val attempt = accountStoreMappingService.find(mapId) match {
+          case None =>
+            Failure(ResourceNotFoundException(
+              resource = request.path,
+              message = "could not locate requested account store mapping",
+              developerMessage = "Could not locate the requested account store mapping."
+            ))
+          case Some(original) =>
+            accountStoreMappingService.updateMapping( original, patch ) map {updated => (original,updated) }
+        }
+        auditTry(attempt, event){case (e,(original,updated)) => e.copy(
+          successful = true,
+          asms = Some(original,updated)
+        )}
+        renderTry[GestaltAccountStoreMapping](Ok)(attempt map (_._2))
+      }
     }
-  }
+  )
 
   def updateAppAccountRight(appId: UUID, accountId: UUID, grantName: String) = AuthenticatedAction(resolveAppOrg(appId))(parse.json) { implicit request =>
     requireAuthorization(UPDATE_APP_GRANT)
@@ -1477,54 +1493,66 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     genericTokenIntro( token => token.issuedOrgId map {_.asInstanceOf[UUID]} )
   }
 
-  def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId)) { implicit request =>
+  def deleteToken(tokenId: UUID) = AuthenticatedAction(resolveTokenOrg(tokenId), DeleteTokenAttempt(tokenId)) { implicit request =>
     val token = TokenFactory.findValidById(tokenId)
     if (! token.exists {_.accountId == request.user.identity.id}) requireAuthorization(DELETE_TOKEN)
-    token foreach { t =>
-      Logger.info(s"deleting token ${t.id}")
-      TokenRepository.destroy(t)
+    token match {
+      case Some(t) =>
+        auditer(DeleteTokenAttempt(tokenId, u = Some(request.user.identity), true))
+        Logger.info(s"deleting token ${t.id}")
+        TokenRepository.destroy(t)
+      case None =>
+        auditer(DeleteTokenAttempt(tokenId, u = Some(request.user.identity), false))
+        Logger.info(s"not deleting non-existent token ${tokenId}")
     }
-    renderTry[DeleteResult](Ok)(Success(DeleteResult(token.isDefined)))
+    Ok(Json.toJson(DeleteResult(token.isDefined)))
   }
 
-  def deleteApiKey(apiKey: UUID) = AuthenticatedAction(resolveApiKeyOrg(apiKey)) { implicit request =>
+  def deleteApiKey(apiKey: UUID) = AuthenticatedAction(resolveApiKeyOrg(apiKey), DeleteAPIKeyAttempt(apiKey)) { implicit request =>
     val key = APICredentialFactory.findByAPIKey(apiKey.toString)
     if (! key.exists {_.accountId == request.user.identity.id}) requireAuthorization(DELETE_APIKEY)
-    key foreach { k =>
-      Logger.info(s"deleting apiKey ${k.id}")
-      APICredentialRepository.destroy(k)
+    key match {
+      case Some(k) =>
+        auditer(DeleteAPIKeyAttempt(apiKey, u = Some(request.user.identity), true))
+        Logger.info(s"deleting apiKey ${k.id}")
+        APICredentialRepository.destroy(k)
+      case None =>
+        auditer(DeleteAPIKeyAttempt(apiKey, u = Some(request.user.identity), false))
+        Logger.info(s"not deleting non-existent apiKey ${apiKey}")
     }
-    renderTry[DeleteResult](Ok)(Success(DeleteResult(key.isDefined)))
+    Ok(Json.toJson(DeleteResult(key.isDefined)))
   }
 
-  def generateAPIKey(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId))(parse.json) { implicit request =>
+  def generateAPIKey(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId), GenerateAPIKeyAttempt(accountId)) { implicit request =>
+    val event = GenerateAPIKeyAttempt(accountId, u = Some(request.user.identity))
     if ( request.user.identity.id != accountId ) requireAuthorization(CREATE_APIKEY)
-    val explicitOrgId = (request.body \ "orgId").asOpt[UUID]
-    val currentOrg = if (request.user.identity.id == accountId) Some(request.user.orgId) else None
-    // must have org to bind api key to
-    val orgId = explicitOrgId orElse currentOrg
+    val explicitOrgId = request.body.asJson flatMap (b => (b \ "orgId").asOpt[UUID])
+    // try hard to get an org to bind api key to
+    lazy val currentOrg = if (request.user.identity.id == accountId) Some(request.user.orgId) else None
+    val maybeBoundOrgId = explicitOrgId orElse currentOrg
     // only generate if using api key authentication
     val apiKey = request.user.credential.left.toOption map {_.apiKey.asInstanceOf[UUID]}
 
-    (apiKey,orgId) match {
-      case (None,_) => BadRequest(Json.toJson(BadRequestException(
+    val attempt = (apiKey,maybeBoundOrgId) match {
+      case (None,_) => Failure(BadRequestException(
         resource = "",
         message = "API key creation requires API key authentication",
         developerMessage = "API key creation request must be authenticated using API keys and does not support bearer token authentication"
-      )))
-      case (Some(_),None) => BadRequest(Json.toJson(BadRequestException(
+      ))
+      case (Some(_),None) => Failure(BadRequestException(
         resource = "",
         message = "delegated API key creation requires orgId",
         developerMessage = "API key creation on behalf of another account requires an orgId against which to bind the API key."
-      )))
+      ))
       case (Some(key),Some(boundOrgId)) =>
-        val newKey = APICredentialFactory.createAPIKey(
+        APICredentialFactory.createAPIKey(
           accountId = accountId,
           boundOrg = Some(boundOrgId),
           parentApiKey = Some(key)
         )
-        renderTry[GestaltAPIKey](Created)(newKey)
     }
+    auditTry(attempt, event){case (e,t) => e.copy(successful = true, newApiKey = Some(t.apiKey.asInstanceOf[UUID]))}
+    renderTry[GestaltAPIKey](Created)(attempt)
   }
 
   def options(path: String) = Action {Ok("")}
