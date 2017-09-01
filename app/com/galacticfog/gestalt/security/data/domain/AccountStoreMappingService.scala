@@ -8,10 +8,12 @@ import com.galacticfog.gestalt.security.api.errors.BadRequestException
 import com.galacticfog.gestalt.security.data.model._
 import scalikejdbc._
 
+import scala.util.Try
+
 trait AccountStoreMappingService {
   import AccountStoreMappingService._
 
-  def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): AccountStoreMappingRepository
+  def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository]
 
   def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository]
 }
@@ -26,8 +28,8 @@ class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport
 
   def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository] = AccountStoreMappingRepository.find(mapId)
 
-  override def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): AccountStoreMappingRepository = {
-    val newMap = patch.foldLeft(map)((m, p) => {
+  override def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
+    val newMap = Try{patch.foldLeft(map)((m, p) => {
       p match {
         case PatchOp(op,"/name",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
           m.copy(name = Some(value.as[String]))
@@ -47,7 +49,7 @@ class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport
           developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."
         )
       }
-    })
-    newMap.save()
+    })}
+    newMap map (_.save())
   }
 }

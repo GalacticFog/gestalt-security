@@ -18,10 +18,12 @@ import play.api.http.HeaderNames
 import scala.language.reflectiveCalls
 
 trait GestaltHeaderAuthentication {
+  this: WithAuditer =>
 
   import GestaltHeaderAuthentication._
 
-  class AuthenticatedActionBuilder(maybeGenFQON: Option[RequestHeader => Option[UUID]] = None) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
+  class AuthenticatedActionBuilder( maybeGenFQON: Option[RequestHeader => Option[UUID]] = None,
+                                    maybeFailedEventFactory: Option[AuditEventFactory[_]] = None ) extends ActionBuilder[({ type λ[A] = play.api.mvc.Security.AuthenticatedRequest[A, AccountWithOrgContext] })#λ] {
     override def invokeBlock[B](request: Request[B], block: AuthenticatedRequest[B,AccountWithOrgContext] => Future[Result]) = {
       def checkingBlock: (AuthenticatedRequest[B, AccountWithOrgContext]) => Future[Result] = { request =>
         maybeGenFQON flatMap {_.apply(request)} match {
@@ -44,6 +46,7 @@ trait GestaltHeaderAuthentication {
                 ))
               case None =>
                 // did not authenticate with the requested app, we could 403 or 404, we will 403
+                maybeFailedEventFactory foreach {fef => auditer(AuditEvents.FailedWrongOrg(fef.failed,request))(request)}
                 Logger.info(s"req-${request.id}: authenticated ${request.user.identity.username} (${request.user.identity.id}) did not belong to specified /orgs/${orgId}")
                 throw UnauthorizedAPIException("", message = "insufficient permissions", developerMessage = "Insufficient permissions in the authenticated account to perform the requested action.")
             }
@@ -53,13 +56,29 @@ trait GestaltHeaderAuthentication {
             block(request)
         }
       }
-      AuthenticatedBuilder(authenticateHeader, onUnauthorized = onUnauthorized).invokeBlock(request, checkingBlock)
+      val audit401 = maybeFailedEventFactory match {
+        case Some(fef) =>
+          (rh: RequestHeader) =>
+            auditer(AuditEvents.Failed401(fef.failed, rh))(rh)
+            rh
+        case None => identity[RequestHeader](_)
+      }
+      AuthenticatedBuilder( authenticateHeader, onUnauthorized = audit401 andThen onUnauthorized).invokeBlock(request, checkingBlock)
     }
   }
 
-  object AuthenticatedAction extends AuthenticatedActionBuilder {
-    def apply(genFQON: RequestHeader => Option[UUID]) = new AuthenticatedActionBuilder(Some(genFQON))
-    def apply(genFQON: => Option[UUID]) = new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}))
+  object AuthenticatedAction {
+    def apply(genFQON: RequestHeader => Option[UUID]) =
+      new AuthenticatedActionBuilder(Some(genFQON), None)
+
+    def apply(genFQON: => Option[UUID]) =
+      new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), None)
+
+    def apply[E <: AuditEvent](genFQON: RequestHeader => Option[UUID], failedEventFactory: AuditEventFactory[E]) =
+      new AuthenticatedActionBuilder(Some(genFQON), Some(failedEventFactory))
+
+    def apply[E <: AuditEvent](genFQON: => Option[UUID], failedEventFactory: AuditEventFactory[E]) =
+      new AuthenticatedActionBuilder(Some({ _: RequestHeader => genFQON}), Some(failedEventFactory))
   }
 
 }
@@ -86,6 +105,17 @@ object GestaltHeaderAuthentication {
     ).
       withHeaders(("WWW-Authenticate","Basic")).
       withHeaders(("WWW-Authenticate","Bearer"))
+  }
+
+  def presentedIdentity(request: RequestHeader): Option[String] = {
+    val authToken = extractAuthToken(request)
+    for {
+      tokenHeader <- authToken
+      apiCred <- tokenHeader match {
+        case GestaltBasicCredentials(apiKey,apiSecret) => Some(apiKey)
+        case _ => None
+      }
+    } yield apiCred
   }
 
   // find the account by credentials and verify that they are still part of the associated app

@@ -17,8 +17,9 @@ import scala.concurrent._
 class SDKAwareErrorHandler @Inject()(env: Environment,
                                      config: Configuration,
                                      sourceMapper: OptionalSourceMapper,
+                                     override val auditer: Auditer,
                                      router: Provider[Router] )
-  extends DefaultHttpErrorHandler(env, config, sourceMapper, router) with ControllerHelpers {
+  extends DefaultHttpErrorHandler(env, config, sourceMapper, router) with ControllerHelpers with WithAuditer {
 
   override def onServerError(request: RequestHeader, exception: Throwable): Future[Result] = {
     log.error("Global::onError", exception)

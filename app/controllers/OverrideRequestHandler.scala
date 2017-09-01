@@ -12,6 +12,8 @@ import play.api.http._
 import play.api.mvc._
 import com.galacticfog.gestalt.security.api.json.JsonImports._
 import HttpVerbs._
+import controllers.AuditEvents.{FailedBadRequest, FailedNotFound, LookupOrgAttempt}
+import controllers.AuditEvents._
 
 @Singleton
 class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
@@ -19,6 +21,7 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
                                         filters: HttpFilters,
                                         router: Router,
                                         config: SecurityConfig,
+                                        auditer: Auditer,
                                         init: Init )
   extends DefaultHttpRequestHandler(router, errorHandler, configuration, filters) {
 
@@ -63,7 +66,7 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
   override def routeRequest(origRequest: RequestHeader): Option[Handler] = {
 
     // allow override of http method
-    val request = origRequest.getQueryString(overrideParameter).fold(origRequest) {
+    implicit val request = origRequest.getQueryString(overrideParameter).fold(origRequest) {
       overrideMethod =>
         Logger.debug("overriding method " + origRequest.method + " with " + overrideMethod)
         // need to find the appropriate handler, and wrap it so that it sees the modified request
@@ -77,11 +80,12 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
     (request.method, request.path) match {
       case (OPTIONS, _) => super.routeRequest(request)
       case r if passthroughActions contains r => super.routeRequest(request)
-      case (_,_) if !init.isInit.toOption.contains(true) => Some(Action { Results.BadRequest(Json.toJson(BadRequestException(
-        request.path,
-        message = "service it not initialized",
-        developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
-      )))})
+      case (_,_) if !init.isInit.toOption.contains(true) => Some(Action {
+        Results.BadRequest(Json.toJson(BadRequestException(
+          request.path,
+          message = "service it not initialized",
+          developerMessage = "The service has not been initialized. See the documentation on how to perform initialization."
+        )))})
       case (_, path) => {
         val (top,tail) = topLevelEndpoint(path)
         if (registeredEndpoints.contains(top)) super.routeRequest(request)
@@ -91,8 +95,14 @@ class OverrideRequestHandler @Inject()( errorHandler: HttpErrorHandler,
           case None =>
             Logger.debug(s"top level path not mappable as fqon: ${top}")
             GestaltHeaderAuthentication.authenticateHeader(request) match {
-              case Some(_) => None // default 404
-              case None    => Some(Action { GestaltHeaderAuthentication.onUnauthorized(request) })
+              case Some(auth) =>
+                auditer(FailedNotFound(LookupOrgAttempt(top, Some(auth.identity), request)))
+                None // default 404
+              case None    =>
+                Some(Action {
+                  auditer(Failed401(LookupOrgAttempt(top, None, request), request))
+                  GestaltHeaderAuthentication.onUnauthorized(request)
+                })
             }
         }
       }

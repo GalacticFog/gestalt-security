@@ -18,6 +18,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
   object Rights {
     val SUPERUSER = "**"
 
+    val SYNC = "sync"
     val CREATE_ORG = "createOrg"
     val UPDATE_ORG = "updateOrg"
     val DELETE_ORG = "deleteOrg"
