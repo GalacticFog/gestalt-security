@@ -887,12 +887,26 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     // user can update their own account
     withAuthorization( {r => if (r.user.identity.id == accountId) None else Some(UPDATE_ACCOUNT)}, UpdateAccountAttempt(accountId) ) { event => implicit request =>
       withBody[Seq[PatchOp], GestaltAccountUpdate](event) { payload =>
+        def changedFields(diffs: Either[Seq[PatchOp],GestaltAccountUpdate]): Seq[String] = {
+          diffs.fold(
+            _.map(_.path.stripPrefix("/")),
+            update => Seq(
+              update.phoneNumber.map(_ => "phoneNumber"),
+              update.credential.map(_ => "credential"),
+              update.description.map(_ => "description"),
+              update.email.map(_ => "email"),
+              update.firstName.map(_ => "firstName"),
+              update.lastName.map(_ => "lastName"),
+              update.username.map(_ => "username")
+            ).flatten
+          )
+        }
         val attempt = AccountFactory.find(accountId) match {
           case Some(before) =>
             payload.fold(
               patches => AccountFactory.updateAccount(before, patches),
               update => AccountFactory.updateAccountSDK(before, update)
-            ) map { after => (before,after) }
+            ) map { after => (before,after,changedFields(payload)) }
           case None =>
             Failure(ResourceNotFoundException(
               resource = request.path,
@@ -900,9 +914,10 @@ class RESTAPIController @Inject()( config: SecurityConfig,
               developerMessage = "Could not locate the requested account. Make sure to use the account ID and not the username."
             ))
         }
-        auditTry(attempt, event){case (e,(before,after)) => e.copy(
+        auditTry(attempt, event){case (e,(before,after,diffs)) => e.copy(
           successful = true,
-          accounts = Some((before,after))
+          accounts = Some((before,after)),
+          diffs = Some(diffs)
         )}
         renderTry[GestaltAccount](Ok)(attempt.map(_._2))
       }

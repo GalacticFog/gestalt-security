@@ -322,11 +322,13 @@ object AuditEvents {
   }
 
   abstract class GenericUpdateAttempt[T, E <: AuditEvent]( resourceId: UUID,
-                                                                              resourceType: String,
-                                                                              auditUserInfo: Option[AuditedUserInfo],
-                                                                              resources: Option[(T,T)] )
-                                                                            ( implicit writes: Writes[T])
+                                                           resourceType: String,
+                                                           auditUserInfo: Option[AuditedUserInfo],
+                                                           resources: Option[(T,T)],
+                                                           changedFields: Option[Seq[String]] )
+                                                         ( implicit writes: Writes[T])
     extends AuditEvent with AuditEventFactory[E] {
+
     override def props = Json.obj(
       "target" -> Json.obj(
         "id" -> resourceId.toString,
@@ -335,25 +337,27 @@ object AuditEvents {
     ) ++ resources.map {case (before,after) => Json.obj(
       "before" -> Json.toJson(before),
       "after" -> Json.toJson(after)
-    )}.getOrElse[JsObject](Json.obj())
+    )}.getOrElse[JsObject](Json.obj()) ++ changedFields.map(d => Json.obj(
+      "changed-fields" -> Json.toJson(d)
+    )).getOrElse(Json.obj())
   }
 
   case class UpdateAccountStoreAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, asms: Option[(GestaltAccountStoreMapping,GestaltAccountStoreMapping)] = None)
-    extends GenericUpdateAttempt[GestaltAccountStoreMapping,UpdateAccountStoreAttempt](resourceId, "accountStore", u, asms) {
+    extends GenericUpdateAttempt[GestaltAccountStoreMapping,UpdateAccountStoreAttempt](resourceId, "accountStore", u, asms, None) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
   case class UpdateGroupMembershipAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, memberLists: Option[(Seq[ResourceLink],Seq[ResourceLink])] = None)
-    extends GenericUpdateAttempt[Seq[ResourceLink],UpdateGroupMembershipAttempt](resourceId, "group", u, memberLists) {
+    extends GenericUpdateAttempt[Seq[ResourceLink],UpdateGroupMembershipAttempt](resourceId, "group", u, memberLists, None) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
-  case class UpdateAccountAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, accounts: Option[(GestaltAccount,GestaltAccount)] = None)
-    extends GenericUpdateAttempt[GestaltAccount,UpdateAccountAttempt](resourceId, "account", u, accounts) {
+  case class UpdateAccountAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, accounts: Option[(GestaltAccount,GestaltAccount)] = None, diffs: Option[Seq[String]] = None)
+    extends GenericUpdateAttempt[GestaltAccount,UpdateAccountAttempt](resourceId, "account", u, accounts, diffs) {
     override def userInfo: Option[AuditedUserInfo] = u
     override def failed: AuditEvent = this.copy(successful = false)
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
