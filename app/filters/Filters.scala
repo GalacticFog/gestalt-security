@@ -22,22 +22,23 @@ class LoggingFilter @Inject() (implicit val mat: Materializer, ec: ExecutionCont
 
     val startTime = System.currentTimeMillis
     val requestId = requestHeader.headers.get(X_REQUEST_ID)
-    val linepre = s"req-${requestHeader.id}: ${requestHeader.method} ${requestHeader.uri}" +
+    val linepre = s"req-${requestHeader.id}: method=${requestHeader.method} uri=${requestHeader.uri} remote-address=${requestHeader.remoteAddress}" +
       requestId.map(" (" + X_REQUEST_ID + ": " + _ + ")").getOrElse("")
-    accessLog.info(linepre)
+    accessLog.debug(linepre)
 
     nextFilter(requestHeader).map { result =>
 
       val endTime = System.currentTimeMillis
       val requestTime = endTime - startTime
 
-      accessLog.info(s"${linepre} returned ${result.header.status} in ${requestTime}ms ")
+      accessLog.info(s"${linepre} response-code=${result.header.status} response-time=${requestTime}ms ")
 
       val responseHeaders = Seq(
         X_RESPONSE_TIME -> requestTime.toString
       ) ++ requestId.map(X_REQUEST_ID -> _)
       result.withHeaders(responseHeaders:_*)
     }
+
   }
 }
 

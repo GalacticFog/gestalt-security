@@ -50,7 +50,8 @@ resolvers ++= Seq(
   "gestalt-releases" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-releases-local",
   "snapshots" at "http://scala-tools.org/repo-snapshots",
   "releases"  at "http://scala-tools.org/repo-releases",
-  "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
+  "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases",
+  "splunk-releases" at "http://splunk.artifactoryonline.com/splunk/ext-releases-local"
 )
 
 libraryDependencies ++= Seq(
@@ -58,9 +59,11 @@ libraryDependencies ++= Seq(
   ws,
   filters,
   specs2 % Test,
+  "net.codingwell"  %% "scala-guice" 					 % "4.1.0",
   "org.scalikejdbc" %% "scalikejdbc" % "2.2.9",
   "org.scalikejdbc" %% "scalikejdbc-test" % "2.2.9" % Test,
-  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
+  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
+  "com.splunk.logging" % "splunk-library-javalogging" % "1.5.0"
 )
 
 libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.6.6" % "test")
@@ -83,7 +86,7 @@ scalikejdbcSettings
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.1-SNAPSHOT" withSources(),
   "com.galacticfog" %% "gestalt-ldapdirectory" % "1.1.0-SNAPSHOT",
   "com.galacticfog" % "gestalt-license-keymgr" % "1.2.1-SNAPSHOT"
 )

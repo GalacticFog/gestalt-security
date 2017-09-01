@@ -101,7 +101,7 @@ GET           /apps/:appId                                              controll
 DELETE        /apps/:appId                                              controllers.RESTAPIController.deleteAppById(appId: java.util.UUID)
 #
 GET           /apps/:appId/accountStores                                controllers.RESTAPIController.listAccountStores(appId: java.util.UUID)
-POST          /apps/:appId/accountStores                                controllers.RESTAPIController.createAppAccountStoreMapping(appId: java.util.UUID)
+POST          /apps/:appId/accountStores                                controllers.RESTAPIController.createAppAccountStore(appId: java.util.UUID)
 #
 GET           /apps/:appId/accounts                                     controllers.RESTAPIController.listAppAccounts(appId: java.util.UUID)
 POST          /apps/:appId/accounts                                     controllers.RESTAPIController.createAppAccount(appId: java.util.UUID)
