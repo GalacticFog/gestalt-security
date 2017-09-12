@@ -25,11 +25,11 @@ class LDAPSpecs extends SpecWithSDK {
   val ldapUrl = scala.util.Properties.envOrElse("TEST_LDAP_URL", "ldap://localhost:389")
   val ldapUser = scala.util.Properties.envOrElse("TEST_LDAP_USER", "admin")
   val ldapPass = scala.util.Properties.envOrElse("TEST_LDAP_PASS", "password")
-  try {
-    GestaltLicense.setInstance(new GestaltLicenseMock())
-  } catch {
-    case _: Throwable =>
-}
+  // try {
+  //   GestaltLicense.setInstance(new GestaltLicenseMock())
+  // } catch {
+  //   case _: Throwable =>
+  // }
 
   "LDAP Directory" should {
 
