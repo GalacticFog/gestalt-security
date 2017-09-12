@@ -764,10 +764,10 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   def createOrgDirectory(orgId: UUID) = AuthenticatedAction(Some(orgId), CreateDirectoryAttempt(orgId, "org"))(parse.json)(
     withAuthorization(CREATE_DIRECTORY,CreateDirectoryAttempt(orgId, "org")) { event => implicit request =>
       withBody[GestaltDirectoryCreate](event) { create =>
-        if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
-          throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
-            developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
-        }
+        // if (create.directoryType == DIRECTORY_TYPE_LDAP && !GestaltLicense.instance.isFeatureActive(GestaltFeature.LdapDirectory)) {
+        //   throw UnknownAPIException(code = 406, resource = "", message = "Attempt to use feature AD/LDAPDirectory denied due to license.",
+        //     developerMessage = "Attempt to use feature AD/LDAPDirectory denied due to license.")
+        // }
         val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
         auditTry(newDir, event){case (e,o) => e.copy(successful = true, newDirectory = Some(o))}
         renderTry[GestaltDirectory](Created)(newDir)

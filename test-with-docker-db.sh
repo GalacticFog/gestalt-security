@@ -59,7 +59,7 @@ export TEST_LDAP_URL=ldap://$DOCKERIP:$LDAPPORT
 echo ""
 echo "Running tests!"
 if [ $# -eq 0 ]; then 
-  sbt test || true
+  AUDIT_LOG=testlogs/audit.log ACCESS_LOG=testlogs/access.log sbt test || true
 else 
   sbt "$*"  || true
 fi
