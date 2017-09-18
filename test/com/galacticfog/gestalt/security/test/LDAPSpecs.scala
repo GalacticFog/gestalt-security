@@ -23,13 +23,8 @@ class LDAPSpecs extends SpecWithSDK {
   lazy val newOrgApp = await(newOrg.getServiceApp())
 
   val ldapUrl = scala.util.Properties.envOrElse("TEST_LDAP_URL", "ldap://localhost:389")
-  val ldapUser = scala.util.Properties.envOrElse("TEST_LDAP_USER", "admin")
+  val ldapUser = scala.util.Properties.envOrElse("TEST_LDAP_USER", "cn=admin,dc=example,dc=com")
   val ldapPass = scala.util.Properties.envOrElse("TEST_LDAP_PASS", "password")
-  // try {
-  //   GestaltLicense.setInstance(new GestaltLicenseMock())
-  // } catch {
-  //   case _: Throwable =>
-  // }
 
   "LDAP Directory" should {
 
@@ -66,16 +61,16 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "be able to find groups (raw ldap)" in {
-      ldap.ldapFindGroupnamesByName("Scientists") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists")))
-      ldap.ldapFindGroupnamesByName("*ists") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists", "Scientists")))
-      ldap.ldapFindGroupnamesByName("*a*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians")))
-      ldap.ldapFindGroupnamesByName("*") must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians", "Scientists", "Chemists")))
+      ldap.ldapFindGroupnamesByName("Scientists").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists")))
+      ldap.ldapFindGroupnamesByName("*ists").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists", "Scientists")))
+      ldap.ldapFindGroupnamesByName("*a*").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians")))
+      ldap.ldapFindGroupnamesByName("*").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Italians", "Mathematicians", "Scientists", "Chemists")))
     }
 
     "be able to find groups by account (raw ldap)" in {
-      ldap.ldapFindGroupnamesByUser("read-only-admin") must beASuccessfulTry(beEmpty[List[String]])
-      ldap.ldapFindGroupnamesByUser("nobel") must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
-      ldap.ldapFindGroupnamesByUser("tesla") must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
+      ldap.ldapFindGroupnamesByUser("read-only-admin").map(_.map(_._1)) must beASuccessfulTry(beEmpty[Seq[String]])
+      ldap.ldapFindGroupnamesByUser("nobel").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
+      ldap.ldapFindGroupnamesByUser("tesla").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
     }
 
     "be able to find accounts by group (raw ldap)" in {
@@ -237,6 +232,7 @@ class LDAPSpecs extends SpecWithSDK {
 
     "shadow account memberships on account search" in {
       AccountFactory.findInDirectoryByName(ldapDir.id, "tesla") foreach {_.destroy()}
+      GroupFactory.listByDirectoryId(ldapDir.id) foreach {_.destroy()}
       AccountFactory.findInDirectoryByName(ldapDir.id, "tesla") must beNone
       await(newOrg.listAccounts()) map(_.username) must not contain("tesla")
       val q = await(newOrg.listAccounts(

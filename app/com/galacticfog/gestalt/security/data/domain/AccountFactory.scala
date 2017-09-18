@@ -302,7 +302,10 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
       }
     }
     def safeAuth(dir: DirectoryPlugin, acc: UserAccountRepository, plaintext: String): Boolean = {
-      if (acc.disabled) Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${acc.id}")
+      if (acc.disabled) {
+        Logger.warn(s"LDAPDirectory.authenticateAccount called against disabled account ${acc.id}")
+        return false
+      }
       Try{dir.authenticateAccount(APIConversions.accountModelToApi(acc), plaintext)} match {
         case Success(b) => b
         case Failure(e) =>
