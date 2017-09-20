@@ -1,5 +1,6 @@
 /*.rc
 logs
+testlogs
 project/project
 project/target
 project/scalikejdbc.properties
