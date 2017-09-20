@@ -1,10 +1,11 @@
 name := """gestalt-security"""
 
-version := "2.4.1"
+version := "2.4.2-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala,SbtNativePackager).
   enablePlugins(BuildInfoPlugin).
+  enablePlugins(AshScriptPlugin).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](
       name, version, scalaVersion, sbtVersion,
@@ -33,14 +34,15 @@ scalacOptions ++= Seq(
   "-language:postfixOps", "-language:implicitConversions"
 )
 
+
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
-dockerBaseImage := "java:8-jre-alpine"
+dockerBaseImage := "openjdk:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
   case cmd@Cmd("FROM",_) => List(
     cmd,
-    Cmd("RUN", "apk add --update bash && rm -rf /var/cache/apk/*")     
+    Cmd("RUN", "apk upgrade && rm -rf /var/cache/apk/*")
   )
   case other => List(other)
 }
@@ -87,7 +89,7 @@ scalikejdbcSettings
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.1" withSources(),
-  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.2.0",
+  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.2.1-SNAPSHOT",
   "com.galacticfog" % "gestalt-license-keymgr" % "1.2.1-SNAPSHOT"
 )
 
