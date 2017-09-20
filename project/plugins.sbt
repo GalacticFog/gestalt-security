@@ -5,7 +5,7 @@ addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.5.10")
 
 // web plugins
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.1.1")
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.2.1")
 
 // Driver needed here for scalike mapper.
 
