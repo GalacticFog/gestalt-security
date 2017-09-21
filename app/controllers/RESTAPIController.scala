@@ -621,32 +621,41 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    if ( DirectoryFactory.find(dirId).isDefined ) Ok( Json.toJson(
-      AccountFactory.listByDirectoryId(dirId) map {
-        a => a: GestaltAccount
-      }
-    ) )
-    else NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "could not locate requested directory",
-      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-    )))
+    val nameQuery = request.getQueryString("username")
+    val emailQuery = request.getQueryString("email")
+    val phoneQuery = request.getQueryString("phoneNumber")
+    DirectoryFactory.find(dirId) match {
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )))
+      case Some(dir) =>
+        val res = if (nameQuery.isDefined || emailQuery.isDefined || phoneQuery.isDefined)
+          dir.lookupAccounts(group = None, username = nameQuery, phone = phoneQuery, email = emailQuery)
+        else AccountFactory.listByDirectoryId(dir.id) map accountModelToApi
+        Ok(Json.toJson(res))
+    }
   }
 
   def listDirGroups(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    if ( DirectoryFactory.find(dirId).isDefined ) Ok(
-      Json.toJson(
-        GroupFactory.listByDirectoryId(dirId) map {
+    val maybeNameQuery = request.getQueryString("name")
+    (DirectoryFactory.find(dirId), maybeNameQuery) match {
+      case (None, _) => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )))
+      case (Some(dir), None) => Ok(Json.toJson(
+        GroupFactory.listByDirectoryId(dir.id) map {
           g => g: GestaltGroup
         }
-      )
-    )
-    else NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "could not locate requested directory",
-      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-    )))
+      ))
+      case (Some(dir), Some(nameQuery)) => Ok(Json.toJson(
+        dir.lookupGroups(nameQuery)
+      ))
+    }
   }
 
   def listOrgAccounts(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
@@ -671,13 +680,17 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     val nameQuery = request.getQueryString("name")
-    val results = if (nameQuery.isDefined) {
-      SDKGroupFactory.lookupAppGroups(
-        appId = request.user.serviceAppId,
-        nameQuery = nameQuery.get
-      )
-    } else {
-      SDKGroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
+    val results = nameQuery match {
+      case Some(nq) =>
+        SDKGroupFactory.lookupAppGroups(
+          appId = request.user.serviceAppId,
+          nameQuery = nq
+        )
+      case None =>
+        SDKGroupFactory.queryShadowedAppGroups(
+          appId = request.user.serviceAppId,
+          nameQuery = None
+        )
     }
     Ok(Json.toJson[Seq[GestaltGroup]](results))
   }
@@ -1047,7 +1060,19 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     withAuthorization(DELETE_DIRECTORY,DeleteDirectoryAttempt(dirId)) { event => implicit request =>
       val attempt = DirectoryFactory.find(dirId) match {
         case Some(dir) =>
-          Try { DirectoryFactory.removeDirectory(dirId) } map { _ => dir }
+          val groups = GroupFactory.listByDirectoryId(dir.id)
+          val t = Try { DirectoryFactory.removeDirectory(dirId) } map { _ => dir }
+          t foreach { deletedDir =>
+            accountStoreMappingService.findAllByStoreId(deletedDir.id) map { asm =>
+              log.info(s"Deleting downstream DIRECTORY accountStoreMapping ${asm.id}")
+              asm.destroy()
+            }
+            groups.flatMap(g => accountStoreMappingService.findAllByStoreId(g.id.asInstanceOf[UUID])) map {asm =>
+              log.info(s"Deleting downstream GROUP accountStoreMapping ${asm.id}")
+              asm.destroy()
+            }
+          }
+          t
         case None =>
           Failure(ResourceNotFoundException(
             resource = request.path,
@@ -1118,7 +1143,11 @@ class RESTAPIController @Inject()( config: SecurityConfig,
               developerMessage = "Could not locate the directory associated with the specified group. Please contact support."
             ))
             case Some(dir) =>
-              val deleted = dir.deleteGroup(group.id.asInstanceOf[UUID])
+              val _ = dir.deleteGroup(group.id.asInstanceOf[UUID])
+              accountStoreMappingService.findAllByStoreId(group.id.asInstanceOf[UUID]) map { asm =>
+                log.info(s"Deleting downstream GROUP accountStoreMapping ${asm.id}")
+                asm.destroy()
+              }
               Success(group)
           }
         case None => Failure(ResourceNotFoundException(

@@ -63,12 +63,12 @@ class SyncSpec extends SpecWithSDK {
 
     "contain admins account and all local groups" in {
       sync.groups.map{_.id} must containAllOf(Seq(newOrgGroup.id, subOrgGroup1.id, subOrgGroup2.id))
-      sync.groups.filter(g => g.directory.id == rootDir.id && g.name.endsWith("admins")) must haveSize(2)
-      sync.groups.filter(g => g.name.endsWith("users")) must haveSize(2)
+      sync.groups.filter(g => g.directory.id == rootDir.id && g.name.endsWith("admins")).size must beGreaterThanOrEqualTo(2)
+      sync.groups.filter(g => g.name.endsWith("users")).size must beGreaterThanOrEqualTo(2)
     }
 
     "contain membership from admin groups to creator" in {
-      sync.groups.filter(_.name.endsWith("admins")).map(_.accounts) must containTheSameElementsAs(
+      sync.groups.filter(_.name.endsWith("admins")).map(_.accounts) must containAllOf(
         Seq(Seq(rootAccount.getLink()), Seq(rootAccount.getLink()))
       )
     }

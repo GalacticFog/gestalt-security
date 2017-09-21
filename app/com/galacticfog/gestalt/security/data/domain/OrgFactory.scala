@@ -261,7 +261,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           cloneParentMappingsAndRights(parentOrgId, newOrg, newApp)
         } else if (create.createDefaultUserGroup) {
           for {
-            defaultUserGroup <- createDefaultUserGroup(newOrg, newApp)
+            _ <- createDefaultUserGroup(newOrg, newApp)
             adminGroup <- createAdminGroup(newOrg, newApp, creator)
           } yield Seq(adminGroup)
         } else {

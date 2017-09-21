@@ -97,19 +97,18 @@ class OrgSpecs extends SpecWithSDK {
 
     lazy val newOrgMappings = await(newOrgApp.listAccountStores)
     lazy val newOrgMapping  = newOrgMappings.head
-    lazy val newOrgAdminGroup = await(GestaltGroup.getById(newOrgMapping.storeId))
+    lazy val Some(newOrgAdminGroup) = await(GestaltGroup.getById(newOrgMapping.storeId))
 
     "contain an account store mapping to a group in the parent directory" in {
       newOrgMappings must haveSize(1)
       newOrgMapping.storeType must_== com.galacticfog.gestalt.security.api.GROUP
-      newOrgAdminGroup must beSome
 
       await(GestaltAccountStoreMapping.getById(newOrgMapping.id)) must beSome(newOrgMapping)
     }
 
     "result in a new group membership for the creating account" in {
       val rootGroups = await(rootAccount.listGroupMemberships())
-      rootGroups must contain(newOrgAdminGroup.get)
+      rootGroups must contain(newOrgAdminGroup)
       rootGroups must haveSize(2)
     }
 
@@ -118,7 +117,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "list the new group as an org group" in {
-      await(newOrg.listGroups()) must contain(exactly(newOrgAdminGroup.get))
+      await(newOrg.listGroups()) must contain(newOrgAdminGroup)
     }
 
     "list equivalent org and service app groups" in {
@@ -137,7 +136,7 @@ class OrgSpecs extends SpecWithSDK {
 
     "verify right grants to the root admin via the new org admin group" in {
       val accountRights = await(newOrg.listAccountGrants(rootAccount.id))
-      val groupRights   = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
+      val groupRights   = await(newOrg.listGroupGrants(newOrgAdminGroup.id))
       accountRights must containTheSameElementsAs(groupRights)
     }
 
@@ -148,8 +147,8 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "list equivalent group rights from service app and org" in {
-      val fromOrg = await(newOrg.listGroupGrants(newOrgAdminGroup.get.id))
-      val fromApp = await(newOrgApp.listGroupGrants(newOrgAdminGroup.get.id))
+      val fromOrg = await(newOrg.listGroupGrants(newOrgAdminGroup.id))
+      val fromApp = await(newOrgApp.listGroupGrants(newOrgAdminGroup.id))
       fromOrg must containTheSameElementsAs(fromApp)
     }
 
@@ -158,19 +157,19 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "get the new group by id via the org" in {
-      await(newOrg.getGroupById(newOrgAdminGroup.get.id)) must beSome(newOrgAdminGroup.get)
+      await(newOrg.getGroupById(newOrgAdminGroup.id)) must beSome(newOrgAdminGroup)
     }
 
     "get the new group by the name in the directory" in {
-      await(rootDir.getGroupByName(newOrgAdminGroup.get.name)) must beSome(newOrgAdminGroup.get)
+      await(rootDir.getGroupByName(newOrgAdminGroup.name)) must beSome(newOrgAdminGroup)
     }
 
     "be unable to get the new group by name via the org because there is no default group store" in {
-      await(newOrg.getGroupByName(newOrgAdminGroup.get.name)) must throwA[BadRequestException]("does not have a default group store")
+      await(newOrg.getGroupByName(newOrgAdminGroup.name)) must throwA[BadRequestException]("does not have a default group store")
     }
 
     "include the root admin in the new org admin group" in {
-      await(newOrgAdminGroup.get.listAccounts()) must contain(rootAccount)
+      await(newOrgAdminGroup.listAccounts()) must contain(rootAccount)
     }
 
     "allow creator to delete org" in {
@@ -223,7 +222,7 @@ class OrgSpecs extends SpecWithSDK {
     }
 
     "have a group in the root directory for the root user, visible by ID but not by name" in {
-      val rootGroupSeq = await(newOrg.listGroups()).filter(_.directory.id == rootDir.id)
+      val rootGroupSeq = await(newOrg.listGroups("name" -> s"${newOrg.id}-admins")).filter(_.directory.id == rootDir.id)
       rootGroupSeq must haveSize(1)
       val rootGroup = rootGroupSeq.head
       await(newOrg.getGroupById(rootGroup.id)) must beSome(rootGroup)

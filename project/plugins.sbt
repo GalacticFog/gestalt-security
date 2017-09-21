@@ -1,11 +1,11 @@
 resolvers += "Typesafe repository" at "https://repo.typesafe.com/typesafe/releases/"
 
 // The Play plugin
-addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.5.10")
+addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.5.16")
 
 // web plugins
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.1.1")
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.2.1")
 
 // Driver needed here for scalike mapper.
 

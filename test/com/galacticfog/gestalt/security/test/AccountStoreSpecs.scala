@@ -268,6 +268,72 @@ class AccountStoreSpecs extends SpecWithSDK {
       )
     }
 
+    "delete account store GROUP mapping when group is deleted" in {
+      val tmpGroup = await(testDirInRootOrg.createGroup(GestaltGroupCreate(
+        name = "test-group3-in-test-dir"
+      )))
+      val tmpMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "group-store-mapping",
+        description = None,
+        storeType = GROUP,
+        accountStoreId = tmpGroup.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(GestaltGroup.deleteGroup(tmpGroup.id)) must beTrue
+      await(testSubOrgApp.listAccountStores) must not contain(
+        (asm: GestaltAccountStoreMapping) =>
+          asm.storeId == tmpGroup.id || asm.id == tmpMapping.id
+        )
+    }
+
+    "delete account store GROUP mapping when directory is deleted" in {
+      val tmpDir = await(rootOrg.createDirectory(GestaltDirectoryCreate(
+        name = "tmp-dir",
+        directoryType = DIRECTORY_TYPE_INTERNAL,
+        description = None,
+        config = None
+      )))
+      val tmpGroup = await(tmpDir.createGroup(GestaltGroupCreate(
+        name = "tmp-group"
+      )))
+      val tmpMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "grp-store-mapping",
+        description = None,
+        storeType = GROUP,
+        accountStoreId = tmpGroup.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(GestaltDirectory.deleteDirectory(tmpDir.id)) must beTrue
+      await(testSubOrgApp.listAccountStores) must not contain(
+        (asm: GestaltAccountStoreMapping) =>
+          asm.storeId == tmpGroup.id || asm.id == tmpMapping.id
+        )
+    }
+
+    "delete account store DIRECTORY mapping when directory is deleted" in {
+      val tmpDir = await(rootOrg.createDirectory(GestaltDirectoryCreate(
+        name = "tmp-dir",
+        directoryType = DIRECTORY_TYPE_INTERNAL,
+        description = None,
+        config = None
+      )))
+      val tmpMapping = await(testSubOrgApp.mapAccountStore(GestaltAccountStoreMappingCreate(
+        name = "dir-store-mapping",
+        description = None,
+        storeType = DIRECTORY,
+        accountStoreId = tmpDir.id,
+        isDefaultAccountStore = false,
+        isDefaultGroupStore = false
+      )))
+      await(GestaltDirectory.deleteDirectory(tmpDir.id)) must beTrue
+      await(testSubOrgApp.listAccountStores) must not contain(
+        (asm: GestaltAccountStoreMapping) =>
+          asm.storeId == tmpDir.id || asm.id == tmpMapping.id
+        )
+    }
+
     "cleanup" in {
       await(GestaltDirectory.deleteDirectory(testDirInRootOrg.id)) must beTrue
       await(GestaltOrg.deleteOrg(testSubOrg.id)) must beTrue

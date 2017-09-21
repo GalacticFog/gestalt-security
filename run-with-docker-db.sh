@@ -88,6 +88,9 @@ or run
   ./examples/loadTestData.sh
 
 "
-sbt run -Dhttp.port=9455 -jvm-debug 9999
+#sbt -jvm-debug 10000 "run -Dhttp.port=9455"
+
+sbt clean update stage
+target/universal/stage/bin/gestalt-security
 
 exit 0
