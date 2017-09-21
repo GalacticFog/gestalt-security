@@ -3,9 +3,7 @@ name := """gestalt-security"""
 version := "2.4.2"
 
 lazy val root = (project in file(".")).
-  enablePlugins(PlayScala,SbtNativePackager).
-  enablePlugins(BuildInfoPlugin).
-  enablePlugins(AshScriptPlugin).
+  enablePlugins(AshScriptPlugin,SbtNativePackager,PlayScala,BuildInfoPlugin).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](
       name, version, scalaVersion, sbtVersion,
@@ -34,6 +32,10 @@ scalacOptions ++= Seq(
   "-language:postfixOps", "-language:implicitConversions"
 )
 
+// fixes the is_cygwin not-found check in the ash script
+bashScriptExtraDefines := List(
+  """addJava "-Duser.dir=$(realpath "$(cd "${app_home}/.."; pwd -P)")""""
+)
 
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
@@ -96,5 +98,3 @@ libraryDependencies ++= Seq(
 libraryDependencies += "org.flywaydb" % "flyway-core" % "3.2.1"
 
 libraryDependencies += "org.apache.commons" % "commons-dbcp2" % "2.1"
-
-// libraryDependencies += "org.slf4j" % "slf4j-simple"   % "1.6.1" % "test"
