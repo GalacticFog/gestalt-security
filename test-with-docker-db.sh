@@ -1,5 +1,7 @@
 #!/bin/bash
 
+DBIMAGE=galacticfog/postgres_repl:release-1.4.0
+
 DBUSER=gestaltdev
 DBPASS=password
 DBNAME=gestalt-security
@@ -11,8 +13,8 @@ set -o pipefail
 # it's easier to remove it and then start a new one than to try to restart it if it exists with fallback on creation
 
 echo Starting database in docker
-docker pull postgres:9.4
-db=$(docker run -P -d -e POSTGRES_DB=$DBNAME -e POSTGRES_USER=$DBUSER -e POSTGRES_PASSWORD=$DBPASS postgres:9.4)
+docker pull $DBIMAGE
+db=$(docker run -P -d -e POSTGRES_USER=$DBUSER -e POSTGRES_PASSWORD=$DBPASS $DBIMAGE)
 
 echo Starting ldap in docker
 docker pull galacticfog/test-ldap:latest
