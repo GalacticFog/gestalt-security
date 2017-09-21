@@ -26,12 +26,14 @@ class GroupSpecs extends SpecWithSDK {
       await(rootDir.listGroups()) must contain(unmappedGrpFromRootDir)
     }
 
-    "not list an unmapped group in the org" in {
-      await(newOrg.listGroups()) must not contain unmappedGrpFromRootDir
+    "list an unmapped group in the org" in {
+      // the creator must belong to the new org, so an admin group is created in the parent directory and mapped into the org.
+      // this group is a sibling with unmappedGrpFromRootDir, hence the following
+      await(newOrg.listGroups()) must contain(unmappedGrpFromRootDir)
     }
 
     "not list an unmapped group in the service app" in {
-      await(newOrgApp.listGroups()) must not contain unmappedGrpFromRootDir
+      await(newOrgApp.listGroups()) must contain(unmappedGrpFromRootDir)
     }
 
     "fail to get an unmapped group by id in the org" in {

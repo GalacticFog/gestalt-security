@@ -9,11 +9,9 @@ import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
 import com.galacticfog.gestalt.security.adapter.LDAPDirectory
-import controllers.GestaltHeaderAuthentication
 import org.mindrot.jbcrypt.BCrypt
 import org.postgresql.util.PSQLException
 import play.api.Logger
-import play.api.mvc.RequestHeader
 import scalikejdbc._
 
 import scala.util.{Failure, Success, Try}

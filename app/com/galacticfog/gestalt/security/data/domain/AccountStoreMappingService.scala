@@ -16,6 +16,8 @@ trait AccountStoreMappingService {
   def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository]
 
   def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository]
+
+  def findAllByStoreId(storeId: UUID)(implicit session: DBSession = autoSession): Seq[AccountStoreMappingRepository]
 }
 
 object AccountStoreMappingService extends SQLSyntaxSupport[AccountStoreMappingRepository] {
@@ -26,7 +28,9 @@ object AccountStoreMappingService extends SQLSyntaxSupport[AccountStoreMappingRe
 class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport[AccountStoreMappingRepository] with AccountStoreMappingService {
   override val autoSession = AutoSession
 
-  def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository] = AccountStoreMappingRepository.find(mapId)
+  override def find(mapId: UUID)(implicit session: DBSession = autoSession): Option[AccountStoreMappingRepository] = AccountStoreMappingRepository.find(mapId)
+
+  override def findAllByStoreId(storeId: UUID)(implicit session: DBSession): Seq[AccountStoreMappingRepository] = AccountStoreMappingRepository.findAllBy(sqls"account_store_id = ${storeId}")
 
   override def updateMapping(map: AccountStoreMappingRepository, patch: Seq[PatchOp])(implicit session: DBSession = autoSession): Try[AccountStoreMappingRepository] = {
     val newMap = Try{patch.foldLeft(map)((m, p) => {
@@ -52,4 +56,5 @@ class DefaultAccountStoreMappingServiceImpl @Inject()() extends SQLSyntaxSupport
     })}
     newMap map (_.save())
   }
+
 }

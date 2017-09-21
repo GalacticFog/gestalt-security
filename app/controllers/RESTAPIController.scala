@@ -675,13 +675,17 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listOrgGroups(orgId: UUID) = AuthenticatedAction(Some(orgId)) { implicit request =>
     val nameQuery = request.getQueryString("name")
-    val results = if (nameQuery.isDefined) {
-      SDKGroupFactory.lookupAppGroups(
-        appId = request.user.serviceAppId,
-        nameQuery = nameQuery.get
-      )
-    } else {
-      SDKGroupFactory.queryShadowedAppGroups( request.user.serviceAppId, None )
+    val results = nameQuery match {
+      case Some(nq) =>
+        SDKGroupFactory.lookupAppGroups(
+          appId = request.user.serviceAppId,
+          nameQuery = nq
+        )
+      case None =>
+        SDKGroupFactory.queryShadowedAppGroups(
+          appId = request.user.serviceAppId,
+          nameQuery = None
+        )
     }
     Ok(Json.toJson[Seq[GestaltGroup]](results))
   }

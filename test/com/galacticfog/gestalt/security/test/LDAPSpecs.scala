@@ -68,9 +68,9 @@ class LDAPSpecs extends SpecWithSDK {
     }
 
     "be able to find groups by account (raw ldap)" in {
-      ldap.ldapFindGroupnamesByUser("read-only-admin").map(_.map(_._1)) must beASuccessfulTry(beEmpty[Seq[String]])
-      ldap.ldapFindGroupnamesByUser("nobel").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
-      ldap.ldapFindGroupnamesByUser("tesla").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
+      ldap.ldapFindGroupnamesByUser("uid=read-only-admin,dc=example,dc=com").map(_.map(_._1)) must beASuccessfulTry(beEmpty[Seq[String]])
+      ldap.ldapFindGroupnamesByUser("uid=nobel,dc=example,dc=com").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Chemists")))
+      ldap.ldapFindGroupnamesByUser("uid=tesla,dc=example,dc=com").map(_.map(_._1)) must beASuccessfulTry(containTheSameElementsAs(Seq("Scientists","Italians")))
     }
 
     "be able to find accounts by group (raw ldap)" in {
@@ -263,7 +263,7 @@ class LDAPSpecs extends SpecWithSDK {
         g => GroupFactory.addAccountToGroup(groupId = g.id, accountId = newton.id.asInstanceOf[UUID])
       }
 
-      val tryMemberships = ldap.updateAccountMemberships(account = newton)
+      val tryMemberships = ldap.updateAccountMemberships(account = newton, dn = "uid=newton,dc=example,dc=com")
       tryMemberships must beSuccessfulTry
       val membership = tryMemberships.get
       membership map {_.name} must contain(allOf(newtonIsIn:_*))

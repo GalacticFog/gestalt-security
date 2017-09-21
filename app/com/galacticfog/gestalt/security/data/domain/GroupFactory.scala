@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.patch.PatchOp
-import com.galacticfog.gestalt.security.api.GestaltGroup
+import com.galacticfog.gestalt.security.api.{GROUP, GestaltGroup}
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
 import com.galacticfog.gestalt.security.data.model._
 import org.postgresql.util.PSQLException
@@ -64,8 +64,8 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
     * Deep-query of all application groups, with wildcard matching.
     *
     * An application group is a group that is:
-    *   - directly assigned to the app, or
-    *   - in an org assigned to the app
+    *   - in a directory assigned by a sibling group (including self)
+    *   - in an directory assigned to the app (parent)
     *
     * @param appId the specified app
     * @param nameQuery query parameter for the search, which may include '*' wildcards
@@ -75,18 +75,16 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   def lookupAppGroups(appId: UUID, nameQuery: String)
                      (implicit session: DBSession = autoSession): Seq[GestaltGroup] = {
     val (groupMappings, dirMappings) = AppFactory.listAccountStoreMappings(appId).partition(_.storeType == "GROUP")
-    // indirect groups, via their directories
+    // direct groups from parent, via their directories
     val dirGroups = dirMappings
       .flatMap( asm => DirectoryFactory.find(asm.accountStoreId.asInstanceOf[UUID]) )
       .flatMap( _.lookupGroups(nameQuery) )
-    // direct groups, but through the directory first (gives unshadowing a chance to happen)
-    val appGroupsFromMappings = groupMappings
+    // indirect groups from siblings
+    val indGroups = groupMappings
       .flatMap( asm => GroupFactory.find(asm.accountStoreId.asInstanceOf[UUID]))
-    val appGroups = appGroupsFromMappings
       .flatMap( grp => DirectoryFactory.find(grp.dirId.asInstanceOf[UUID]) )
       .flatMap( _.lookupGroups(nameQuery) )
-      .intersect( appGroupsFromMappings )
-    (appGroups ++ dirGroups).distinct
+    (indGroups ++ dirGroups).distinct
   }
 
   def listByDirectoryId(dirId: UUID)(implicit session: DBSession = autoSession): Seq[UserGroupRepository] = {
@@ -178,28 +176,32 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
   }
 
   /*
-    This is all groups where a user in the group would be auth'd in the app
-    Therefore, it's
-    - all groups directly assigned to the app
-    - all groups in a directory that is assigned to the app
-    The latter is because any user in the directory is assigned to the app, so that any user in any group in the
-    directory (therefore, a user in the directory) is in the app.
+    This is:
+      all Groups grp such that
+        there exists Account acc where acc is a member of grp and acc can authenticate in the app
+    However, we'd like to avoid looking at the group membership table, so instead, we'll use the superset:
+      all Groups grp such that
+        grp belongs to a Directory dir that is mapped to the app
+          or
+        grp belongs to a Directory that contains a Group grpm that is mapped to the app
+      So, we need all directly and indirectly mapped Directories
    */
   def queryShadowedAppGroups(appId: UUID, nameQuery: Option[String])(implicit session: DBSession = autoSession): Seq[UserGroupRepository]  = {
-    val (grp, asm) = (
+    val (grp, grp2, asm) = (
       UserGroupRepository.syntax("grp"),
+      UserGroupRepository.syntax("grp2"),
       AccountStoreMappingRepository.syntax("asm")
-      )
-    withSQL {
-      select(sqls.distinct(grp.result.*))
-        .from(UserGroupRepository as grp)
-        .innerJoin(AccountStoreMappingRepository as asm)
-        .on(sqls"""(${asm.appId} = ${appId} and ${asm.storeType} = 'GROUP' and ${grp.id} = ${asm.accountStoreId})
-                OR (${asm.appId} = ${appId} and ${asm.storeType} = 'DIRECTORY' and ${grp.dirId} = ${asm.accountStoreId})""")
-        .where(sqls.toAndConditionOpt(
-          nameQuery.map(q => sqls.like(grp.name, q.replace("*","%")))
-        ))
-    }.map(UserGroupRepository(grp)).list.apply()
+    )
+    val nq = nameQuery.map(_.replace("*","%")).getOrElse("%")
+    sql"""
+         SELECT ${grp.result.*}
+         FROM ${UserGroupRepository.as(grp)}
+         WHERE grp.name LIKE ${nq} AND EXISTS(
+           (SELECT 1 FROM ${AccountStoreMappingRepository.as(asm)} INNER JOIN ${UserGroupRepository.as(grp2)} ON ${asm.appId} = ${appId} AND ${asm.storeType} = 'GROUP' AND ${asm.accountStoreId} = ${grp2.id} AND ${grp2.dirId} = ${grp.dirId})
+             UNION ALL
+           (SELECT 1 FROM ${AccountStoreMappingRepository.as(asm)} WHERE ${asm.appId} = ${appId} AND ${asm.storeType} = 'DIRECTORY' AND ${asm.accountStoreId} = ${grp.dirId})
+         )
+      """.map(UserGroupRepository(grp)).list.apply()
   }
 
   def findInDirectoryByName(dirId: UUID, groupName: String)(implicit session: DBSession = autoSession): Option[UserGroupRepository] = {

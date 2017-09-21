@@ -1,0 +1,7 @@
+jBCrypt notes:
+
+Version 0.4
+Release date: 30 Jan 2015
+Downloaded from http://www.mindrot.org/projects/jBCrypt/#download by @cgbaker
+
+No changes except this file
