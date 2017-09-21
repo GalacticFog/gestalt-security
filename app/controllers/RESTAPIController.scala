@@ -621,16 +621,21 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
     requireAuthorization(READ_DIRECTORY)
-    if ( DirectoryFactory.find(dirId).isDefined ) Ok( Json.toJson(
-      AccountFactory.listByDirectoryId(dirId) map {
-        a => a: GestaltAccount
-      }
-    ) )
-    else NotFound(Json.toJson(ResourceNotFoundException(
-      resource = request.path,
-      message = "could not locate requested directory",
-      developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
-    )))
+    val nameQuery = request.getQueryString("username")
+    val emailQuery = request.getQueryString("email")
+    val phoneQuery = request.getQueryString("phoneNumber")
+    DirectoryFactory.find(dirId) match {
+      case None => NotFound(Json.toJson(ResourceNotFoundException(
+        resource = request.path,
+        message = "could not locate requested directory",
+        developerMessage = "Could not locate the requested directory. Make sure to use the directory ID."
+      )))
+      case Some(dir) =>
+        val res = if (nameQuery.isDefined || emailQuery.isDefined || phoneQuery.isDefined)
+          dir.lookupAccounts(group = None, username = nameQuery, phone = phoneQuery, email = emailQuery)
+        else AccountFactory.listByDirectoryId(dir.id) map accountModelToApi
+        Ok(Json.toJson(res))
+    }
   }
 
   def listDirGroups(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
