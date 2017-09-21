@@ -21,8 +21,8 @@ variables:
   ROOT_USERNAME: root
   ROOT_PASSWORD: letmein
   TEST_LDAP_URL: "ldap://galacticfog__test-ldap:389"
-  TEST_LDAP_USER: admin
-  TEST_LDAP_PASS: password
+  TEST_LDAP_USER: "cn=admin,dc=example,dc=com"
+  TEST_LDAP_PASS: "password"
   DOCKER_IMG: "galacticfog/gestalt-security"
 
 test:

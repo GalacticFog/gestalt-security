@@ -56,7 +56,9 @@ export DATABASE_PORT=$DBPORT
 export DATABASE_USERNAME=$DBUSER
 export DATABASE_PASSWORD=$DBPASS
 
-export TEST_LDAP_URL=ldap://$DOCKERIP:$LDAPPORT
+export TEST_LDAP_USER="cn=admin,dc=example,dc=com"
+export TEST_LDAP_PASS="password"
+export TEST_LDAP_URL="ldap://$DOCKERIP:$LDAPPORT"
 
 echo ""
 echo "Running tests!"
