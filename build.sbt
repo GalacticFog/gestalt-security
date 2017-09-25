@@ -85,6 +85,16 @@ commands += GenDataModel
 
 scalikejdbcSettings
 
+// upgrades to address known security vulnerabilities 
+libraryDependencies ++= Seq(
+  "com.typesafe.akka"        %% "akka-stream"       % "2.4.20", 
+  "org.asynchttpclient"       % "async-http-client" % "2.0.36",
+  "org.apache.logging.log4j"  % "log4j-api"         % "2.9.1",
+  "org.apache.logging.log4j"  % "log4j-core"        % "2.9.1"
+)
+  //"org.apache.httpcomponents" % "httpclient"        % "4.5.3",
+
+
 // ----------------------------------------------------------------------------
 // Gestalt Security SDK
 // ----------------------------------------------------------------------------
