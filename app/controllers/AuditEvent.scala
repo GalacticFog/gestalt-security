@@ -363,6 +363,13 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
+  case class UpdateGroupAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, groups: Option[(GestaltGroup,GestaltGroup)] = None, diffs: Option[Seq[String]] = None)
+    extends GenericUpdateAttempt[GestaltGroup,UpdateGroupAttempt](resourceId, "group", u, groups, diffs) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
   //////////////////////////////////////////////////////////////////////
   // Failure event wrappers
   //////////////////////////////////////////////////////////////////////

@@ -3,10 +3,12 @@ package com.galacticfog.gestalt.security.data.domain
 import java.util.UUID
 
 import com.galacticfog.gestalt.patch.PatchOp
-import com.galacticfog.gestalt.security.api.{GROUP, GestaltGroup}
-import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
+import com.galacticfog.gestalt.security.adapter.LDAPDirectory
+import com.galacticfog.gestalt.security.api.{GROUP, GestaltGroup, GestaltGroupUpdate}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, UnknownAPIException}
 import com.galacticfog.gestalt.security.data.model._
 import org.postgresql.util.PSQLException
+import play.api.Logger
 import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 
@@ -175,6 +177,83 @@ object GroupFactory extends SQLSyntaxSupport[UserGroupRepository] {
       """.map(UserGroupRepository(grp)).list.apply().headOption
   }
 
+  def updateGroup(group: UserGroupRepository, patches: Seq[PatchOp])
+                 (implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    val patchedGroup = patches.foldLeft(group)((acc, patch) => {
+      patch.copy(op = patch.op.toLowerCase) match {
+        case PatchOp("replace", "/name",Some(value))         => acc.copy(name = value.as[String])
+        case PatchOp("remove",  "/description", None)        => acc.copy(description = None)
+        case PatchOp("add",     "/description", Some(value)) => acc.copy(description = Some(value.as[String]))
+        case PatchOp("replace", "/description", Some(value)) => acc.copy(description = Some(value.as[String]))
+        case _ => throw BadRequestException(
+          resource = "",
+          message = "bad PATCH payload for updating group",
+          developerMessage = "The PATCH payload for updating the group had invalid fields."
+        )
+      }
+    })
+    DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
+      case Some(dir: InternalDirectory) => GroupFactory.saveGroup(patchedGroup)
+      case Some(dir: LDAPDirectory) =>
+        Failure(ConflictException(resource = "",
+          message = "LDAP Directory does not support updating groups.",
+          developerMessage = "LDAP Directory does not support updating groups."))
+      case Some(_) =>
+        Failure(BadRequestException(resource = "",
+          message = "Unknown directory type.",
+          developerMessage = "Directory type is unknown. Please contact support."))
+      case None => throw BadRequestException(
+        resource = "",
+        message = "A valid directory was not found for the group",
+        developerMessage = "A valid directory was not found for the group.")
+    }
+  }
+
+  def updateGroupSDK(group: UserGroupRepository, update: GestaltGroupUpdate)(implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    val updatedGroup = group.copy(
+      name = update.name getOrElse group.name,
+      description = update.description orElse group.description
+    )
+    DirectoryFactory.find(group.dirId.asInstanceOf[UUID]) match {
+      case Some(dir: InternalDirectory) => GroupFactory.saveGroup(updatedGroup)
+      case Some(dir: LDAPDirectory) =>
+        Failure(ConflictException(resource = "",
+          message = "LDAP Directory does not support updating groups.",
+          developerMessage = "LDAP Directory does not support updating groups."))
+      case Some(_) =>
+        Failure(BadRequestException(resource = "",
+          message = "Unknown directory type.",
+          developerMessage = "Directory type is unknown. Please contact support."))
+      case None => throw BadRequestException(
+        resource = "",
+        message = "A valid directory was not found for the group",
+        developerMessage = "A valid directory was not found for the group.")
+    }
+  }
+
+  def saveGroup(group: UserGroupRepository)
+               (implicit session: DBSession = autoSession): Try[UserGroupRepository] = {
+    Try {
+      group.save()
+    } recoverWith {
+      case t: PSQLException if t.getSQLState == "23505" || t.getSQLState == "23514" =>
+        t.getServerErrorMessage.getConstraint match {
+          case "group_dir_id_name_key" => Failure(ConflictException(
+            resource = "",
+            message = "group name already exists in directory",
+            developerMessage = "A group with the specified name already exists in the specified directory."
+          ))
+          case _ =>
+            Logger.error("PSQLException in saveGroup",t)
+            Failure(UnknownAPIException(
+              code = 500,
+              resource = "",
+              message = "sql error",
+              developerMessage = "SQL error updating group. Check the error log for more details."
+            ))
+        }
+    }
+  }
   /*
     This is:
       all Groups grp such that

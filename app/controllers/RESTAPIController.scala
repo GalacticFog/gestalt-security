@@ -937,6 +937,42 @@ class RESTAPIController @Inject()( config: SecurityConfig,
     }
   )
 
+  def updateGroup(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId), UpdateGroupAttempt(groupId))(parse.json) (
+    // user can update their own group
+    withAuthorization(UPDATE_ACCOUNT, UpdateGroupAttempt(groupId) ) { event => implicit request =>
+      withBody[Seq[PatchOp], GestaltGroupUpdate](event) { payload =>
+        def changedFields(diffs: Either[Seq[PatchOp],GestaltGroupUpdate]): Seq[String] = {
+          diffs.fold(
+            _.map(_.path.stripPrefix("/")),
+            update => Seq(
+              update.name.map(_ => "name"),
+              update.description.map(_ => "description")
+            ).flatten
+          )
+        }
+        val attempt = GroupFactory.find(groupId) match {
+          case Some(before) =>
+            payload.fold(
+              patches => GroupFactory.updateGroup(before, patches),
+              update => GroupFactory.updateGroupSDK(before, update)
+            ) map { after => (before,after,changedFields(payload)) }
+          case None =>
+            Failure(ResourceNotFoundException(
+              resource = request.path,
+              message = "could not locate requested group",
+              developerMessage = "Could not locate the requested group. Make sure to use the group ID and not the group name."
+            ))
+        }
+        auditTry(attempt, event){case (e,(before,after,diffs)) => e.copy(
+          successful = true,
+          groups = Some((before,after)),
+          diffs = Some(diffs)
+        )}
+        renderTry[GestaltGroup](Ok)(attempt.map(_._2))
+      }
+    }
+  )
+
   def updateGroupMembership(groupId: java.util.UUID) = AuthenticatedAction(resolveGroupOrg(groupId), UpdateGroupMembershipAttempt(groupId))(parse.json) (
     withAuthorization(UPDATE_GROUP, UpdateGroupMembershipAttempt(groupId)) { event => implicit request =>
       withBody[Seq[PatchOp]](event) { payload =>
@@ -1600,4 +1636,5 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def options(path: String) = Action {Ok("")}
+
 }

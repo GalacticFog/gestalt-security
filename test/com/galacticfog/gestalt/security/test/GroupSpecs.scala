@@ -3,8 +3,12 @@ package com.galacticfog.gestalt.security.test
 import java.util.UUID
 
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.api.errors.{ResourceNotFoundException, ConflictException, BadRequestException}
+import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException, ResourceNotFoundException}
 import com.galacticfog.gestalt.security.data.domain.DirectoryFactory
+import com.galacticfog.gestalt.security.data.model.UserGroupRepository
+import com.galacticfog.gestalt.security.api.json.JsonImports._
+import com.galacticfog.gestalt.security.data.APIConversions._
+import play.api.libs.json.Json
 
 class GroupSpecs extends SpecWithSDK {
 
@@ -173,6 +177,30 @@ class GroupSpecs extends SpecWithSDK {
         add = Seq(newAcct3.id, newAcct4.id),
         remove = Nil
       )) must throwA[ResourceNotFoundException](".*could not locate requested group.*")
+    }
+
+    "update group properties using SDK object" in {
+      val newGroup = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("group-for-sdk-update")))
+      val updated = await(GestaltGroup.updateGroup(newGroup.id, GestaltGroupUpdate(
+        name = Some("updated-group-name"),
+        description = Some("updated group description"))
+      ))
+      updated.id must_== newGroup.id
+      updated.name must_== "updated-group-name"
+      updated.description must beSome("updated group description")
+      UserGroupRepository.find(updated.id) map {g => g: GestaltGroup} must beSome(updated)
+    }
+
+    "update group properties using SDK object" in {
+      val newGroup = await(GestaltOrg.createGroup(newOrg.id, GestaltGroupCreateWithRights("group-for-patch-update")))
+      val updated = await(newGroup.update(
+        'name -> Json.toJson("patched-group-name"),
+        'description -> Json.toJson("patched group description")
+      ))
+      updated.id must_== newGroup.id
+      updated.name must_== "patched-group-name"
+      updated.description must beSome("patched group description")
+      UserGroupRepository.find(updated.id) map {g => g: GestaltGroup} must beSome(updated)
     }
 
   }
