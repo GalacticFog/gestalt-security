@@ -1,6 +1,6 @@
 name := """gestalt-security"""
 
-version := "2.4.3-SNAPSHOT"
+version := "2.4.3"
 
 lazy val root = (project in file(".")).
   enablePlugins(AshScriptPlugin,SbtNativePackager,PlayScala,BuildInfoPlugin).
@@ -100,7 +100,7 @@ libraryDependencies ++= Seq(
 // ----------------------------------------------------------------------------
 
 libraryDependencies ++= Seq(
-  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.1" withSources(),
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.2" withSources(),
   "com.galacticfog" %% "gestalt-ldapdirectory" % "1.2.1",
   "com.galacticfog" % "gestalt-license-keymgr" % "1.2.1-SNAPSHOT"
 )

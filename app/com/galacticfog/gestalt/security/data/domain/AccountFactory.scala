@@ -182,8 +182,8 @@ object AccountFactory extends SQLSyntaxSupport[UserAccountRepository] {
         case PatchOp("replace", "/phoneNumber", Some(value)) => acc.copy(phoneNumber = Some(value.as[String]))
         case _ => throw BadRequestException(
           resource = "",
-          message = "bad PATCH payload for updating account store",
-          developerMessage = "The PATCH payload for updating the account store mapping had invalid fields."
+          message = "bad PATCH payload for updating account",
+          developerMessage = "The PATCH payload for updating the account had invalid fields."
         )
       }
     })

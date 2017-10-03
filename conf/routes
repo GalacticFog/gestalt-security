@@ -77,6 +77,7 @@ POST          /accounts/:accountId/apiKeys                              controll
 ##########################################
 GET           /groups/:groupId                                          controllers.RESTAPIController.getGroup(groupId: java.util.UUID)
 DELETE        /groups/:groupId                                          controllers.RESTAPIController.deleteGroup(groupId: java.util.UUID)
+PATCH         /groups/:groupId                                          controllers.RESTAPIController.updateGroup(groupId: java.util.UUID)
 GET           /groups/:groupId/accounts                                 controllers.RESTAPIController.listGroupMembers(groupId: java.util.UUID)
 PATCH         /groups/:groupId/accounts                                 controllers.RESTAPIController.updateGroupMembership(groupId: java.util.UUID)
 
