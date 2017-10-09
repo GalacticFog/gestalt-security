@@ -7,6 +7,9 @@ import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, GroupFactory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.plugins.{DirectoryPlugin, GroupMembership}
+import play.api.libs.json.Json
+
+import scala.util.Try
 
 object APIConversions {
   implicit def accountModelToApi(uar: UserAccountRepository): GestaltAccount = {
@@ -82,7 +85,8 @@ object APIConversions {
       id = dir.id.asInstanceOf[UUID],
       name = dir.name,
       description = dir.description,
-      orgId = dir.orgId.asInstanceOf[UUID]
+      orgId = dir.orgId.asInstanceOf[UUID],
+      config = dir.config flatMap (json => Try{Json.parse(json)}.toOption)
     )
   }
 

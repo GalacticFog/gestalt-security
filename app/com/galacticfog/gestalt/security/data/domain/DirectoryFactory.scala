@@ -8,9 +8,11 @@ import scalikejdbc._
 import scalikejdbc.TxBoundary.Try._
 import java.util.UUID
 
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.data.APIConversions
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.plugins.DirectoryPlugin
+import play.api.libs.json._
 
 import scala.util.{Failure, Try}
 
@@ -20,6 +22,50 @@ trait Directory extends DirectoryPlugin {
 
 
 object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
+
+  def sanitizeConfig(dir: GestaltDirectory): GestaltDirectory = {
+    def sanitizeJson(json: JsObject): JsObject = {
+      JsObject(json.fields map {
+        case (key, JsString(_)) if key.toLowerCase.contains("password") =>
+          key -> JsString("********")
+        case (key, obj: JsObject) =>
+          key -> sanitizeJson(obj)
+        case (key, value) =>
+          key -> value
+      })
+    }
+    dir.copy(
+      config = dir.config map {_ match {
+        case obj: JsObject => sanitizeJson(obj)
+        case other => other
+      }}
+    )
+  }
+
+  def updateDirectory(directory: GestaltDirectoryRepository, patch: Seq[PatchOp])
+                     (implicit session: DBSession = autoSession): Try[GestaltDirectoryRepository] = {
+    val newDir = Try{patch.foldLeft(directory)((d, p) => {
+      p match {
+        case PatchOp(op,"/name",Some(value)) if op.toLowerCase == "replace" =>
+          d.copy(name = value.as[String])
+        case PatchOp(op,"/description",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+          d.copy(description = Some(value.as[String]))
+        case PatchOp("remove","/description",None) =>
+          d.copy(description = None)
+        case PatchOp(op,"/config",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+          d.copy(config = Some(value.toString))
+        case PatchOp("remove","/config",None) =>
+          d.copy(config = None)
+        case _ => throw BadRequestException(
+          resource = "",
+          message = "bad PATCH payload for updating directory",
+          developerMessage = "The PATCH payload for updating the directory had invalid fields/operations."
+        )
+      }
+    })}
+    newDir map (_.save())
+  }
+
 
   implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): DirectoryPlugin = {
     daoDir.directoryType.toUpperCase match {
@@ -41,8 +87,12 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
 
   override val autoSession = AutoSession
 
+  def findRaw(dirId: UUID)(implicit session: DBSession = autoSession): Option[GestaltDirectoryRepository] = {
+    GestaltDirectoryRepository.find(dirId)
+  }
+
   def find(dirId: UUID)(implicit session: DBSession = autoSession): Option[DirectoryPlugin] = {
-    GestaltDirectoryRepository.find(dirId) map {d => d:DirectoryPlugin}
+    findRaw(dirId) map {d => d:DirectoryPlugin}
   }
 
   def findAll(implicit session: DBSession = autoSession): List[DirectoryPlugin] = {
@@ -56,7 +106,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     }
   }
 
-  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[DirectoryPlugin] = {
+  def createDirectory(orgId: UUID, create: GestaltDirectoryCreate)(implicit session: DBSession = autoSession): Try[GestaltDirectoryRepository] = {
     Try {
       GestaltDirectoryRepository.create(
         id = UUID.randomUUID(),
@@ -76,7 +126,7 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
           ))
           case _ => Failure(t)
         }
-    } map {d => d: DirectoryPlugin}
+    }
   }
 
   def createAccountInDir(dirId: UUID, create: GestaltAccountCreate)(implicit session: DBSession = autoSession): Try[GestaltAccount] = {
@@ -125,7 +175,12 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
   }
 
   def listByOrgId(orgId: UUID)(implicit session: DBSession = autoSession): List[DirectoryPlugin] = {
-    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}") map {d => d:DirectoryPlugin}
+    listRawByOrgId(orgId) map {d => d:DirectoryPlugin}
   }
+
+  def listRawByOrgId(orgId: UUID) = {
+    GestaltDirectoryRepository.findAllBy(sqls"org_id=${orgId}")
+  }
+
 
 }

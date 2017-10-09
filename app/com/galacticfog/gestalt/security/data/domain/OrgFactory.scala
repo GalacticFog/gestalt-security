@@ -29,6 +29,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
     val DELETE_GROUP = "deleteGroup"
     val UPDATE_GROUP = "updateGroup"
     val CREATE_DIRECTORY = "createDirectory"
+    val UPDATE_DIRECTORY = "updateDirectory"
     val DELETE_DIRECTORY = "deleteDirectory"
     val READ_DIRECTORY = "readDirectory"
     val CREATE_APP = "createApp"
@@ -173,7 +174,7 @@ object OrgFactory extends SQLSyntaxSupport[GestaltOrgRepository] {
           config = None,
           directoryType = DIRECTORY_TYPE_INTERNAL
         )
-      )
+      ) map DirectoryFactory.toDirFromDAO
       usersGroup <- GroupFactory.create(
         name = newOrg.fqon + "-users",
         dirId = newDir.id,
