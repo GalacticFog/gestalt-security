@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.security.api._
 import com.galacticfog.gestalt.security.api.errors.{BadRequestException, ConflictException}
-import com.galacticfog.gestalt.security.api.json.JsonImports
+import com.galacticfog.gestalt.security.api.json.JsonImports._
 import com.galacticfog.gestalt.security.data.domain.{AccountFactory, DirectoryFactory}
 import play.api.libs.json.Json
 
@@ -79,7 +79,7 @@ class DirectorySpecs extends SpecWithSDK {
   )))
   lazy val newOrgApp = await(newOrg.getServiceApp())
 
-  "Directory creation" should {
+  "Directory" should {
 
     lazy val testDir = await(newOrg.createDirectory(GestaltDirectoryCreate(
       name = "test-dir",
@@ -95,23 +95,22 @@ class DirectorySpecs extends SpecWithSDK {
       ))
     )))
 
-    "prohibit duplicate names" in {
+    "prohibit duplicate names on create" in {
       await(newOrg.createDirectory(GestaltDirectoryCreate(
         testDir.name, DIRECTORY_TYPE_INTERNAL
       ))) must throwA[ConflictException](".*name already exists in org.*")
     }
 
-    "require valid directory type" in {
+    "require valid directory type on create" in {
       // sdk doesn't allow raw string to be passed, so we'll bypass
       // this actually presents as a parse error now
-      import JsonImports._
       await(keySdk.post[GestaltDirectory](s"orgs/${newOrg.id}/directories",Json.obj(
         "name" -> "bad-directory",
         "directoryType" -> "badtype"
       ))) must throwA[BadRequestException](".*invalid payload.*")
     }
 
-    "not automatically map the directory" in {
+    "not automatically map the directory on create" in {
       await(newOrg.listAccountStores()) must not contain(
         (asm: GestaltAccountStoreMapping) =>  asm.storeId == testDir.id
       )
@@ -159,6 +158,30 @@ class DirectorySpecs extends SpecWithSDK {
         )
       ))
     }
+
+    "support update" in {
+      val newDir = await(newOrg.createDirectory(GestaltDirectoryCreate(
+        name = "original-name",
+        directoryType = DIRECTORY_TYPE_INTERNAL,
+        description = Some("original description"),
+        config = Some(Json.obj(
+          "version" -> "original config"
+        ))
+      )))
+      val updated = await(newDir.update(
+        'name -> Json.toJson("updated-name"),
+        'description -> Json.toJson("new description"),
+        'config -> Json.obj(
+          "version" -> "updated config"
+        )
+      ))
+      updated.name must_== "updated-name"
+      updated.description must beSome("new description")
+      updated.config must beSome(Json.obj(
+        "version" -> "updated config"
+      ))
+    }
+
   }
 
   step({

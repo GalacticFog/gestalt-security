@@ -42,8 +42,29 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     )
   }
 
-  def updateDirectory(directory: GestaltDirectoryRepository, patches: Seq[PatchOp])
-                     (implicit session: DBSession = autoSession): Try[GestaltDirectoryRepository] = Try{???}
+  def updateDirectory(directory: GestaltDirectoryRepository, patch: Seq[PatchOp])
+                     (implicit session: DBSession = autoSession): Try[GestaltDirectoryRepository] = {
+    val newDir = Try{patch.foldLeft(directory)((d, p) => {
+      p match {
+        case PatchOp(op,"/name",Some(value)) if op.toLowerCase == "replace" =>
+          d.copy(name = value.as[String])
+        case PatchOp(op,"/description",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+          d.copy(description = Some(value.as[String]))
+        case PatchOp("remove","/description",None) =>
+          d.copy(description = None)
+        case PatchOp(op,"/config",Some(value)) if op.toLowerCase == "add" || op.toLowerCase == "replace" =>
+          d.copy(config = Some(value.toString))
+        case PatchOp("remove","/config",None) =>
+          d.copy(config = None)
+        case _ => throw BadRequestException(
+          resource = "",
+          message = "bad PATCH payload for updating directory",
+          developerMessage = "The PATCH payload for updating the directory had invalid fields/operations."
+        )
+      }
+    })}
+    newDir map (_.save())
+  }
 
 
   implicit def toDirFromDAO(daoDir: GestaltDirectoryRepository): DirectoryPlugin = {
