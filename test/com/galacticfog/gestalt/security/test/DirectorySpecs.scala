@@ -82,7 +82,17 @@ class DirectorySpecs extends SpecWithSDK {
   "Directory creation" should {
 
     lazy val testDir = await(newOrg.createDirectory(GestaltDirectoryCreate(
-      "test-dir", DIRECTORY_TYPE_INTERNAL
+      name = "test-dir",
+      directoryType = DIRECTORY_TYPE_INTERNAL,
+      description = Some("test directory description"),
+      config = Some(Json.obj(
+        "configured-username" -> "test-admin",
+        "configured-Password" -> "thisisasecret",
+        "deep" -> Json.obj(
+          "deep-password" -> "alsoasecret",
+          "password" -> "another secret"
+        )
+      ))
     )))
 
     "prohibit duplicate names" in {
@@ -115,6 +125,40 @@ class DirectorySpecs extends SpecWithSDK {
       token must beNone
     }
 
+    "return config on response from create and mask passwords" in {
+      testDir.config must beSome(Json.obj(
+        "configured-username" -> "test-admin",
+        "configured-Password" -> "********",
+        "deep" -> Json.obj(
+          "deep-password" -> "********",
+          "password" -> "********"
+        )
+      ))
+    }
+
+    "return config on response from get and mask passwords" in {
+      val Some(d) = await(GestaltDirectory.getById(testDir.id))
+      d.config must beSome(Json.obj(
+        "configured-username" -> "test-admin",
+        "configured-Password" -> "********",
+        "deep" -> Json.obj(
+          "deep-password" -> "********",
+          "password" -> "********"
+        )
+      ))
+    }
+
+    "return config on response from listing and mask passwords" in {
+      val Some(d) = await(GestaltOrg.listDirectories(newOrg.id)) find (_.id == testDir.id)
+      d.config must beSome(Json.obj(
+        "configured-username" -> "test-admin",
+        "configured-Password" -> "********",
+        "deep" -> Json.obj(
+          "deep-password" -> "********",
+          "password" -> "********"
+        )
+      ))
+    }
   }
 
   step({

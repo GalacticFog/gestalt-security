@@ -86,6 +86,7 @@ PATCH         /groups/:groupId/accounts                                 controll
 ##########################################
 GET           /directories/:dirId                                       controllers.RESTAPIController.getDirectory(dirId: java.util.UUID)
 DELETE        /directories/:dirId                                       controllers.RESTAPIController.deleteDirectory(dirId: java.util.UUID)
+PATCH         /directories/:dirId                                       controllers.RESTAPIController.updateDirectory(dirId: java.util.UUID)
 #
 GET           /directories/:dirId/accounts                              controllers.RESTAPIController.listDirAccounts(dirId: java.util.UUID)
 POST          /directories/:dirId/accounts                              controllers.RESTAPIController.createDirAccount(dirId: java.util.UUID)

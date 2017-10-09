@@ -370,6 +370,13 @@ object AuditEvents {
     override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
   }
 
+  case class UpdateDirectoryAttempt(resourceId: UUID, u: Option[AuditedUserInfo] = None, successful: Boolean = false, directories: Option[(GestaltDirectory,GestaltDirectory)] = None, diffs: Option[Seq[String]] = None)
+    extends GenericUpdateAttempt[GestaltDirectory,UpdateDirectoryAttempt](resourceId, "directory", u, directories, diffs) {
+    override def userInfo: Option[AuditedUserInfo] = u
+    override def failed: AuditEvent = this.copy(successful = false)
+    override def authed(aui: AuditedUserInfo) = this.copy(u = Some(aui))
+  }
+
   //////////////////////////////////////////////////////////////////////
   // Failure event wrappers
   //////////////////////////////////////////////////////////////////////

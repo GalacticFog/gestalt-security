@@ -437,9 +437,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def getDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
-    DirectoryFactory.find(dirId) match {
+    DirectoryFactory.findRaw(dirId) match {
       case Some(dir) =>
-        Ok(Json.toJson[GestaltDirectory](dir))
+        Ok(Json.toJson[GestaltDirectory](DirectoryFactory.sanitizeConfig(dir)))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
         resource = request.path,
         message = "could not locate requested directory",
@@ -599,7 +599,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def listOrgDirectories(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgDirectoriesAttempt(orgId)) { implicit request =>
     auditer(ListOrgDirectoriesAttempt(orgId, Some(request.user.identity), successful = true))
-    Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listByOrgId(orgId) map { d => d: GestaltDirectory }))
+    Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listRawByOrgId(orgId) map {
+      d => DirectoryFactory.sanitizeConfig(d: GestaltDirectory)
+    }))
   }
 
   def listOrgApps(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgAppsAttempt(orgId)) { implicit request =>
@@ -783,7 +785,9 @@ class RESTAPIController @Inject()( config: SecurityConfig,
         // }
         val newDir = DirectoryFactory.createDirectory(orgId = orgId, create)
         auditTry(newDir, event){case (e,o) => e.copy(successful = true, newDirectory = Some(o))}
-        renderTry[GestaltDirectory](Created)(newDir)
+        renderTry[GestaltDirectory](Created)(newDir map { dir =>
+          DirectoryFactory.sanitizeConfig(dir: GestaltDirectory)
+        })
       }
     }
   )
@@ -933,6 +937,34 @@ class RESTAPIController @Inject()( config: SecurityConfig,
           diffs = Some(diffs)
         )}
         renderTry[GestaltAccount](Ok)(attempt.map(_._2))
+      }
+    }
+  )
+
+  def updateDirectory(dirId: java.util.UUID) = AuthenticatedAction(resolveAccountOrg(dirId), UpdateDirectoryAttempt(dirId))(parse.json) (
+    withAuthorization( UPDATE_DIRECTORY, UpdateDirectoryAttempt(dirId) ) { event => implicit request =>
+      withBody[Seq[PatchOp]](event) { payload =>
+        def changedFields(diffs: Seq[PatchOp]): Seq[String] = {
+          diffs.map(_.path.stripPrefix("/"))
+        }
+        val attempt = DirectoryFactory.findRaw(dirId) match {
+          case Some(before) =>
+            DirectoryFactory.updateDirectory(before, payload) map {
+              after => (before,after,changedFields(payload))
+            }
+          case None =>
+            Failure(ResourceNotFoundException(
+              resource = request.path,
+              message = "could not locate requested directory",
+              developerMessage = "Could not locate the requested directory. Make sure to use the directory ID and not the name."
+            ))
+        }
+        auditTry(attempt, event){case (e,(before,after,diffs)) => e.copy(
+          successful = true,
+          directories = Some((before,after)),
+          diffs = Some(diffs)
+        )}
+        renderTry[GestaltDirectory](Ok)(attempt.map(_._2))
       }
     }
   )
