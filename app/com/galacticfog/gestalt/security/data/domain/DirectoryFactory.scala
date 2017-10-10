@@ -71,8 +71,6 @@ object DirectoryFactory extends SQLSyntaxSupport[GestaltDirectoryRepository] {
     daoDir.directoryType.toUpperCase match {
       case "INTERNAL" => InternalDirectory(daoDir)
       case "LDAP" =>
-//        val ldapClass = Class.forName("com.galacticfog.gestalt.security.data.domain.LDAPDirectory").getConstructors.head
-//        val ldapdir = ldapClass.newInstance(daoDir, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance).asInstanceOf[LDAPDirectory]
         val dirapi = APIConversions.dirModelToApi(daoDir)
         val ldapdir = LDAPDirectory(dirapi, daoDir.config, SDKAccountFactory.instance, SDKGroupFactory.instance)
         ldapdir
