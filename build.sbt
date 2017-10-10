@@ -1,6 +1,6 @@
 name := """gestalt-security"""
 
-version := "2.4.5"
+version := "2.4.6-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   enablePlugins(AshScriptPlugin,SbtNativePackager,PlayScala,BuildInfoPlugin).
