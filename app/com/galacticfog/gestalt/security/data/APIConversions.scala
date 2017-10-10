@@ -2,9 +2,10 @@ package com.galacticfog.gestalt.security.data
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.security.adapter.LDAPDirectory
 import com.galacticfog.gestalt.security.api.GestaltToken.ACCESS_TOKEN
 import com.galacticfog.gestalt.security.api._
-import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, GroupFactory, OrgFactory}
+import com.galacticfog.gestalt.security.data.domain.{DirectoryFactory, GroupFactory, InternalDirectory, OrgFactory}
 import com.galacticfog.gestalt.security.data.model._
 import com.galacticfog.gestalt.security.plugins.{DirectoryPlugin, GroupMembership}
 import play.api.libs.json.Json
@@ -86,7 +87,8 @@ object APIConversions {
       name = dir.name,
       description = dir.description,
       orgId = dir.orgId.asInstanceOf[UUID],
-      config = dir.config flatMap (json => Try{Json.parse(json)}.toOption)
+      config = dir.config flatMap (json => Try{Json.parse(json)}.toOption),
+      directoryType = dir.directoryType
     )
   }
 
@@ -95,7 +97,11 @@ object APIConversions {
       id = dir.id,
       name = dir.name,
       description = dir.description,
-      orgId = dir.orgId
+      orgId = dir.orgId,
+      directoryType = dir match {
+        case _: InternalDirectory => DIRECTORY_TYPE_INTERNAL.label
+        case _: LDAPDirectory     => DIRECTORY_TYPE_LDAP.label
+      }
     )
   }
 
