@@ -3,7 +3,7 @@ name := """gestalt-security"""
 version := "2.4.6-SNAPSHOT"
 
 lazy val root = (project in file(".")).
-  enablePlugins(AshScriptPlugin,SbtNativePackager,PlayScala,BuildInfoPlugin).
+  enablePlugins(SbtNativePackager,PlayScala,BuildInfoPlugin).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](
       name, version, scalaVersion, sbtVersion,
@@ -32,11 +32,6 @@ scalacOptions ++= Seq(
   "-language:postfixOps", "-language:implicitConversions"
 )
 
-// fixes the is_cygwin not-found check in the ash script
-bashScriptExtraDefines := List(
-  """addJava "-Duser.dir=$(realpath "$(cd "${app_home}/.."; pwd -P)")""""
-)
-
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 dockerBaseImage := "openjdk:8-jre-alpine"
@@ -44,7 +39,7 @@ dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
   case cmd@Cmd("FROM",_) => List(
     cmd,
-    Cmd("RUN", "apk upgrade && rm -rf /var/cache/apk/*")
+    Cmd("RUN", "apk upgrade && apk add --update bash && rm -rf /var/cache/apk/*")
   )
   case other => List(other)
 }
