@@ -24,6 +24,7 @@ variables:
   TEST_LDAP_USER: "cn=admin,dc=example,dc=com"
   TEST_LDAP_PASS: "password"
   DOCKER_IMG: "galacticfog/gestalt-security"
+  LEGACY_CI_URL: "https://gtw1.demo.galacticfog.com/ci/legacy-ci"
 
 test:
   stage: test
@@ -79,23 +80,20 @@ github-publish:
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
-    - /usr/local/bin/update-deployed-app.sh  marathon.mesos:8080 $DEPLOYID $DOCKER_IMG:$DOCKER_TAG
-  allow_failure: true
+    - http --check-status -a "$API_KEY":"$API_SECRET" --ignore-stdin $LEGACY_CI_URL project=security image=$DOCKER_IMG:$DOCKER_TAG git_ref=$CI_COMMIT_REF_NAME git_sha=$CI_COMMIT_SHA git_author="$GITLAB_USER_NAME"
   artifacts:
 
 auto-deploy-master-to-test:
   <<: *deploy_to_env
   environment: test
-  variables:
-    DEPLOYID: gestalt-test-tasks/security
+  allow_failure: false
   only: 
     - master
 
 manual-deploy-non-master-to-test:
   <<: *deploy_to_env
   environment: test
-  variables:
-    DEPLOYID: gestalt-test-tasks/security
+  allow_failure: true
   except: 
     - master
   when: manual
