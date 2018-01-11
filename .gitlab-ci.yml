@@ -72,27 +72,26 @@ github-publish:
     - tags
   artifacts:
 
-.deploy_template: &deploy_to_env
+.deploy_template: &deploy_to_test
   image: galacticfog/gitlab-updater
   stage: deploy
+  environment: test
   tags: 
     - test-cluster
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
     - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
-    - http --check-status -a "$API_KEY":"$API_SECRET" --ignore-stdin $LEGACY_CI_URL project=security image=$DOCKER_IMG:$DOCKER_TAG git_ref=$CI_COMMIT_REF_NAME git_sha=$CI_COMMIT_SHA git_author="$GITLAB_USER_NAME"
+    - http --check-status -a "$API_KEY":"$API_SECRET" --ignore-stdin $LEGACY_CI_URL project=$CI_PROJECT_NAME image=$DOCKER_IMG:$DOCKER_TAG git_ref=$CI_COMMIT_REF_NAME git_sha=$CI_COMMIT_SHA git_author="$GITLAB_USER_NAME"
   artifacts:
 
-auto-deploy-master-to-test:
-  <<: *deploy_to_env
-  environment: test
+auto-deploy-master:
+  <<: *deploy_to_test
   allow_failure: false
   only: 
     - master
 
-manual-deploy-non-master-to-test:
-  <<: *deploy_to_env
-  environment: test
+manual-deploy-non-master:
+  <<: *deploy_to_test
   allow_failure: true
   except: 
     - master
