@@ -28,7 +28,7 @@ case class RateLimitingActor @Inject() (config: SecurityConfig) extends Actor wi
       else
         sender ! RequestDenied
     case ClearHistory =>
-      log.info("clearing requests in RateLimitingActor")
+      log.debug("clearing requests in RateLimitingActor")
       history.clear()
     case m =>
       log.warning(s"unknown message: ${m.toString}")
