@@ -437,6 +437,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def getDirectory(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
+    Logger.debug(s"getDirectory($dirId)")
     DirectoryFactory.findRaw(dirId) match {
       case Some(dir) =>
         Ok(Json.toJson[GestaltDirectory](DirectoryFactory.sanitizeConfig(dir)))
@@ -449,6 +450,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def getDirAccountByUsername(dirId: UUID, username: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
+    Logger.debug(s"getDirAccountByUsername($dirId, $username)")
     requireAuthorization(READ_DIRECTORY)
     if ( DirectoryFactory.find(dirId).isDefined ) {
       AccountFactory.findInDirectoryByName(dirId, username) match {
@@ -468,6 +470,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def getDirGroupByName(dirId: UUID, groupName: String) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
+    Logger.debug(s"getDirGroupByName($dirId, $groupName)")
     requireAuthorization(READ_DIRECTORY)
     if ( DirectoryFactory.find(dirId).isDefined ) {
       GroupFactory.findInDirectoryByName(dirId, groupName) match {
@@ -487,6 +490,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def getAccountStoreMapping(mapId: UUID) = AuthenticatedAction(resolveMappingOrg(mapId)) { implicit request =>
+    Logger.debug(s"getAccountStoreMapping($mapId)")
     accountStoreMappingService.find(mapId) match {
       case Some(asm) => Ok(Json.toJson[GestaltAccountStoreMapping](asm))
       case None => NotFound(Json.toJson(ResourceNotFoundException(
@@ -499,6 +503,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def rootOrgSync() = AuthenticatedAction(resolveFromCredentials _, SyncAttempt())(parse.default) (
     withAuthorization(SYNC, SyncAttempt(None)) { event => implicit request =>
+      Logger.debug(s"rootOrgSync()")
       auditer(event.copy(syncRoot = Some(request.user.orgId)))
       Ok(Json.toJson(OrgFactory.orgSync(init, request.user.orgId)))
     }
@@ -506,6 +511,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
 
   def subOrgSync(orgId: UUID) = AuthenticatedAction(Some(orgId), SyncAttempt(Some(orgId)))(parse.default) (
     withAuthorization(SYNC, SyncAttempt(Some(orgId))) { event => implicit request =>
+      Logger.debug(s"subOrgSync($orgId)")
       OrgFactory.find(orgId) match {
         case Some(org) =>
           auditer(event)
@@ -598,6 +604,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def listOrgDirectories(orgId: UUID) = AuthenticatedAction(Some(orgId), ListOrgDirectoriesAttempt(orgId)) { implicit request =>
+    Logger.debug(s"listOrgDirectories($orgId)")
     auditer(ListOrgDirectoriesAttempt(orgId, Some(request.user.identity), successful = true))
     Ok(Json.toJson[Seq[GestaltDirectory]](DirectoryFactory.listRawByOrgId(orgId) map {
       d => DirectoryFactory.sanitizeConfig(d: GestaltDirectory)
@@ -622,6 +629,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def listDirAccounts(dirId: UUID) = AuthenticatedAction(resolveDirectoryOrg(dirId)) { implicit request =>
+    Logger.debug(s"listDirAccounts($dirId)")
     requireAuthorization(READ_DIRECTORY)
     val nameQuery = request.getQueryString("username")
     val emailQuery = request.getQueryString("email")
@@ -698,6 +706,7 @@ class RESTAPIController @Inject()( config: SecurityConfig,
   }
 
   def listAccountGroups(accountId: UUID) = AuthenticatedAction(resolveAccountOrg(accountId)) { implicit request =>
+    Logger.debug(s"listAccountGroups($accountId)")
     if ( AccountFactory.find(accountId).isDefined ) Ok(Json.toJson[Seq[GestaltGroup]](
       GroupFactory.listAccountGroups(accountId = accountId).map { g => g: GestaltGroup }
     ))
