@@ -96,7 +96,7 @@ libraryDependencies ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.4" withSources(),
-  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.2.1",
+  "com.galacticfog" %% "gestalt-ldapdirectory" % "1.2.3",
   "com.galacticfog" % "gestalt-license-keymgr" % "1.2.1-SNAPSHOT"
 )
 
