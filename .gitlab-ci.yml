@@ -29,10 +29,13 @@ variables:
 
 test:
   stage: test
+  tags: 
+    - test-cluster
   services:
     - postgres:9.4
     - galacticfog/test-ldap:0.1.0
   script:
+    # - apk upgrade && apk add --update bash && apk add --no-cache nss
     - sbt clean update test docker:stage
   artifacts:
     expire_in: 2 days
