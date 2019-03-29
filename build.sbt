@@ -39,7 +39,7 @@ dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
   case cmd@Cmd("FROM",_) => List(
     cmd,
-    Cmd("RUN", "apk upgrade && apk add --update bash && rm -rf /var/cache/apk/*")
+    Cmd("RUN", "apk upgrade && apk add --update bash && apk add --no-cache nss && rm -rf /var/cache/apk/*")
   )
   case other => List(other)
 }
